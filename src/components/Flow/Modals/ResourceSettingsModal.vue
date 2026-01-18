@@ -24,6 +24,7 @@ const emit = defineEmits<{
 
 const editingProfiles = ref<EditableProfile[]>([])
 const editProfIndex = ref<number>(0)
+const folderInputRef = ref<HTMLInputElement | null>(null)
 
 const cloneProfiles = (profiles: EditableProfile[]): EditableProfile[] =>
   JSON.parse(JSON.stringify(profiles || [])) as EditableProfile[]
@@ -46,6 +47,26 @@ const addPathToProfile = () => {
   const current = editingProfiles.value[editProfIndex.value]
   if (!current) return
   current.paths.push('D:/New/Path')
+}
+
+const triggerFolderPicker = () => {
+  folderInputRef.value?.click()
+}
+
+const handleFolderSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    const current = editingProfiles.value[editProfIndex.value]
+    if (!current) return
+    for (const file of target.files) {
+      const path = file.webkitRelativePath
+      const folderPath = path.substring(0, path.lastIndexOf('/'))
+      if (folderPath && !current.paths.includes(folderPath)) {
+        current.paths.push(folderPath)
+      }
+    }
+  }
+  target.value = ''
 }
 
 const removePath = (pIndex: number) => {
@@ -124,12 +145,19 @@ const save = () => {
           <div class="flex-1 flex flex-col min-h-0">
             <div class="flex items-center justify-between mb-1">
               <label class="text-[10px] font-bold text-slate-400 uppercase">Resource Paths (按加载顺序)</label>
-              <button @click="addPathToProfile"
-                      class="text-[10px] text-indigo-500 hover:underline flex items-center gap-1">
-                <Plus :size="10"/>
-                添加路径
-              </button>
+              <div class="flex items-center gap-2">
+                <button @click="triggerFolderPicker"
+                        class="text-[10px] text-indigo-500 hover:underline flex items-center gap-1">
+                  <Plus :size="10"/>选择文件夹
+                </button>
+                <button @click="addPathToProfile"
+                        class="text-[10px] text-indigo-500 hover:underline flex items-center gap-1">
+                  <Plus :size="10"/>添加路径
+                </button>
+              </div>
             </div>
+
+            <input ref="folderInputRef" type="file" webkitdirectory multiple class="hidden" @change="handleFolderSelect"/>
 
             <div
                 class="flex-1 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-1 space-y-1 custom-scrollbar">
