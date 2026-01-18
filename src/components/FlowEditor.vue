@@ -214,8 +214,13 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
     case 'duplicate':
       if (type === 'node' && isFlowNodeData(data) && data.data?.data && data.position) {
         const copyId = `N-${Date.now()}`
-        const copyData = JSON.parse(JSON.stringify(data.data.data)) as FlowBusinessData
-        copyData.id = copyId
+        const sourceData = data.data.data
+        const copyData: FlowBusinessData = {
+          ...JSON.parse(JSON.stringify(sourceData)),
+          id: copyId
+        }
+        delete copyData.next
+        delete copyData.on_error
         const copyNode = createNodeObject(copyId, copyData)
         copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
         nodes.value.push(copyNode)
