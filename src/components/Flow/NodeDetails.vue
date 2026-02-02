@@ -14,6 +14,7 @@ import type { FlowBusinessData, FlowNodeMeta, TemplateImage } from '../../utils/
 
 type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
 type TemplateTarget = { compositeKey: 'all_of' | 'any_of'; compositeIndex: number }
+type TemplateTargetPayload = { compositeKey?: 'all_of' | 'any_of'; compositeIndex?: number }
 
 const props = defineProps<{
   visible: boolean
@@ -259,8 +260,15 @@ const filterImagesByPaths = (images: ImageItem[], paths: string[]) => {
   return images.filter(img => img.path && pathSet.has(img.path))
 }
 
-const openImageManager = (payload?: TemplateTarget) => {
-  const templateTarget = payload ? { ...payload } : null
+const normalizeTemplateTarget = (payload?: TemplateTargetPayload): TemplateTarget | null => {
+  if (!payload) return null
+  if (!payload.compositeKey) return null
+  if (payload.compositeIndex === undefined || payload.compositeIndex === null) return null
+  return { compositeKey: payload.compositeKey, compositeIndex: payload.compositeIndex }
+}
+
+const openImageManager = (payload?: TemplateTargetPayload) => {
+  const templateTarget = normalizeTemplateTarget(payload)
   const targetPaths = getTargetTemplatePaths(templateTarget)
   const images = toImageItems(props.nodeData?._images)
   const tempImages = toImageItems(props.nodeData?._temp_images)
