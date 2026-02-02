@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # -----------------------------
       # Node.js + npm 缓存
@@ -81,6 +83,44 @@ jobs:
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # -----------------------------
+      # 生成 Change Log
+      # -----------------------------
+      - name: Generate changelog
+        id: changelog
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $prevTag = ""
+          try {
+            $prevTag = git describe --tags --abbrev=0 --match "v*" "$tag^"
+          } catch {
+            $prevTag = ""
+          }
+
+          if ($prevTag) {
+            $range = "$prevTag..$tag"
+            $title = "## $tag (since $prevTag)"
+          } else {
+            $range = "$tag"
+            $title = "## $tag"
+          }
+
+          $log = git log $range --pretty=format:"- %s (%h)" --no-merges
+          if (-not $log) { $log = "- (no changes)" }
+
+          $body = @(
+            $title,
+            "",
+            $log
+          ) -join "`n"
+
+          $outPath = "public/changelog.md"
+          $body | Out-File -FilePath $outPath -Encoding utf8
+
+          "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $body | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # -----------------------------
       # 准备嵌入式 Python
       # -----------------------------
       - name: Cache Python dependencies
@@ -89,7 +129,7 @@ jobs:
           path: |
             python-embedded
             backend/.venv
-          key: ${{ runner.os }}-python-${{ hashFiles('backend/requirements.txt', 'setup_embedded_python.py') }}
+          key: ${{ runner.os }}-python-${{ hashFiles('src-tauri/backend/requirements.txt', 'setup_embedded_python.py') }}
           restore-keys: |
             ${{ runner.os }}-python-
 
@@ -97,14 +137,6 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: python setup_embedded_python.py
-
-      # -----------------------------
-      # 移动 backend 到 src-tauri
-      # -----------------------------
-      - name: Move backend into src-tauri
-        run: |
-          if (Test-Path src-tauri/backend) { Remove-Item -Recurse -Force src-tauri/backend }
-          Move-Item backend src-tauri/backend
 
       # -----------------------------
       # 构建 Tauri 应用
@@ -116,7 +148,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "MaaInspector ${{ github.ref_name }}"
-          releaseBody: "Automated Tauri build"
+          releaseBody: ${{ steps.changelog.outputs.body }}
           prerelease: false
           releaseDraft: false
 

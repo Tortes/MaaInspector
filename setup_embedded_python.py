@@ -24,7 +24,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_VERSION = "3.13.0"
-DEFAULT_REQUIREMENTS = BASE_DIR / "backend" / "requirements.txt"
+DEFAULT_REQUIREMENTS = BASE_DIR / "src-tauri" /"backend" / "requirements.txt"
 DEST_DIR = BASE_DIR / "src-tauri" / "python-runtime"
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
