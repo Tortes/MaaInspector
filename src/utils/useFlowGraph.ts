@@ -352,10 +352,57 @@ export function useFlowGraph() {
     ;(nodeData.data as FlowBusinessData).template = paths
   }
 
+  const normalizeTemplateList = (val: unknown): string[] => {
+    if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
+    if (typeof val === 'string' && val.trim()) return [val.trim()]
+    return []
+  }
+
+  const updateCompositeTemplate = (
+    meta: FlowNodeMeta,
+    target: { compositeKey: 'all_of' | 'any_of'; compositeIndex: number },
+    updater: (current: string[]) => string[]
+  ) => {
+    if (!meta.data) meta.data = {}
+    const data = meta.data as Record<string, unknown>
+
+    const applyUpdate = (list: unknown, assign: (nextList: unknown[]) => void) => {
+      if (!Array.isArray(list) || target.compositeIndex < 0 || target.compositeIndex >= list.length) return
+      const item = list[target.compositeIndex]
+      if (!item || typeof item !== 'object') return
+      const itemObj = { ...(item as Record<string, unknown>) }
+      const current = normalizeTemplateList(itemObj.template)
+      const next = updater(current)
+      if (!next.length) delete itemObj.template
+      else if (next.length === 1) itemObj.template = next[0]
+      else itemObj.template = next
+      const nextList = [...list]
+      nextList[target.compositeIndex] = itemObj
+      assign(nextList)
+    }
+
+    applyUpdate(data[target.compositeKey], (nextList) => {
+      data[target.compositeKey] = nextList
+    })
+
+    const recognition = data.recognition
+    if (recognition && typeof recognition === 'object' && !Array.isArray(recognition)) {
+      const param = (recognition as Record<string, unknown>).param
+      if (param && typeof param === 'object' && !Array.isArray(param)) {
+        applyUpdate((param as Record<string, unknown>)[target.compositeKey], (nextList) => {
+          ;(param as Record<string, unknown>)[target.compositeKey] = nextList
+        })
+      }
+    }
+  }
+
   const handleSpecialAction = (node: FlowNode, actionData: FlowBusinessData) => {
     const meta = ensureNodeMeta(node)
     if (!meta) return
     const action = (actionData as Record<string, unknown>)._action as string | undefined
+    const templateTarget = (actionData as Record<string, unknown>).templateTarget as
+      | { compositeKey: 'all_of' | 'any_of'; compositeIndex: number }
+      | undefined
 
     if (action === 'delete_images' || (action === 'save_screenshot' && Array.isArray((actionData as Record<string, unknown>).deletePaths))) {
       const deletePaths = (actionData as Record<string, unknown>).deletePaths as string[] || []
@@ -363,7 +410,13 @@ export function useFlowGraph() {
       const currentImages = meta._images || []
       meta._del_images = [...(meta._del_images || []), ...currentImages.filter(img => deletePaths.includes(img.path))]
       meta._images = currentImages.filter(img => !deletePaths.includes(img.path))
-      deletePaths.forEach(path => modifyTemplatePath(meta, path, 'remove'))
+      if (templateTarget) {
+        deletePaths.forEach(path => {
+          updateCompositeTemplate(meta, templateTarget, current => current.filter(p => p !== path))
+        })
+      } else {
+        deletePaths.forEach(path => modifyTemplatePath(meta, path, 'remove'))
+      }
     }
 
     if (action === 'add_temp_image') {
@@ -371,7 +424,11 @@ export function useFlowGraph() {
       if (!imagePath || !imageBase64) return
       if (!meta._temp_images) meta._temp_images = []
       meta._temp_images.push({ path: imagePath, base64: imageBase64, found: true })
-      modifyTemplatePath(meta, imagePath, 'add')
+      if (templateTarget) {
+        updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])
+      } else {
+        modifyTemplatePath(meta, imagePath, 'add')
+      }
     }
 
     if (action === 'restore_image') {
@@ -382,7 +439,11 @@ export function useFlowGraph() {
         meta._del_images = delImages.filter(img => img.path !== imagePath)
         if (!meta._images) meta._images = []
         meta._images.push(imageToRestore)
-        modifyTemplatePath(meta, imagePath, 'add')
+        if (templateTarget) {
+          updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])
+        } else {
+          modifyTemplatePath(meta, imagePath, 'add')
+        }
       }
     }
 
@@ -397,7 +458,11 @@ export function useFlowGraph() {
       meta._temp_images = (tempImages as TemplateImage[]) || []
       meta._del_images = (deletedImages as TemplateImage[]) || []
       if (!meta.data) meta.data = {}
-      ;(meta.data as FlowBusinessData).template = validPaths && validPaths.length ? [...validPaths] : []
+      if (templateTarget) {
+        updateCompositeTemplate(meta, templateTarget, () => (validPaths && validPaths.length ? [...validPaths] : []))
+      } else {
+        ;(meta.data as FlowBusinessData).template = validPaths && validPaths.length ? [...validPaths] : []
+      }
     }
   }
 

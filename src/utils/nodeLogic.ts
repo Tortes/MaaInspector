@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import type { Component } from 'vue'
 import type { FlowBusinessData } from './flowTypes'
+import { toPipelineV1Node, toPipelineV2Node } from './pipelineTransform'
 import {
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, HelpCircle,
   Square, MousePointer, Hand, ArrowRight, Layers, Fingerprint, Move,
@@ -38,6 +39,7 @@ export interface UseNodeFormProps {
     focus?: Record<string, unknown>
     [key: string]: unknown
   }
+  pipelineVersion?: 'V1' | 'V2'
 }
 
 export type UseNodeFormEmit = (event: 'update-data', payload: FlowBusinessData) => void
@@ -162,7 +164,11 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
 
   const updateJsonFromForm = () => {
     try {
-      jsonStr.value = JSON.stringify(formData.value, null, 2)
+      const pipelineVersion = props.pipelineVersion || 'V1'
+      const previewData = pipelineVersion === 'V2'
+        ? toPipelineV2Node(formData.value as FlowBusinessData)
+        : formData.value
+      jsonStr.value = JSON.stringify(previewData, null, 2)
       jsonError.value = ''
     } catch (e) {
       // ignore stringify error
@@ -252,7 +258,11 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
     try {
       const parsed = JSON.parse(newVal)
       jsonError.value = ''
-      formData.value = parsed as FlowBusinessData
+      const pipelineVersion = props.pipelineVersion || 'V1'
+      const normalized = pipelineVersion === 'V2'
+        ? toPipelineV1Node(parsed as FlowBusinessData)
+        : parsed
+      formData.value = normalized as FlowBusinessData
       emitUpdateData()
     } catch (e) { jsonError.value = (e as Error).message }
   }

@@ -13,6 +13,7 @@ import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogi
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage } from '../../utils/flowTypes'
 
 type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
+type TemplateTarget = { compositeKey: 'all_of' | 'any_of'; compositeIndex: number }
 
 const props = defineProps<{
   visible: boolean
@@ -22,6 +23,7 @@ const props = defineProps<{
   availableTypes?: string[]
   typeConfig?: Record<string, unknown>
   currentFilename?: string
+  pipelineVersion?: 'V1' | 'V2'
 }>()
 type PickerPayload = {
   field: string
@@ -94,6 +96,7 @@ const deviceScreenConfig = reactive<{
   filename: string
   nodeId: string
   onConfirm?: ((val: any) => void) | null
+  templateTarget?: TemplateTarget | null
 }>({
   targetField: '',
   referenceField: '',
@@ -107,7 +110,8 @@ const deviceScreenConfig = reactive<{
   deletedImageList: [],
   filename: '',
   nodeId: '',
-  onConfirm: null
+  onConfirm: null,
+  templateTarget: null
 })
 
 const toImageItems = (val: unknown): ImageItem[] => {
@@ -233,18 +237,47 @@ const openDevicePicker = (fieldParam: string | PickerPayload, referenceField: st
   showDeviceScreen.value = true
 }
 
-const openImageManager = () => {
+const normalizeTemplatePaths = (val: unknown): string[] => {
+  if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
+  if (typeof val === 'string' && val.trim()) return [val.trim()]
+  return []
+}
+
+const getTargetTemplatePaths = (target?: TemplateTarget | null): string[] => {
+  if (!target) return normalizeTemplatePaths(getValue('template', null))
+  const list = (formData.value as Record<string, unknown>)[target.compositeKey]
+  if (!Array.isArray(list)) return []
+  const item = list[target.compositeIndex]
+  if (!item || typeof item !== 'object') return []
+  const templateVal = (item as Record<string, unknown>).template
+  return normalizeTemplatePaths(templateVal)
+}
+
+const filterImagesByPaths = (images: ImageItem[], paths: string[]) => {
+  if (!paths.length) return images
+  const pathSet = new Set(paths)
+  return images.filter(img => img.path && pathSet.has(img.path))
+}
+
+const openImageManager = (payload?: TemplateTarget) => {
+  const templateTarget = payload ? { ...payload } : null
+  const targetPaths = getTargetTemplatePaths(templateTarget)
+  const images = toImageItems(props.nodeData?._images)
+  const tempImages = toImageItems(props.nodeData?._temp_images)
+  const deletedImages = toImageItems(props.nodeData?._del_images)
+
   deviceScreenConfig.mode = 'image_manager'
   deviceScreenConfig.title = '模板图片管理'
   deviceScreenConfig.targetField = 'template'
   deviceScreenConfig.referenceRect = parseRect(getValue('roi'))
   deviceScreenConfig.initialRect = deviceScreenConfig.referenceRect
   deviceScreenConfig.referenceLabel = 'roi'
-  deviceScreenConfig.imageList = toImageItems(props.nodeData?._images)
-  deviceScreenConfig.tempImageList = toImageItems(props.nodeData?._temp_images)
-  deviceScreenConfig.deletedImageList = toImageItems(props.nodeData?._del_images)
+  deviceScreenConfig.imageList = filterImagesByPaths(images, targetPaths)
+  deviceScreenConfig.tempImageList = filterImagesByPaths(tempImages, targetPaths)
+  deviceScreenConfig.deletedImageList = filterImagesByPaths(deletedImages, targetPaths)
   deviceScreenConfig.filename = props.currentFilename || ''
   deviceScreenConfig.nodeId = props.nodeId || ''
+  deviceScreenConfig.templateTarget = templateTarget
   showDeviceScreen.value = true
 }
 
@@ -261,18 +294,21 @@ const handleDevicePick = (result: any) => {
         validPaths: result.validPaths,
         images: result.images,
         tempImages: result.tempImages,
-        deletedImages: result.deletedImages
+        deletedImages: result.deletedImages,
+        templateTarget: deviceScreenConfig.templateTarget
       })
     } else if (result.type === 'add_temp_image') {
       emit('update-data', {
         _action: 'add_temp_image',
         imagePath: result.imagePath,
-        imageBase64: result.imageBase64
+        imageBase64: result.imageBase64,
+        templateTarget: deviceScreenConfig.templateTarget
       })
     } else if (result.type === 'restore_image') {
       emit('update-data', {
         _action: 'restore_image',
-        imagePath: result.imagePath
+        imagePath: result.imagePath,
+        templateTarget: deviceScreenConfig.templateTarget
       })
     }
     if (result.closeModal !== false) {

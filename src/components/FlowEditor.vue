@@ -11,6 +11,7 @@ import NodeDebugPanel from './Flow/NodeDebugPanel.vue'
 import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
 import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue'
 import { useFlowGraph } from '../utils/useFlowGraph'
+import { toPipelineV2Nodes } from '../utils/pipelineTransform'
 import { resourceApi ,debugApi } from '../services/api'
 import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, TemplateImage, MenuType, NodeStatus, UsedImageInfo } from '../utils/flowTypes'
 import type { EdgeType } from '../utils/flowOptions'
@@ -65,6 +66,8 @@ const closeAllDetailsSignal = ref<number>(0)
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
 provide('updateNode', handleNodeUpdate)
 provide('currentFilename', currentFilename)
+const pipelineVersion = ref<'V1' | 'V2'>('V1')
+provide('pipelineVersion', pipelineVersion)
 
 const isDeviceConnected = ref<boolean>(false)
 const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
@@ -91,6 +94,7 @@ const isProcessingImages = ref<boolean>(false)
 const unusedImages = ref<string[]>([])
 const usedImages = ref<UsedImageInfo[]>([])
 const pendingSaveConfig = ref<PendingSaveConfig | null>(null)
+const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => { pipelineVersion.value = val }
 
 const handleRequestSwitch = (config: PendingSwitchConfig) => {
   if (!isDirty.value) return executeSwitch(config)
@@ -408,7 +412,9 @@ const processImagesAndSave = async (source: string, filename: string, deletePath
 }
 
 const saveNodesOnly = async (source: string, filename: string) => {
-  const res = await resourceApi.saveFileNodes(source, filename, getNodesData())
+  const rawNodes = getNodesData()
+  const payload = pipelineVersion.value === 'V2' ? toPipelineV2Nodes(rawNodes) : rawNodes
+  const res = await resourceApi.saveFileNodes(source, filename, payload)
   if (res.success) { clearDirty(); console.log('[FlowEditor] 保存成功:', filename) }
 }
 
@@ -457,6 +463,7 @@ const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'st
             @load-nodes="handleLoadNodesWrapper" @load-images="handleLoadImages" @save-nodes="handleSaveNodes"
             @device-connected="handleDeviceConnected" @request-switch-file="handleRequestSwitch"
             @update-canvas-config="handleUpdateCanvasConfig"
+            @update-pipeline-version="handleUpdatePipelineVersion"
         />
       </Panel>
 

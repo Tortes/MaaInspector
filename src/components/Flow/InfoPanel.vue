@@ -3,15 +3,18 @@ import {computed, ref, reactive, onMounted, onUnmounted, defineComponent, h, wat
 import {
   Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
   Minimize2, Maximize2, Smartphone, Circle,
-  FilePlus, Save, Search
+  FilePlus, Save, Search, Bell, Settings as SettingsIcon
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
+import { toPipelineV1Nodes } from '../../utils/pipelineTransform'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
 import type { EdgeType } from '../../utils/flowOptions'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
+import AppSettingsModal from './Modals/AppSettingsModal.vue'
+import AnnouncementModal from './Modals/AnnouncementModal.vue'
 import Dropdown from './Common/Dropdown.vue'
 import type { DropdownOption } from './Common/Dropdown.vue'
 
@@ -32,6 +35,7 @@ const emit = defineEmits<{
   (e: 'device-connected', status: boolean): void
   (e: 'request-switch-file', payload: { filename: string; source: string }): void
   (e: 'update-canvas-config', payload: { edgeType?: EdgeType; spacing?: SpacingKey }): void
+  (e: 'update-pipeline-version', payload: 'V1' | 'V2'): void
 }>()
 
 // --- 内部组件 ---
@@ -59,6 +63,11 @@ const zoomPercentage = computed(() => Math.round((viewport.value.zoom || 1) * 10
 const isCollapsed = ref(false)
 const showResourceSettings = ref(false)
 const showCreateFileModal = ref(false)
+const showAppSettings = ref(false)
+const showAnnouncement = ref(false)
+
+// --- 公告未读标记 ---
+const hasUnreadAnnouncement = ref(true) // 默认有未读公告
 
 // --- 全局数据源 ---
 type EditableProfile = ResourceProfile & { paths: string[] }
@@ -70,6 +79,7 @@ const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
 
 const resourceProfiles = ref<EditableProfile[]>([])
 const currentAgentSocket = ref<string>('')
+const pipelineVersion = ref<'V1' | 'V2'>('V1')
 const systemStatus = ref<'connected' | 'loading' | 'error' | 'disconnected'>('disconnected')
 
 // --- 设备搜索相关 ---
@@ -255,8 +265,11 @@ const fetchAndEmitNodes = async () => {
     resourceCtrl.message = '加载节点中...'
     const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value)
     const nodes = res.nodes || {}
+    const normalizedNodes = pipelineVersion.value === 'V2'
+      ? toPipelineV1Nodes(nodes)
+      : nodes
 
-    emit('load-nodes', {filename: fileObj.value, source: fileObj.source, nodes: nodes})
+    emit('load-nodes', {filename: fileObj.value, source: fileObj.source, nodes: normalizedNodes})
     resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
 
     try {
@@ -562,6 +575,9 @@ const fetchSystemState = async () => {
         spacing: (state.spacing as SpacingKey) || 'normal'
       })
     }
+    if (state.pipeline_version === 'V2' || state.pipeline_version === 'V1') {
+      pipelineVersion.value = state.pipeline_version
+    }
 
     // 加载最后连接成功的设备配置
     if (data.last_connected_device) {
@@ -625,7 +641,8 @@ const saveAllConfig = async () => {
         resource_source: currentSource,
         agent_socket_id: currentAgentSocket.value,
         edge_type: props.edgeType,
-        spacing: props.spacing
+        spacing: props.spacing,
+        pipeline_version: pipelineVersion.value
       }
     }
     await systemApi.saveDeviceConfig(payload)
@@ -634,8 +651,11 @@ const saveAllConfig = async () => {
   }
 }
 
-watch([selectedProfileIndex, selectedResourceFile, currentAgentSocket], () => saveAllConfig(), {deep: false})
+watch([selectedProfileIndex, selectedResourceFile, currentAgentSocket, pipelineVersion], () => saveAllConfig(), {deep: false})
 watch(() => [props.edgeType, props.spacing], () => saveAllConfig(), {deep: false})
+watch(pipelineVersion, (val) => {
+  emit('update-pipeline-version', val)
+}, { immediate: true })
 
 const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: number }) => {
   resourceProfiles.value = normalizeProfiles(data.profiles)
@@ -643,6 +663,18 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
   if (data.index !== undefined) selectedProfileIndex.value = data.index
   showResourceSettings.value = false
   saveAllConfig()
+}
+
+const handleAppSettingsSave = (payload: { edgeType: EdgeType; spacing: SpacingKey; pipelineVersion: 'V1' | 'V2' }) => {
+  pipelineVersion.value = payload.pipelineVersion
+  emit('update-canvas-config', { edgeType: payload.edgeType, spacing: payload.spacing })
+  showAppSettings.value = false
+  saveAllConfig()
+}
+
+const handleAnnouncementClose = () => {
+  hasUnreadAnnouncement.value = false
+  showAnnouncement.value = false
 }
 </script>
 
@@ -689,6 +721,22 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
                 class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-blue-500 transition-colors">
           <Maximize2 :size="14"/>
         </button>
+        <button @click="showAppSettings = true"
+                class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-blue-500 transition-colors"
+                title="应用设置">
+          <SettingsIcon :size="14"/>
+        </button>
+        <button v-if="hasUnreadAnnouncement" @click="showAnnouncement = true"
+                class="p-1.5 rounded-full hover:bg-slate-100 text-amber-500 hover:text-amber-600 transition-colors relative"
+                title="更新公告">
+          <Bell :size="14"/>
+          <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+        </button>
+        <button v-else @click="showAnnouncement = true"
+                class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-amber-500 transition-colors"
+                title="更新公告">
+          <Bell :size="14"/>
+        </button>
       </div>
 
       <div v-else
@@ -710,9 +758,27 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
               <RefreshCw :size="12" :class="{'animate-spin': systemStatus === 'loading'}"/>
             </button>
           </div>
-          <button @click="isCollapsed = true" class="p-1 rounded-md text-slate-400 hover:bg-slate-200">
-            <Minimize2 :size="16"/>
-          </button>
+          <div class="flex items-center gap-1">
+            <button @click="showAppSettings = true"
+                    class="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-500 transition-colors"
+                    title="应用设置">
+              <SettingsIcon :size="14"/>
+            </button>
+            <button v-if="hasUnreadAnnouncement" @click="showAnnouncement = true"
+                    class="p-1 rounded hover:bg-slate-200 text-amber-500 hover:text-amber-600 transition-colors relative"
+                    title="更新公告">
+              <Bell :size="14"/>
+              <span class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+            </button>
+            <button v-else @click="showAnnouncement = true"
+                    class="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-amber-500 transition-colors"
+                    title="更新公告">
+              <Bell :size="14"/>
+            </button>
+            <button @click="isCollapsed = true" class="p-1 rounded-md text-slate-400 hover:bg-slate-200">
+              <Minimize2 :size="16"/>
+            </button>
+          </div>
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
@@ -946,6 +1012,13 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
                            @save="saveResourceSettings"/>
     <CreateResourceModal :visible="showCreateFileModal" :paths="currentProfile.paths"
                          @close="showCreateFileModal = false" @create="handleCreateFile"/>
+    <AppSettingsModal :visible="showAppSettings"
+                       :defaultEdgeType="props.edgeType"
+                       :defaultSpacing="props.spacing"
+                       :defaultPipelineVersion="pipelineVersion"
+                       @close="showAppSettings = false"
+                       @save="handleAppSettingsSave"/>
+    <AnnouncementModal :visible="showAnnouncement" @close="handleAnnouncementClose"/>
   </div>
 </template>
 

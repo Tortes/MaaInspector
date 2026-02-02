@@ -69,6 +69,8 @@ export interface SystemState {
   agent_socket_id?: string
   edge_type?: string
   spacing?: string
+  /** 保存时的 pipeline 版本：V1 | V2 */
+  pipeline_version?: string
 }
 
 export interface SystemInitResponse {

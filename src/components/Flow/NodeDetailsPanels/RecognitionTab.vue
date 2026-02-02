@@ -22,7 +22,7 @@ type PickerPayload = {
 
 const emit = defineEmits<{
   (e: 'open-picker', payload: string | PickerPayload, referenceField?: string | null, referenceLabel?: string): void
-  (e: 'open-image-manager'): void
+  (e: 'open-image-manager', payload?: { compositeKey?: 'all_of' | 'any_of'; compositeIndex?: number }): void
 }>()
 
 const { getValue, setValue, getJsonValue, setJsonValue } = props.form
@@ -90,6 +90,12 @@ const updateCompositeRecognition = (index: number, value: string) => {
   item.recognition = value || 'TemplateMatch'
   next[index] = item
   saveCompositeItems(next)
+}
+
+const openCompositeImageManager = (index: number) => {
+  const key = compositeKey.value
+  if (!key) return
+  emit('open-image-manager', { compositeKey: key, compositeIndex: index })
 }
 
 const updateCompositeField = (index: number, key: string, value: string | null) => {
@@ -167,20 +173,28 @@ const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_off
 // 主节点 template 数组管理
 const getTemplateList = (): string[] => {
   const val = getValue<unknown>('template', '')
-  if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
+  if (Array.isArray(val)) return val.map(v => (v === null || v === undefined) ? '' : String(v))
   if (val && typeof val === 'string') return [val]
+  if (val === '' || val === null) return ['']
   return []
 }
 
 const setTemplateList = (list: string[]) => {
-  const cleaned = list.filter(v => v && v.trim())
-  if (cleaned.length === 0) {
+  const normalized = (list || []).map(v => (v === null || v === undefined) ? '' : String(v))
+  if (normalized.length === 0) {
     setValue('template', null)
-  } else if (cleaned.length === 1) {
-    setValue('template', cleaned[0])
-  } else {
-    setValue('template', cleaned)
+    return
   }
+  if (normalized.length === 1) {
+    const single = normalized[0]
+    if (!single || !single.trim()) {
+      setValue('template', [''])
+    } else {
+      setValue('template', single.trim())
+    }
+    return
+  }
+  setValue('template', normalized.map(v => v.trim()))
 }
 
 const addTemplate = () => {
@@ -203,20 +217,28 @@ const updateTemplate = (index: number, value: string) => {
 // 子项 template 数组管理
 const getChildTemplateList = (item: CompositeItem): string[] => {
   const val = getChildValue<unknown>(item, 'template', '')
-  if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
+  if (Array.isArray(val)) return val.map(v => (v === null || v === undefined) ? '' : String(v))
   if (val && typeof val === 'string') return [val]
+  if (val === '' || val === null) return ['']
   return []
 }
 
 const setChildTemplateList = (index: number, list: string[]) => {
-  const cleaned = list.filter(v => v && v.trim())
-  if (cleaned.length === 0) {
+  const normalized = (list || []).map(v => (v === null || v === undefined) ? '' : String(v))
+  if (normalized.length === 0) {
     setChildValue(index, 'template', null)
-  } else if (cleaned.length === 1) {
-    setChildValue(index, 'template', cleaned[0])
-  } else {
-    setChildValue(index, 'template', cleaned)
+    return
   }
+  if (normalized.length === 1) {
+    const single = normalized[0]
+    if (!single || !single.trim()) {
+      setChildValue(index, 'template', [''])
+    } else {
+      setChildValue(index, 'template', single.trim())
+    }
+    return
+  }
+  setChildValue(index, 'template', normalized.map(v => v.trim()))
 }
 
 const addChildTemplate = (index: number) => {
@@ -506,13 +528,23 @@ const updateChildTemplate = (itemIndex: number, templateIndex: number, value: st
                           placeholder="image/..."
                         />
                       </div>
-                      <button
-                        @click="addChildTemplate(idx)"
-                        class="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
-                      >
-                        <Plus :size="12" />
-                        添加模板
-                      </button>
+                      <div class="flex gap-1">
+                        <button
+                          @click="addChildTemplate(idx)"
+                          class="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                        >
+                          <Plus :size="12" />
+                          添加模板
+                        </button>
+                        <button
+                          @click="openCompositeImageManager(idx)"
+                          class="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-pink-200 bg-pink-50 text-pink-600 hover:bg-pink-100"
+                          title="管理/截取模板图片"
+                        >
+                          <ImageIcon :size="12" />
+                          管理图片
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <label class="inline-flex items-center gap-1.5 cursor-pointer">
@@ -795,8 +827,8 @@ const updateChildTemplate = (itemIndex: number, templateIndex: number, value: st
                   <Plus :size="12" />
                   添加模板
                 </button>
-                <button
-                  @click="emit('open-image-manager')"
+                  <button
+                    @click="emit('open-image-manager')"
                   class="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-pink-200 bg-pink-50 text-pink-600 hover:bg-pink-100"
                   title="管理/截取模板图片"
                 >

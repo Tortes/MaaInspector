@@ -15,6 +15,7 @@ const props = defineProps<{
 const updateNode = inject<(payload: NodeUpdatePayload) => void>('updateNode', () => console.warn('updateNode not provided'))
 const closeAllDetailsSignal = inject<Ref<number>>('closeAllDetailsSignal', ref(0))
 const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
+const pipelineVersion = inject<Ref<'V1' | 'V2'>>('pipelineVersion', ref('V1'))
 
 // 获取 UI 配置
 const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MAP['DirectHit'])
@@ -121,6 +122,7 @@ const contentHeightClass = computed(() => {
     <NodeDetails
         :visible="showDetails" :nodeId="id" :nodeData="data" :nodeType="data.type"
         :availableTypes="availableTypes" :typeConfig="NODE_CONFIG_MAP" :currentFilename="currentFilename"
+        :pipelineVersion="pipelineVersion"
         @close="showDetails = false" @update-id="handleUpdateId" @update-type="handleUpdateType" @update-data="handleUpdateData"
     />
 
