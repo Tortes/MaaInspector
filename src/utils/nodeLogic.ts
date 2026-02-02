@@ -150,6 +150,7 @@ export const DEFAULTS: FlowBusinessData = {
   recognition: 'DirectHit', action: 'DoNothing', next: [], on_error: [],
   rate_limit: 1000, timeout: 20000, inverse: false, enabled: true, anchor: false,
   pre_delay: 200, post_delay: 200, pre_wait_freezes: 0, post_wait_freezes: 0,
+  repeat: 1, repeat_delay: 0, repeat_wait_freezes: 0,
   roi: [0, 0, 0, 0], roi_offset: [0, 0, 0, 0], index: 0, order_by: 'Horizontal',
   threshold: 0.7, method: 5, count: 4, detector: 'SIFT', ratio: 0.6,
   connected: false, only_rec: false, green_mask: false, target: true, duration: 200, contact: 0

@@ -14,6 +14,12 @@ const { getValue, setValue } = props
 
 const getInputValue = (event: Event) => (event.target as HTMLInputElement | null)?.value ?? ''
 const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
+const parseOptionalInt = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const num = parseInt(trimmed, 10)
+  return Number.isNaN(num) ? null : num
+}
 </script>
 
 <template>
@@ -102,6 +108,48 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
           type="number"
           :value="getValue('post_wait_freezes', 0)"
           @input="setValue('post_wait_freezes', parseInt(getInputValue($event)) || 0)"
+          class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
+        />
+      </div>
+    </div>
+
+    <div class="h-px bg-slate-100 my-1 w-full"></div>
+
+    <div class="grid grid-cols-2 gap-2">
+      <div class="space-y-1">
+        <label class="text-[10px] font-semibold text-slate-500 uppercase">最大命中次数</label>
+        <input
+          type="number"
+          :value="getValue('max_hit', '')"
+          @input="setValue('max_hit', parseOptionalInt(getInputValue($event)))"
+          class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
+          placeholder="留空表示无限制"
+        />
+      </div>
+      <div class="space-y-1">
+        <label class="text-[10px] font-semibold text-slate-500 uppercase">重复次数</label>
+        <input
+          type="number"
+          :value="getValue('repeat', 1)"
+          @input="setValue('repeat', parseInt(getInputValue($event)) || 1)"
+          class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
+        />
+      </div>
+      <div class="space-y-1">
+        <label class="text-[10px] font-semibold text-slate-500 uppercase">重复延迟 (ms)</label>
+        <input
+          type="number"
+          :value="getValue('repeat_delay', 0)"
+          @input="setValue('repeat_delay', parseInt(getInputValue($event)) || 0)"
+          class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
+        />
+      </div>
+      <div class="space-y-1">
+        <label class="text-[10px] font-semibold text-slate-500 uppercase">重复等待冻结 (ms)</label>
+        <input
+          type="number"
+          :value="getValue('repeat_wait_freezes', 0)"
+          @input="setValue('repeat_wait_freezes', parseInt(getInputValue($event)) || 0)"
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
         />
       </div>
