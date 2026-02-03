@@ -7,7 +7,7 @@ import {
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
-import { toPipelineV1Nodes } from '../../utils/pipelineTransform'
+import { isPipelineV2Nodes, toPipelineV1Nodes } from '../../utils/pipelineTransform'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
 import type { EdgeType } from '../../utils/flowOptions'
@@ -265,7 +265,7 @@ const fetchAndEmitNodes = async () => {
     resourceCtrl.message = '加载节点中...'
     const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value)
     const nodes = res.nodes || {}
-    const normalizedNodes = pipelineVersion.value === 'V2'
+    const normalizedNodes = isPipelineV2Nodes(nodes)
       ? toPipelineV1Nodes(nodes)
       : nodes
 

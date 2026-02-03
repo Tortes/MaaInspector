@@ -63,6 +63,15 @@ const ACTION_PARAM_KEYS = new Set([
 const isObject = (val: unknown): val is Record<string, unknown> =>
   !!val && typeof val === 'object' && !Array.isArray(val)
 
+const isV2Section = (val: unknown) =>
+  isObject(val) && typeof (val as Record<string, unknown>).type === 'string'
+
+export const isPipelineV2Node = (node: Record<string, unknown>) =>
+  isV2Section(node?.recognition) || isV2Section(node?.action)
+
+export const isPipelineV2Nodes = (nodes: Record<string, FlowBusinessData>) =>
+  Object.values(nodes || {}).some(node => isPipelineV2Node(node as Record<string, unknown>))
+
 const pickParams = (source: Record<string, unknown>, keys: Set<string>) => {
   const result: Record<string, unknown> = {}
   keys.forEach(key => {

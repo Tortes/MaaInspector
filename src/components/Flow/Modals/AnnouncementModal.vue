@@ -34,7 +34,8 @@ const loadChangelog = async () => {
 
   try {
     // 尝试从public目录加载changelog.md
-    const response = await fetch('/changelog.md')
+    const changelogUrl = new URL('changelog.md', import.meta.env.BASE_URL).toString()
+    const response = await fetch(changelogUrl, { cache: 'no-store' })
     if (!response.ok) {
       throw new Error('无法加载更新日志')
     }
@@ -69,21 +70,64 @@ const loadChangelog = async () => {
 // 解析markdown格式的changelog
 const parseMarkdown = (content: string): AnnouncementItem[] => {
   const items: AnnouncementItem[] = []
-  const lines = content.split('\n')
+  const lines = content.split(/\r?\n/)
 
   let currentItem: Partial<AnnouncementItem> | null = null
   let currentSection: 'features' | 'improvements' | 'fixes' | null = null
 
+  const ensureItem = () => {
+    if (!currentItem) return null
+    currentItem.features ??= []
+    currentItem.improvements ??= []
+    currentItem.fixes ??= []
+    return currentItem
+  }
+
+  const splitListItems = (text: string): string[] => {
+    return text
+      .split(/\s+-\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  const resolveSection = (section: string) => {
+    const normalized = section.toLowerCase()
+    if (
+      section.includes('新功能') ||
+      section.includes('特性') ||
+      normalized.includes('feature') ||
+      normalized.includes('new')
+    ) {
+      return 'features'
+    }
+    if (
+      section.includes('优化') ||
+      section.includes('改进') ||
+      section.includes('变更') ||
+      section.includes('更新') ||
+      normalized.includes('improve') ||
+      normalized.includes('change') ||
+      normalized.includes('changelog')
+    ) {
+      return 'improvements'
+    }
+    if (section.includes('修复') || normalized.includes('fix')) {
+      return 'fixes'
+    }
+    return null
+  }
+
   for (const line of lines) {
-    // 匹配版本行: ## v1.0.0 (2024-01-01)
-    const versionMatch = line.match(/^##\s+v?([\d.]+)\s*\((\d{4}-\d{2}-\d{2})\)/)
+    // 匹配版本行: ## v1.0.0 (2024-01-01) / ## v1.0.0 (since v0.9.0) / ## v1.0.0 - 2024-01-01
+    const versionMatch = line.match(/^##\s+v?([\d.]+)(?:\s*\(([^)]+)\))?(?:\s*-\s*(.+))?/)
     if (versionMatch) {
       if (currentItem) {
         items.push(currentItem as AnnouncementItem)
       }
+      const dateText = (versionMatch[2] || versionMatch[3] || '未知日期').trim()
       currentItem = {
         version: `v${versionMatch[1]}`,
-        date: versionMatch[2],
+        date: dateText,
         features: [],
         improvements: [],
         fixes: []
@@ -92,27 +136,32 @@ const parseMarkdown = (content: string): AnnouncementItem[] => {
       continue
     }
 
-    // 匹配章节标题: ### 新功能 / ### 优化 / ### 修复
-    if (line.startsWith('### ')) {
-      const section = line.replace('### ', '').trim()
-      if (section.includes('新功能') || section.includes('New') || section.includes('Features')) {
-        currentSection = 'features'
-      } else if (section.includes('优化') || section.includes('Improvements') || section.includes('Improved')) {
-        currentSection = 'improvements'
-      } else if (section.includes('修复') || section.includes('Fixes') || section.includes('Fixed')) {
-        currentSection = 'fixes'
-      } else {
-        currentSection = null
+    // 匹配章节标题: ### 新功能 / ### 优化 / ### 修复 (可能同一行带列表)
+    if (line.startsWith('###')) {
+      const sectionLine = line.replace(/^###\s*/, '').trim()
+      const inlineMatch = sectionLine.match(/^(.*?)(?:\s*[-*]\s+(.+))$/)
+      const sectionTitle = (inlineMatch ? inlineMatch[1] : sectionLine).trim()
+      currentSection = resolveSection(sectionTitle)
+      const inlineItem = inlineMatch ? inlineMatch[2].trim() : ''
+      if (inlineItem && currentSection && currentItem) {
+        const target = ensureItem()?.[currentSection]
+        if (target) {
+          splitListItems(inlineItem).forEach((item) => target.push(item))
+        }
       }
       continue
     }
 
     // 匹配列表项: - xxx 或 * xxx
     const listMatch = line.match(/^[-*]\s*(.+)/)
-    if (listMatch && currentItem && currentSection) {
+    if (listMatch && currentItem) {
       const text = listMatch[1].trim()
       if (text) {
-        currentItem[currentSection]?.push(text)
+        const section = currentSection ?? 'improvements'
+        const target = ensureItem()?.[section]
+        if (target) {
+          splitListItems(text).forEach((item) => target.push(item))
+        }
       }
     }
   }
