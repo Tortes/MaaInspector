@@ -30,14 +30,7 @@ jobs:
         with:
           node-version: 18
           cache: npm
-
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-modules-
+          cache-dependency-path: package-lock.json
 
       # -----------------------------
       # 安装 Rust
@@ -96,21 +89,32 @@ jobs:
             $prevTag = ""
           }
 
+          $tagDate = ""
+          try {
+            $tagDate = git log -1 --format=%cs $tag
+          } catch {
+            $tagDate = ""
+          }
+          if (-not $tagDate) {
+            $tagDate = (Get-Date).ToString("yyyy-MM-dd")
+          }
+
           if ($prevTag) {
             $range = "$prevTag..$tag"
-            $title = "## $tag (since $prevTag)"
           } else {
             $range = "$tag"
-            $title = "## $tag"
           }
 
           $log = git log $range --pretty=format:"- %s (%h)" --no-merges
           if (-not $log) { $log = "- (no changes)" }
 
           $body = @(
-            $title,
+            "# MaaInspector 更新日志",
             "",
-            $log
+            "## $tag ($tagDate)",
+            "### 变更",
+            $log,
+            ""
           ) -join "`n"
 
           $outPath = "public/changelog.md"
@@ -127,8 +131,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            python-embedded
-            backend/.venv
+            src-tauri/python-runtime
+            ~\AppData\Local\pip\Cache
           key: ${{ runner.os }}-python-${{ hashFiles('src-tauri/backend/requirements.txt', 'setup_embedded_python.py') }}
           restore-keys: |
             ${{ runner.os }}-python-

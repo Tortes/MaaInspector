@@ -11,6 +11,8 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import platform
 import shutil
 import subprocess
@@ -19,6 +21,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from typing import Optional
 from pathlib import Path
 
 
@@ -27,6 +30,7 @@ DEFAULT_VERSION = "3.13.0"
 DEFAULT_REQUIREMENTS = BASE_DIR / "src-tauri" /"backend" / "requirements.txt"
 DEST_DIR = BASE_DIR / "src-tauri" / "python-runtime"
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
+META_FILE_NAME = ".embedded_python_meta.json"
 
 
 def detect_windows_arch() -> str:
@@ -142,6 +146,27 @@ def install_requirements(python_exe: Path, requirements_path: Path, work_dir: Pa
     print("[依赖] 安装完成")
 
 
+def hash_requirements(requirements_path: Path) -> str:
+    digest = hashlib.sha256()
+    digest.update(requirements_path.read_bytes())
+    return digest.hexdigest()
+
+
+def load_meta(dest_dir: Path) -> Optional[dict]:
+    meta_path = dest_dir / META_FILE_NAME
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_meta(dest_dir: Path, meta: dict) -> None:
+    meta_path = dest_dir / META_FILE_NAME
+    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="下载嵌入式 Python 并安装依赖。")
     parser.add_argument("--version", default=DEFAULT_VERSION, help="Python 版本，默认 3.13.0")
@@ -155,18 +180,36 @@ def main() -> None:
     if platform.system().lower() != "windows":
         sys.exit("当前脚本仅支持 Windows 嵌入式 Python。")
 
+    req_path = Path(args.requirements)
+    if not req_path.is_absolute():
+        req_path = (BASE_DIR / req_path).resolve()
+    if not req_path.exists():
+        raise FileNotFoundError(f"鎵句笉鍒?requirements 鏂囦欢: {req_path}")
+
+    req_hash = hash_requirements(req_path)
+    python_exe = DEST_DIR / "python.exe"
+    meta = load_meta(DEST_DIR)
+    reuse_runtime = False
+    if meta and python_exe.exists() and meta.get("version") == args.version:
+        if meta.get("requirements_hash") == req_hash:
+            print("[cache] Using cached embedded Python runtime.")
+            return
+        reuse_runtime = True
+
     arch = detect_windows_arch()
     url = build_download_url(args.version, arch)
 
-    print(f"[信息] 选择版本: {args.version}, 架构: {arch}")
-    print(f"[信息] 下载地址: {url}")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        zip_path = Path(tmpdir) / "python-embed.zip"
-        download_file(url, zip_path)
-        print(f"[信息] 下载完成: {zip_path}")
+    if not reuse_runtime:
 
-        extract_zip(zip_path, DEST_DIR)
-        print(f"[信息] 解压到: {DEST_DIR}")
+        print(f"[信息] 选择版本: {args.version}, 架构: {arch}")
+        print(f"[信息] 下载地址: {url}")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = Path(tmpdir) / "python-embed.zip"
+            download_file(url, zip_path)
+            print(f"[信息] 下载完成: {zip_path}")
+
+            extract_zip(zip_path, DEST_DIR)
+            print(f"[信息] 解压到: {DEST_DIR}")
 
     python_exe = DEST_DIR / "python.exe"
     if not python_exe.exists():
@@ -178,13 +221,19 @@ def main() -> None:
     print("[步骤] 安装 pip ...")
     install_pip(python_exe, DEST_DIR)
 
-    req_path = Path(args.requirements)
     print(f"[步骤] 安装依赖: {req_path}")
     install_requirements(python_exe, req_path, DEST_DIR)
+
+    save_meta(
+        DEST_DIR,
+        {
+            "version": args.version,
+            "requirements_hash": req_hash,
+        },
+    )
 
     print("[完成] 所有步骤执行完毕。")
 
 
 if __name__ == "__main__":
     main()
-
