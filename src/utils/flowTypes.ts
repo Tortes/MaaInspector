@@ -60,6 +60,7 @@ export interface LoadNodesPayload {
   filename: string
   source: string
   nodes: Record<string, FlowBusinessData>
+  fileVersion?: 'V1' | 'V2'
 }
 
 export interface ImageDataPayload {

@@ -13,7 +13,7 @@ import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue
 import { useFlowGraph } from '../utils/useFlowGraph'
 import { toPipelineV2Nodes } from '../utils/pipelineTransform'
 import { resourceApi ,debugApi } from '../services/api'
-import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, TemplateImage, MenuType, NodeStatus, UsedImageInfo } from '../utils/flowTypes'
+import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, TemplateImage, MenuType, NodeStatus, UsedImageInfo, LoadNodesPayload } from '../utils/flowTypes'
 import type { EdgeType } from '../utils/flowOptions'
 
 type DebugMode = 'standard' | 'recognition_only'
@@ -68,6 +68,9 @@ provide('updateNode', handleNodeUpdate)
 provide('currentFilename', currentFilename)
 const pipelineVersion = ref<'V1' | 'V2'>('V1')
 provide('pipelineVersion', pipelineVersion)
+const loadedFileVersion = ref<'V1' | 'V2' | ''>('')
+const isFormatDirty = computed(() => !!loadedFileVersion.value && pipelineVersion.value !== loadedFileVersion.value)
+const isDirtyCombined = computed(() => isDirty.value || isFormatDirty.value)
 
 const isDeviceConnected = ref<boolean>(false)
 const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
@@ -97,7 +100,7 @@ const pendingSaveConfig = ref<PendingSaveConfig | null>(null)
 const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => { pipelineVersion.value = val }
 
 const handleRequestSwitch = (config: PendingSwitchConfig) => {
-  if (!isDirty.value) return executeSwitch(config)
+  if (!isDirtyCombined.value) return executeSwitch(config)
   pendingSwitchConfig.value = config
   showSaveModal.value = true
 }
@@ -138,7 +141,7 @@ const handleDeviceConnected = (val: boolean) => { isDeviceConnected.value = val 
 
 // --- Unload Protection ---
 const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-  if (isDirty.value) { e.preventDefault(); e.returnValue = ''; return '' }
+  if (isDirtyCombined.value) { e.preventDefault(); e.returnValue = ''; return '' }
 }
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
@@ -338,8 +341,9 @@ const handleLocateNode = (nodeId: string) => {
   setTimeout(() => fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }), 50)
 }
 
-const handleLoadNodesWrapper = (payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData> }) => {
+const handleLoadNodesWrapper = (payload: LoadNodesPayload) => {
   loadNodes(payload)
+  loadedFileVersion.value = payload.fileVersion ?? 'V1'
   if (pendingFocusNodeId.value) {
     const targetId = pendingFocusNodeId.value
     setTimeout(() => { handleLocateNode(targetId); pendingFocusNodeId.value = null }, 300)
@@ -415,7 +419,11 @@ const saveNodesOnly = async (source: string, filename: string) => {
   const rawNodes = getNodesData()
   const payload = pipelineVersion.value === 'V2' ? toPipelineV2Nodes(rawNodes) : rawNodes
   const res = await resourceApi.saveFileNodes(source, filename, payload)
-  if (res.success) { clearDirty(); console.log('[FlowEditor] 保存成功:', filename) }
+  if (res.success) {
+    clearDirty()
+    loadedFileVersion.value = pipelineVersion.value
+    console.log('[FlowEditor] 保存成功:', filename)
+  }
 }
 
 const handleConfirmDeleteImages = async () => {
@@ -458,7 +466,7 @@ const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'st
 
       <Panel position="top-right" class="m-4 pointer-events-none !z-20">
         <InfoPanel
-            ref="infoPanelRef" :node-count="nodes.length" :edge-count="edges.length" :is-dirty="isDirty"
+            ref="infoPanelRef" :node-count="nodes.length" :edge-count="edges.length" :is-dirty="isDirtyCombined"
             :current-filename="currentFilename" :edge-type="currentEdgeType" :spacing="currentSpacing"
             @load-nodes="handleLoadNodesWrapper" @load-images="handleLoadImages" @save-nodes="handleSaveNodes"
             @device-connected="handleDeviceConnected" @request-switch-file="handleRequestSwitch"

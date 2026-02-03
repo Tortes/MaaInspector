@@ -29,7 +29,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData> }): void
+  (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }): void
   (e: 'load-images', payload: Record<string, TemplateImage[]>): void
   (e: 'save-nodes', payload: { source: string; filename: string }): void
   (e: 'device-connected', status: boolean): void
@@ -265,11 +265,12 @@ const fetchAndEmitNodes = async () => {
     resourceCtrl.message = '加载节点中...'
     const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value)
     const nodes = res.nodes || {}
-    const normalizedNodes = isPipelineV2Nodes(nodes)
+    const fileVersion = isPipelineV2Nodes(nodes) ? 'V2' : 'V1'
+    const normalizedNodes = fileVersion === 'V2'
       ? toPipelineV1Nodes(nodes)
       : nodes
 
-    emit('load-nodes', {filename: fileObj.value, source: fileObj.source, nodes: normalizedNodes})
+    emit('load-nodes', {filename: fileObj.value, source: fileObj.source, nodes: normalizedNodes, fileVersion})
     resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
 
     try {
