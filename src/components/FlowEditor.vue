@@ -176,7 +176,7 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       const newId = `N-${Date.now()}`
       const newNode = createNodeObject(newId, { id: newId, recognition: recognition || 'DirectHit' })
       if (menu.value.flowPos) newNode.position = { ...menu.value.flowPos }
-      nodes.value.push(newNode)
+      nodes.value = [...nodes.value, newNode]
       markDataChanged()
       break
     case 'add_anchor': {
@@ -185,7 +185,7 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       if (menu.value.flowPos) anchorNode.position = { ...menu.value.flowPos }
       // 仅输入端口，无输出
       anchorNode.data = { ...(anchorNode.data || {}), type: 'Anchor', id: anchorId }
-      nodes.value.push(anchorNode)
+      nodes.value = [...nodes.value, anchorNode]
       markDataChanged()
       break
     }
@@ -218,6 +218,7 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       if (type === 'node' && isFlowNodeData(data) && data.data?.data && data.position) {
         const copyId = `N-${Date.now()}`
         const sourceData = data.data.data
+        const sourceMeta = data.data // 获取完整元数据
         const copyData: FlowBusinessData = {
           ...JSON.parse(JSON.stringify(sourceData)),
           id: copyId
@@ -225,8 +226,14 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
         delete copyData.next
         delete copyData.on_error
         const copyNode = createNodeObject(copyId, copyData)
+
+        // 复制图片数据
+        if (sourceMeta._images?.length && copyNode.data) {
+          copyNode.data._images = JSON.parse(JSON.stringify(sourceMeta._images))
+        }
+
         copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
-        nodes.value.push(copyNode)
+        nodes.value = [...nodes.value, copyNode]
         markDataChanged()
       }
       break
