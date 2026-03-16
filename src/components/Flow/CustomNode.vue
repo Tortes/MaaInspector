@@ -175,7 +175,8 @@ const contentHeightClass = computed(() => {
         <div v-else-if="isImageNode" class="space-y-1">
           <div class="w-full bg-slate-50 rounded-lg border border-slate-200 border-dashed overflow-hidden relative transition-all duration-300" :class="contentHeightClass">
             <div v-if="nodeImages.length > 0" class="grid w-full h-full" :class="gridClass">
-              <div v-for="(img, idx) in nodeImages" :key="idx"
+              <div v-for="(img, idx) in nodeImages" :key="img.path"
+                  v-memo="[img.path, img.base64, idx < gridCols, idx < nodeImages.length - gridCols]"
                   class="relative overflow-hidden border-white/50 group/img"
                   :class="{ 'border-r': (idx + 1) % gridCols !== 0, 'border-b': idx < nodeImages.length - gridCols }">
                 <img :src="img.base64" class="w-full h-full object-fill transform hover:scale-110 transition-transform duration-300"/>

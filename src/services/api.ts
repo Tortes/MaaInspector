@@ -1,3 +1,5 @@
+import { createHttpClient, type RequestOptions } from './httpClient'
+
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:38081'
 
 const API_BASE_URL = (() => {
@@ -12,11 +14,24 @@ const API_BASE_URL = (() => {
   return viteEnv || DEFAULT_API_BASE_URL
 })()
 
-type JsonHeaders = Record<string, string>
+const httpClient = createHttpClient(API_BASE_URL)
 
-interface RequestOptions extends RequestInit {
-  timeoutMs?: number
-  headers?: JsonHeaders
+const mergeHeaders = (base?: HeadersInit, extra?: HeadersInit) => {
+  const merged = new Headers(base || {})
+  if (extra) {
+    const extraHeaders = new Headers(extra)
+    extraHeaders.forEach((value, key) => merged.set(key, value))
+  }
+  return merged
+}
+
+const mergeOptions = (base: RequestOptions, extra?: RequestOptions): RequestOptions => {
+  if (!extra) return base
+  return {
+    ...base,
+    ...extra,
+    headers: mergeHeaders(base.headers, extra.headers)
+  }
 }
 
 export interface ApiResponse<T = unknown> {
@@ -125,39 +140,22 @@ export interface DebugStreamPayload {
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`
-  const controller = new AbortController()
-  const timeoutMs = options.timeoutMs ?? (endpoint.includes('search') ? 60_000 : 10_000)
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-      signal: controller.signal
-    })
-    clearTimeout(timeoutId)
-    if (!response.ok) {
-      const text = await response.text().catch(() => '')
-      throw new Error(`API Error ${response.status}: ${text || response.statusText}`)
-    }
-    return await response.json() as T
-  } catch (err) {
-    clearTimeout(timeoutId)
-    throw err
-  }
+  return httpClient.request<T>(endpoint, options)
 }
 
 export const systemApi = {
-  getInitialState: () => request<SystemInitResponse>('/system/init', { method: 'GET' }),
-  saveDeviceConfig: (fullConfig: DeviceConfigPayload) =>
-    request<ApiResponse>('/system/config/save', { method: 'POST', body: JSON.stringify(fullConfig) }),
-  searchDevices: (deviceType?: string) => {
+  getInitialState: (options?: RequestOptions) =>
+    request<SystemInitResponse>('/system/init', mergeOptions({ method: 'GET' }, options)),
+  saveDeviceConfig: (fullConfig: DeviceConfigPayload, options?: RequestOptions) =>
+    request<ApiResponse>('/system/config/save', mergeOptions({ method: 'POST', body: JSON.stringify(fullConfig) }, options)),
+  searchDevices: (deviceType?: string, options?: RequestOptions) => {
     const body = deviceType ? JSON.stringify({ type: deviceType }) : undefined
-    return request<ApiResponse<{ devices?: DeviceInfo[] }>>('/system/devices/search', {
-      method: 'POST',
-      ...(body ? { body } : {})
-    })
+    return request<ApiResponse<{ devices?: DeviceInfo[] }>>('/system/devices/search',
+      mergeOptions({
+        method: 'POST',
+        ...(body ? { body } : {})
+      }, options)
+    )
   }
 }
 
@@ -167,54 +165,65 @@ export interface ScreenshotResponse extends ApiResponse {
 }
 
 export const deviceApi = {
-  connectAdb: (deviceData: { adb_path: string; address: string; config?: Record<string, unknown> }) =>
-    request<ApiResponse>('/device/connect/adb', { method: 'POST', body: JSON.stringify(deviceData) }),
-  connectWin32: (deviceData: { hwnd: number | string; screencap_method?: number; mouse_method?: number; keyboard_method?: number }) =>
-    request<ApiResponse>('/device/connect/win32', { method: 'POST', body: JSON.stringify(deviceData) }),
-  getScreenshot: () => request<ScreenshotResponse>('/device/screenshot', { method: 'GET' })
+  connectAdb: (deviceData: { adb_path: string; address: string; config?: Record<string, unknown> }, options?: RequestOptions) =>
+    request<ApiResponse>('/device/connect/adb', mergeOptions({ method: 'POST', body: JSON.stringify(deviceData) }, options)),
+  connectWin32: (deviceData: { hwnd: number | string; screencap_method?: number; mouse_method?: number; keyboard_method?: number }, options?: RequestOptions) =>
+    request<ApiResponse>('/device/connect/win32', mergeOptions({ method: 'POST', body: JSON.stringify(deviceData) }, options)),
+  getScreenshot: (options?: RequestOptions) =>
+    request<ScreenshotResponse>('/device/screenshot', mergeOptions({ method: 'GET' }, options))
 }
 
 export const resourceApi = {
-  load: (profile: ResourceProfile | { paths?: string[] } | string) => {
+  load: (profile: ResourceProfile | { paths?: string[] } | string, options?: RequestOptions) => {
     const paths = typeof profile === 'string'
       ? [profile]
       : Array.isArray((profile as ResourceProfile)?.paths)
         ? (profile as ResourceProfile).paths
         : (profile as { paths?: string[] })?.paths || []
-    return request<ResourceLoadResponse>('/resource/load', {
+    return request<ResourceLoadResponse>('/resource/load', mergeOptions({
       method: 'POST',
       body: JSON.stringify({ paths })
-    })
+    }, options))
   },
-  getFileNodes: <TNodes = Record<string, unknown>>(source: string, filename: string) =>
-    request<FileNodesResponse<TNodes>>('/resource/file/nodes', { method: 'POST', body: JSON.stringify({ source, filename }) }),
-  getTemplateImages: (source: string, filename: string) =>
-    request<TemplateImagesResponse>('/resource/file/templates', { method: 'POST', body: JSON.stringify({ source, filename }) }),
-  createFile: (path: string, filename: string) =>
-    request<ApiResponse>('/resource/file/create', { method: 'POST', body: JSON.stringify({ path, filename }) }),
-  saveFileNodes: <TNodes = Record<string, unknown>>(source: string, filename: string, nodes: TNodes) =>
-    request<ApiResponse>('/resource/file/save', { method: 'POST', body: JSON.stringify({ source, filename, nodes }) }),
-  searchGlobalNodes: (query: string, useRegex: boolean, currentFilename: string, currentSource: string) =>
-    request<ApiResponse>('/resource/search/nodes', { method: 'POST', body: JSON.stringify({ query, use_regex: useRegex, current_filename: currentFilename, current_source: currentSource }) }),
-  checkUnusedImages: (source: string, currentFilename: string, delImages: { path: string }[]) =>
-    request<ImageCheckResponse>('/resource/images/check-unused', { method: 'POST', body: JSON.stringify({ source, current_filename: currentFilename, del_images: delImages }) }),
-  processImages: (source: string, deletePaths: string[], saveImages: { path: string; base64: string; nodeId?: string }[]) =>
-    request<ApiResponse>('/resource/images/process', { method: 'POST', body: JSON.stringify({ source, delete_paths: deletePaths, save_images: saveImages }) })
+  getFileNodes: <TNodes = Record<string, unknown>>(source: string, filename: string, options?: RequestOptions) =>
+    request<FileNodesResponse<TNodes>>('/resource/file/nodes',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ source, filename }) }, options)),
+  getTemplateImages: (source: string, filename: string, options?: RequestOptions) =>
+    request<TemplateImagesResponse>('/resource/file/templates',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ source, filename }) }, options)),
+  createFile: (path: string, filename: string, options?: RequestOptions) =>
+    request<ApiResponse>('/resource/file/create',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ path, filename }) }, options)),
+  saveFileNodes: <TNodes = Record<string, unknown>>(source: string, filename: string, nodes: TNodes, options?: RequestOptions) =>
+    request<ApiResponse>('/resource/file/save',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ source, filename, nodes }) }, options)),
+  searchGlobalNodes: (query: string, useRegex: boolean, currentFilename: string, currentSource: string, options?: RequestOptions) =>
+    request<ApiResponse>('/resource/search/nodes',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ query, use_regex: useRegex, current_filename: currentFilename, current_source: currentSource }) }, options)),
+  checkUnusedImages: (source: string, currentFilename: string, delImages: { path: string }[], options?: RequestOptions) =>
+    request<ImageCheckResponse>('/resource/images/check-unused',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ source, current_filename: currentFilename, del_images: delImages }) }, options)),
+  processImages: (source: string, deletePaths: string[], saveImages: { path: string; base64: string; nodeId?: string }[], options?: RequestOptions) =>
+    request<ApiResponse>('/resource/images/process',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ source, delete_paths: deletePaths, save_images: saveImages }) }, options))
 }
 
 export const agentApi = {
-  connect: (socketId: string) =>
-    request<ApiResponse>('/agent/connect', { method: 'POST', body: JSON.stringify({ socket_id: socketId }) })
+  connect: (socketId: string, options?: RequestOptions) =>
+    request<ApiResponse>('/agent/connect', mergeOptions({ method: 'POST', body: JSON.stringify({ socket_id: socketId }) }, options))
 }
 
 export const debugApi = {
-  runNode: (payload: Record<string, unknown>) =>
-    request<DebugRunResponse>('/debug/node', { method: 'POST', body: JSON.stringify(payload) }),
-  stop: () => request<ApiResponse>('/debug/stop', { method: 'POST' }),
-  getRecoDetails: (recoId: string | number) =>
-    request<RecoDetailResponse>('/debug/get_reco_details', { method: 'POST', body: JSON.stringify({ reco_id: recoId }) }),
-  ocrText: (roi: number[]) =>
-    request<ApiResponse<{ text?: string }>>('/debug/ocr_text', { method: 'POST', body: JSON.stringify({ roi }) }),
+  runNode: (payload: Record<string, unknown>, options?: RequestOptions) =>
+    request<DebugRunResponse>('/debug/node', mergeOptions({ method: 'POST', body: JSON.stringify(payload) }, options)),
+  stop: (options?: RequestOptions) =>
+    request<ApiResponse>('/debug/stop', mergeOptions({ method: 'POST' }, options)),
+  getRecoDetails: (recoId: string | number, options?: RequestOptions) =>
+    request<RecoDetailResponse>('/debug/get_reco_details',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ reco_id: recoId }) }, options)),
+  ocrText: (roi: number[], options?: RequestOptions) =>
+    request<ApiResponse<{ text?: string }>>('/debug/ocr_text',
+      mergeOptions({ method: 'POST', body: JSON.stringify({ roi }) }, options)),
   subscribeNodeStream: (onData: (data: DebugStreamPayload) => void) => {
     if (typeof onData !== 'function') return () => {}
 
@@ -237,4 +246,3 @@ export const debugApi = {
     return () => es.close()
   }
 }
-

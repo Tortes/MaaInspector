@@ -119,7 +119,8 @@ const performRemoteSearch = async () => {
         searchQuery.value,
         useRegex.value,
         props.currentFilename || '',
-        props.currentSource || ''
+        props.currentSource || '',
+        { context: { feature: 'resource', action: 'search_nodes', component: 'NodeSearch' } }
     )
     otherFileResults.value = (res as any).results || []
   } catch (e) {
@@ -132,9 +133,9 @@ const performRemoteSearch = async () => {
 
 watch([searchQuery, useRegex], () => {
   if (debounceTimer) clearTimeout(debounceTimer)
-  
+
   if (searchQuery.value.trim()) {
-    debounceTimer = setTimeout(performRemoteSearch, 500) // 500ms 防抖
+    debounceTimer = setTimeout(performRemoteSearch, 800) // 800ms 防抖
   } else {
     otherFileResults.value = []
   }

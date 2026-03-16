@@ -54,7 +54,8 @@ const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing, isDirty, currentFilename, currentSource,
   onValidateConnection,
   handleConnect, handleEdgesChange, handleNodeUpdate, loadNodes, createNodeObject, applyLayout,
-  getNodesData, getImageData, clearTempImageData, clearDirty,
+  getNodesData, getImageData, clearTempImageData, clearDirty, markDataChanged,
+  setNodeStatus, selectNodeById,
   setEdgeJumpBack, layoutChainFromNode // 引入新功能
 } = useFlowGraph()
 const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
@@ -77,13 +78,6 @@ const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: nu
 const editor = ref<EditorState>({ visible: false, nodeId: '', nodeData: null })
 const searchVisible = ref<boolean>(false)
 const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
-
-const ensureMeta = (n: FlowNode) => {
-  const baseData = n.data?.data || {}
-  return n.data
-    ? { ...n.data, id: n.data.id ?? n.id, data: { ...baseData, id: (baseData as FlowBusinessData).id ?? n.id } }
-    : { id: n.id, type: n.type || 'custom', data: { id: n.id } }
-}
 
 // Panels & Confirm Modals State
 type InfoPanelExpose = { executeFileSwitch: (filename: string, source: string) => Promise<void>; handleSaveNodes: () => Promise<void> }
@@ -183,6 +177,7 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       const newNode = createNodeObject(newId, { id: newId, recognition: recognition || 'DirectHit' })
       if (menu.value.flowPos) newNode.position = { ...menu.value.flowPos }
       nodes.value.push(newNode)
+      markDataChanged()
       break
     case 'add_anchor': {
       const anchorId = `A-${Date.now()}`
@@ -191,6 +186,7 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       // 仅输入端口，无输出
       anchorNode.data = { ...(anchorNode.data || {}), type: 'Anchor', id: anchorId }
       nodes.value.push(anchorNode)
+      markDataChanged()
       break
     }
     case 'debug_this_node':
@@ -231,14 +227,19 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
         const copyNode = createNodeObject(copyId, copyData)
         copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
         nodes.value.push(copyNode)
+        markDataChanged()
       }
       break
     case 'delete':
       if (type === 'node' && data?.id) {
         removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id))
         nodes.value = nodes.value.filter(n => n.id !== data.id)
+        markDataChanged()
       }
-      else if (type === 'edge' && data?.id) removeEdges([data.id])
+      else if (type === 'edge' && data?.id) {
+        removeEdges([data.id])
+        markDataChanged()
+      }
       break
     case 'setJumpBack':
       if (type === 'edge' && data?.id) {
@@ -302,7 +303,9 @@ const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => 
     }
 
     // 4. 调用接口
-    await debugApi.runNode(debugPayload)
+    await debugApi.runNode(debugPayload, {
+      context: { feature: 'debug', action: 'run_node', component: 'FlowEditor' }
+    })
 
   } catch (error: unknown) {
     const err = error as { message?: string }
@@ -317,27 +320,10 @@ const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => 
 }
 const handleUpdateNodeStatus = ({ nodeId, status }: { nodeId: string; status: NodeStatus }) => {
   if (!nodeId || status === undefined) return
-  const nextStatus = status ?? undefined
-  let changed = false
-  nodes.value = nodes.value.map((n): FlowNode => {
-    const meta = ensureMeta(n)
-    const match = n.id === nodeId || (meta.data as FlowBusinessData | undefined)?.id === nodeId
-    if (!match) return n
-    if (meta.status === nextStatus) return n
-    changed = true
-    return { ...n, data: { ...meta, status: nextStatus } }
-  })
-  if (changed) {
-    nodes.value = [...nodes.value]
-  }
+  setNodeStatus(nodeId, status)
 }
 const handleLocateNode = (nodeId: string) => {
-  nodes.value = nodes.value.map((n): FlowNode => {
-    const cloned: FlowNode & { selected?: boolean } = { ...(n as FlowNode) }
-    cloned.selected = n.id === nodeId
-    cloned.data = ensureMeta(n)
-    return cloned as FlowNode
-  })
+  selectNodeById(nodeId)
   setTimeout(() => fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }), 50)
 }
 
@@ -366,13 +352,23 @@ const isSpacingKey = (value: unknown): value is SpacingKey => value === 'compact
 
 const handleLoadImages = (imageDataMap: Record<string, unknown>) => {
   if (!imageDataMap) return
-  nodes.value = nodes.value.map((node): FlowNode => {
-    const meta = ensureMeta(node)
+  const nodeList = nodes.value
+  let hasChanges = false
+
+  for (let i = 0; i < nodeList.length; i++) {
+    const node = nodeList[i]
     const images = imageDataMap[node.id]
-    return isTemplateImageArray(images)
-      ? { ...node, data: { ...meta, _images: images } }
-      : { ...node, data: meta }
-  })
+
+    if (isTemplateImageArray(images)) {
+      const meta = node.data || { id: node.id, type: node.type || 'custom', data: {} }
+      nodeList[i] = { ...node, data: { ...meta, _images: images } }
+      hasChanges = true
+    }
+  }
+
+  if (hasChanges) {
+    nodes.value = [...nodeList]
+  }
 }
 
 const handleUpdateCanvasConfig = ({ edgeType, spacing }: { edgeType?: string; spacing?: string }) => {
@@ -393,7 +389,9 @@ const handleSaveNodes = async ({ source, filename }: { source: string; filename:
     if (delImages.length > 0 || tempImages.length > 0) {
       pendingSaveConfig.value = { source, filename }
       if (delImages.length > 0) {
-        const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages)
+        const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages, {
+          context: { feature: 'resource', action: 'check_unused_images', component: 'FlowEditor' }
+        })
         unusedImages.value = checkRes.unused_images || []
         usedImages.value = isUsedImageInfoArray(checkRes.used_images) ? checkRes.used_images : []
         if (unusedImages.value.length > 0) { showDeleteImagesModal.value = true; return }
@@ -408,7 +406,9 @@ const handleSaveNodes = async ({ source, filename }: { source: string; filename:
 const processImagesAndSave = async (source: string, filename: string, deletePaths: string[], tempImages: { path: string; base64: string; nodeId?: string }[]) => {
   try {
     if (deletePaths.length > 0 || tempImages.length > 0) {
-      await resourceApi.processImages(source, deletePaths, tempImages)
+      await resourceApi.processImages(source, deletePaths, tempImages, {
+        context: { feature: 'resource', action: 'process_images', component: 'FlowEditor' }
+      })
     }
     clearTempImageData()
     await saveNodesOnly(source, filename)
@@ -418,7 +418,9 @@ const processImagesAndSave = async (source: string, filename: string, deletePath
 const saveNodesOnly = async (source: string, filename: string) => {
   const rawNodes = getNodesData()
   const payload = pipelineVersion.value === 'V2' ? toPipelineV2Nodes(rawNodes) : rawNodes
-  const res = await resourceApi.saveFileNodes(source, filename, payload)
+  const res = await resourceApi.saveFileNodes(source, filename, payload, {
+    context: { feature: 'resource', action: 'save_nodes', component: 'FlowEditor' }
+  })
   if (res.success) {
     clearDirty()
     loadedFileVersion.value = pipelineVersion.value

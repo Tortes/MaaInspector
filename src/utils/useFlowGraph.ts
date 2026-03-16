@@ -1,5 +1,5 @@
 // src/composables/useFlowGraph.ts
-import { ref, markRaw, computed } from 'vue'
+import { ref, shallowRef, triggerRef, markRaw, computed } from 'vue'
 import { useVueFlow, MarkerType } from '@vue-flow/core'
 import { useLayout } from './useLayout'
 import { SPACING_OPTIONS, type EdgeType } from './flowOptions'
@@ -12,6 +12,7 @@ import type {
   FlowNodeMeta,
   ImageDataPayload,
   LoadNodesPayload,
+  NodeStatus,
   NodeUpdatePayload,
   SpacingKey,
   TemplateImage
@@ -27,13 +28,15 @@ interface PortMapping {
 }
 
 export function useFlowGraph() {
-  const nodes = ref<FlowNode[]>([])
-  const edges = ref<FlowEdge[]>([])
+  const nodes = shallowRef<FlowNode[]>([])
+  const edges = shallowRef<FlowEdge[]>([])
   const currentEdgeType = ref<EdgeType>('smoothstep')
   const currentSpacing = ref<SpacingKey>('normal')
   const currentFilename = ref('')
   const currentSource = ref('')
   const originalDataSnapshot = ref('')
+  const dataSnapshot = ref('')
+  const selectedNodeId = ref<string | null>(null)
 
   const nodeTypes = { custom: markRaw(CustomNode) }
 
@@ -77,8 +80,68 @@ export function useFlowGraph() {
 
   const isDirty = computed(() => {
     if (!originalDataSnapshot.value) return false
-    return JSON.stringify(getNodesData()) !== originalDataSnapshot.value
+    return dataSnapshot.value !== originalDataSnapshot.value
   })
+
+  const recalcDataSnapshot = () => {
+    dataSnapshot.value = JSON.stringify(getNodesData())
+    return dataSnapshot.value
+  }
+
+  const markDataChanged = () => {
+    recalcDataSnapshot()
+  }
+
+  const clearDirty = () => {
+    recalcDataSnapshot()
+    originalDataSnapshot.value = dataSnapshot.value
+  }
+
+  const setNodeStatus = (nodeId: string, status: NodeStatus) => {
+    if (!nodeId || status === undefined) return false
+    const nextStatus: string | undefined = status ?? undefined
+    const index = nodes.value.findIndex((n) => {
+      const dataId = (n.data?.data as FlowBusinessData | undefined)?.id
+      return n.id === nodeId || dataId === nodeId
+    })
+    if (index < 0) return false
+    const node = nodes.value[index]
+    const meta = ensureNodeMeta(node)
+    if (!meta || meta.status === nextStatus) return false
+    nodes.value[index] = { ...node, data: { ...meta, status: nextStatus } }
+    triggerRef(nodes)
+    return true
+  }
+
+  const selectNodeById = (nodeId?: string | null) => {
+    const nextId = nodeId || null
+    if (selectedNodeId.value === nextId) return false
+    let changed = false
+
+    if (selectedNodeId.value) {
+      const prevIndex = nodes.value.findIndex(n => n.id === selectedNodeId.value)
+      if (prevIndex >= 0) {
+        const prevNode = nodes.value[prevIndex]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(nodes.value as any)[prevIndex] = { ...prevNode, selected: false }
+        changed = true
+      }
+    }
+
+    if (nextId) {
+      const nextIndex = nodes.value.findIndex(n => n.id === nextId)
+      if (nextIndex >= 0) {
+        const nextNode = nodes.value[nextIndex]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(nodes.value as any)[nextIndex] = { ...nextNode, selected: true }
+        changed = true
+      }
+    }
+
+    selectedNodeId.value = nextId
+    if (changed) triggerRef(nodes)
+    return changed
+  }
 
   const getEdgeStyle = (handleId: string, isJumpBack = false): EdgeStyleResult => {
     const config = PORT_MAPPING[handleId] || { color: '#94a3b8' }
@@ -224,21 +287,26 @@ export function useFlowGraph() {
     const sourceNode = findNode(params.source)
     const targetNode = findNode(params.target)
     const isAnchorTarget = isAnchorNode(targetNode)
+    let changed = false
 
     if (existingEdge) {
       removeEdges([existingEdge.id])
       if (sourceNode && portConfig) {
         updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', false, false, isAnchorTarget)
+        changed = true
       }
     } else {
       addEdges({ ...params, ...getEdgeStyle(params.sourceHandle || '', false), label: portConfig?.field })
       if (sourceNode && portConfig) {
         updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', true, false, isAnchorTarget)
+        changed = true
       }
     }
+    if (changed) markDataChanged()
   }
 
   const handleEdgesChange = (changes: FlowEdgeChange[]) => {
+    let changed = false
     changes.forEach(change => {
       if (change.type === 'remove') {
         const edge = edges.value.find(e => e.id === change.id)
@@ -249,10 +317,12 @@ export function useFlowGraph() {
             const targetNode = findNode(edge.target)
             const isAnchorTarget = isAnchorNode(targetNode)
             updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', false, false, isAnchorTarget)
+            changed = true
           }
         }
       }
     })
+    if (changed) markDataChanged()
   }
 
   const setEdgeJumpBack = (edgeId: string, isJumpBack: boolean) => {
@@ -271,12 +341,13 @@ export function useFlowGraph() {
     edge.style = newStyle.style
     edge.animated = newStyle.animated
 
-    edges.value = [...edges.value]
+    triggerRef(edges)
 
-    if (sourceNode && portConfig) {
-      updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack, isAnchorTarget)
+      if (sourceNode && portConfig) {
+        updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack, isAnchorTarget)
+        markDataChanged()
+      }
     }
-  }
 
   const handleNodeUpdate = ({ oldId, newId, newType, newData }: NodeUpdatePayload) => {
     const node = findNode(oldId)
@@ -286,7 +357,8 @@ export function useFlowGraph() {
 
     if (newData && (newData as Record<string, unknown>)._action) {
       handleSpecialAction(node, newData)
-      nodes.value = [...nodes.value]
+      triggerRef(nodes)
+      markDataChanged()
       return
     }
 
@@ -303,6 +375,7 @@ export function useFlowGraph() {
         if (e.target === oldId) update.target = newId
         return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
       })
+      triggerRef(edges)
 
       const replaceLinkVal = (val: unknown) => {
         if (typeof val !== 'string') return val
@@ -333,7 +406,8 @@ export function useFlowGraph() {
     else if (nodeMeta.data) nodeMeta.data.recognition = newType
 
     normalizeLinksAcrossNodes(nodes.value)
-    nodes.value = [...nodes.value]
+    triggerRef(nodes)
+    markDataChanged()
   }
 
   const modifyTemplatePath = (nodeData: FlowNodeMeta, path: string, mode: 'add' | 'remove' = 'add') => {
@@ -519,11 +593,16 @@ export function useFlowGraph() {
     const layoutedNodes = layoutWithSpacing(newNodes, newEdges, getSpacingConfig())
     nodes.value = layoutedNodes
     edges.value = newEdges
+    triggerRef(nodes)
+    triggerRef(edges)
 
     currentFilename.value = filename || ''
     currentSource.value = source || ''
 
-    setTimeout(() => { originalDataSnapshot.value = JSON.stringify(getNodesData()) }, 0)
+    const snapshot = JSON.stringify(getNodesData())
+    dataSnapshot.value = snapshot
+    originalDataSnapshot.value = snapshot
+    selectedNodeId.value = null
     setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
   }
 
@@ -557,7 +636,7 @@ export function useFlowGraph() {
       }
       meta._del_images = []
     })
-    nodes.value = [...nodes.value]
+    triggerRef(nodes)
   }
 
   const layoutChainFromNode = (startId: string, spacingKey: SpacingKey = currentSpacing.value) => {
@@ -589,7 +668,10 @@ export function useFlowGraph() {
     clearTempImageData,
     setEdgeJumpBack,
     layoutTaskChain,
-    clearDirty: () => { originalDataSnapshot.value = JSON.stringify(getNodesData()) },
+    clearDirty,
+    markDataChanged,
+    setNodeStatus,
+    selectNodeById,
     layout,
     applyLayout: (k?: SpacingKey) => {
       applyLayoutOnRefs(nodes, edges, k || currentSpacing.value)
