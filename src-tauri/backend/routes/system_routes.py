@@ -61,6 +61,6 @@ def search_devices():
                 )
         except Exception:
             pass
-
+    print(f"Devices: {devices}")
     return jsonify({"message": "OK", "devices": devices})
 

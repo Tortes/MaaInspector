@@ -7,6 +7,7 @@ import {
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
+import type { RequestOptions } from '../../services/httpClient'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '../../utils/pipelineTransform'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
@@ -143,13 +144,13 @@ function useStatusModule(api: any, label: string) {
   const message = ref(`${label}未连接`)
   const info = ref<Record<string, unknown>>({})
 
-  const connect = async (payload?: any) => {
+  const connect = async (payload?: any, options?: RequestOptions) => {
     if (status.value === 'connecting') return
     status.value = 'connecting'
     message.value = '处理中...'
     try {
       const method = api.load ? api.load : api.connect
-      const res = await method(payload)
+      const res = await method(payload, options)
       const ok = typeof (res as any)?.r === 'boolean'
         ? (res as any).r
         : ((res as any)?.success ?? true)
@@ -263,7 +264,9 @@ const fetchAndEmitNodes = async () => {
 
   try {
     resourceCtrl.message = '加载节点中...'
-    const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value)
+    const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value, {
+      context: { feature: 'resource', action: 'get_nodes', component: 'InfoPanel' }
+    })
     const nodes = res.nodes || {}
     const fileVersion = isPipelineV2Nodes(nodes) ? 'V2' : 'V1'
     const normalizedNodes = fileVersion === 'V2'
@@ -274,7 +277,9 @@ const fetchAndEmitNodes = async () => {
     resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
 
     try {
-      const imgRes = await resourceApi.getTemplateImages(fileObj.source, fileObj.value)
+      const imgRes = await resourceApi.getTemplateImages(fileObj.source, fileObj.value, {
+        context: { feature: 'resource', action: 'get_templates', component: 'InfoPanel' }
+      })
       if (imgRes.results) emit('load-images', imgRes.results as Record<string, TemplateImage[]>)
     } catch (imgError) {
       console.warn("图片加载失败", imgError)
@@ -339,7 +344,9 @@ const handleFileSelectChange = (newFileId: string) => {
 const fetchDeviceScreenshot = async () => {
   if (deviceCtrl.status !== 'connected') return
   try {
-    const res = await deviceApi.getScreenshot()
+    const res = await deviceApi.getScreenshot({
+      context: { feature: 'device', action: 'screenshot', component: 'InfoPanel' }
+    })
     // image 字段直接在响应对象上
     if (res.success && res.image) {
       deviceScreenshot.value = res.image
@@ -373,7 +380,9 @@ const handleSearchDevices = async () => {
   
   try {
     const searchType = deviceType.value === 'win32' ? 'win32control' : 'adb'
-    const res = await systemApi.searchDevices(searchType)
+    const res = await systemApi.searchDevices(searchType, {
+      context: { feature: 'system', action: 'search_devices', component: 'InfoPanel' }
+    })
     const devices = (res.data?.devices ?? res.devices ?? []) as DeviceInfo[]
     
     searchedDevices.value = devices
@@ -416,6 +425,8 @@ const handleDeviceConnect = async () => {
         screencap_method: win32ScreencapMethod.value,
         mouse_method: win32MouseMethod.value,
         keyboard_method: win32KeyboardMethod.value,
+      }, {
+        context: { feature: 'device', action: 'connect_win32', component: 'InfoPanel' }
       })
     } else {
       // ADB 设备连接
@@ -423,6 +434,8 @@ const handleDeviceConnect = async () => {
         adb_path: device.adb_path as string,
         address: device.address as string,
         config: device.config || {},
+      }, {
+        context: { feature: 'device', action: 'connect_adb', component: 'InfoPanel' }
       })
     }
 
@@ -458,7 +471,9 @@ const handleDeviceConnect = async () => {
 
 const handleResourceLoad = async () => {
   try {
-    const res = await resourceCtrl.connect(currentProfile.value)
+    const res = await resourceCtrl.connect(currentProfile.value, {
+      context: { feature: 'resource', action: 'load', component: 'InfoPanel' }
+    })
     const ok = (res as any)?.r ?? (res as any)?.success ?? true
     if (!ok) {
       resourceCtrl.message = (res as any)?.message || '资源加载失败'
@@ -496,7 +511,9 @@ const handleResourceLoad = async () => {
 const handleCreateFile = async ({path, filename}: { path: string; filename: string }) => {
   try {
     resourceCtrl.message = '创建文件中...'
-    await resourceApi.createFile(path, filename)
+    await resourceApi.createFile(path, filename, {
+      context: { feature: 'resource', action: 'create_file', component: 'InfoPanel' }
+    })
     showCreateFileModal.value = false
     await handleResourceLoad()
     const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
@@ -517,7 +534,9 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
 }
 
 const handleProfileSwitch = () => handleResourceLoad()
-const handleAgentConnect = () => agentCtrl.connect({socket_id: currentAgentSocket.value})
+const handleAgentConnect = () => agentCtrl.connect({socket_id: currentAgentSocket.value}, {
+  context: { feature: 'agent', action: 'connect', component: 'InfoPanel' }
+})
 
 const deviceButtonLabel = computed(() => deviceCtrl.status === 'connected' ? '重新连接' : '连接设备')
 const agentButtonLabel = computed(() => agentCtrl.status === 'connected' ? '重新连接 Agent' : '启动 Agent')
@@ -558,7 +577,9 @@ const fetchSystemState = async () => {
   systemStatus.value = 'loading'
   isInit = true
   try {
-    const data = await systemApi.getInitialState()
+    const data = await systemApi.getInitialState({
+      context: { feature: 'system', action: 'init', component: 'InfoPanel' }
+    })
     if (data.resource_profiles) resourceProfiles.value = normalizeProfiles(data.resource_profiles as ResourceProfile[])
     const state = data.current_state || {}
     if (state.resource_profile_index !== undefined && resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
@@ -646,7 +667,9 @@ const saveAllConfig = async () => {
         pipeline_version: pipelineVersion.value
       }
     }
-    await systemApi.saveDeviceConfig(payload)
+      await systemApi.saveDeviceConfig(payload, {
+        context: { feature: 'system', action: 'save_config', component: 'InfoPanel' }
+      })
   } catch (e) {
     console.error("Auto save failed", e)
   }

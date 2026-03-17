@@ -27,6 +27,7 @@
     "@types/dagre": "^0.7.53",
     "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.22",
+    "baseline-browser-mapping": "^2.10.8",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",

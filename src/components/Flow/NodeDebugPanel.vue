@@ -201,7 +201,9 @@ const fetchPreview = async () => {
   if (isLoadingPreview.value) return
   isLoadingPreview.value = true
   try {
-    const res = await deviceApi.getScreenshot()
+    const res = await deviceApi.getScreenshot({
+      context: { feature: 'device', action: 'screenshot', component: 'NodeDebugPanel' }
+    })
     previewUrl.value = (res as any)?.image || (res as any)?.data || ''
   } catch (e) {
     console.warn('[DebugPanel] 获取设备预览失败，使用占位图', e)
@@ -391,7 +393,9 @@ const handleActionButton = async () => {
 
 const handlePauseDebug = async () => {
   try {
-    await debugApi.stop()
+      await debugApi.stop({
+        context: { feature: 'debug', action: 'stop', component: 'NodeDebugPanel' }
+      })
   } catch (e) {
     console.warn('[DebugPanel] 暂停调试失败', e)
   }
@@ -411,7 +415,9 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
 
   if (child.reco_id !== undefined && child.reco_id !== null) {
     try {
-      const res = await debugApi.getRecoDetails(child.reco_id)
+        const res = await debugApi.getRecoDetails(child.reco_id, {
+          context: { feature: 'debug', action: 'get_reco_details', component: 'NodeDebugPanel' }
+        })
       const detail = (res as any)?.detail
       if (detail) {
         const rawImage = typeof (detail as any).raw_image === 'string' ? (detail as any).raw_image : ''

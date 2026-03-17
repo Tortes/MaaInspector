@@ -112,7 +112,7 @@ const generateDefaultSavePath = () => {
   let index = 1
   let candidatePath = ''
   while (true) {
-    candidatePath = `${baseFilename}\\${nodeId}_${index}.png`
+    candidatePath = `${baseFilename}/${nodeId}_${index}.png`
     if (!usedPaths.has(candidatePath)) break
     index++
   }
@@ -175,7 +175,9 @@ watch(() => props.visible, async (val: boolean) => {
 const fetchScreenshot = async () => {
   isLoading.value = true
   try {
-    const res = await deviceApi.getScreenshot()
+    const res = await deviceApi.getScreenshot({
+      context: { feature: 'device', action: 'screenshot', component: 'DeviceScreen' }
+    })
     const img = (res as any)?.image ?? (res as any)?.data
     if (img && typeof img === 'string') {
       imageUrl.value = img
@@ -230,7 +232,9 @@ const handleOcr = async () => {
       Math.round(selection.w),
       Math.round(selection.h)
     ]
-    const res = await debugApi.ocrText(roi)
+    const res = await debugApi.ocrText(roi, {
+      context: { feature: 'debug', action: 'ocr_text', component: 'DeviceScreen' }
+    })
     const text = (res as any)?.text ?? (res as any)?.data?.text ?? ''
     if (res && (res as any).success === false) {
       throw new Error((res as any).message || 'OCR failed')

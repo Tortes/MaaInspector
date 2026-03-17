@@ -111,6 +111,33 @@ class ResourcesManager:
             return converted
         return {}
 
+    def _normalize_template_paths(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        规范化节点数据中的 template 路径，将反斜杠统一转换为正斜杠
+
+        Args:
+            data: 节点字典 {node_id: node_data}
+
+        Returns:
+            处理后的节点字典
+        """
+        for node_id, node_data in data.items():
+            if not isinstance(node_data, dict):
+                continue
+
+            template = node_data.get("template")
+            if not template:
+                continue
+
+            if isinstance(template, str):
+                # 单个模板路径：将反斜杠替换为正斜杠
+                node_data["template"] = template.replace("\\", "/")
+            elif isinstance(template, list):
+                # 模板路径列表：处理每个路径
+                node_data["template"] = [t.replace("\\", "/") if isinstance(t, str) else t for t in template]
+
+        return data
+
     # ---------------------------
     # 文件列表操作
     # ---------------------------
@@ -216,7 +243,8 @@ class ResourcesManager:
         """
         resource_path = os.path.normpath(resource_path)
         normalized = self._normalize_data(content)
-        
+        normalized = self._normalize_template_paths(normalized)
+
         pipeline_path = self._get_pipeline_path(resource_path)
         full_path = os.path.join(pipeline_path, filename)
         

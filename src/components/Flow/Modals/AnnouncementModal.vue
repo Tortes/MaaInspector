@@ -34,7 +34,9 @@ const loadChangelog = async () => {
 
   try {
     // 尝试从public目录加载changelog.md
-    const changelogUrl = new URL('changelog.md', import.meta.env.BASE_URL).toString()
+    const baseUrl = import.meta.env.BASE_URL || '/'
+    const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+    const changelogUrl = `${normalizedBase}changelog.md`
     const response = await fetch(changelogUrl, { cache: 'no-store' })
     if (!response.ok) {
       throw new Error('无法加载更新日志')
