@@ -224,7 +224,7 @@ onUnmounted(() => {
 })
 
 // 暴露 resetView 给父组件
-defineExpose({ resetView, generatePreviewSnapshot })
+defineExpose({ resetView, generatePreviewSnapshot, isDragging })
 </script>
 
 <template>
