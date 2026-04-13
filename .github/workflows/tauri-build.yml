@@ -12,6 +12,9 @@ defaults:
 permissions:
   contents: write
 
+env:
+  MAA_VERSION: "v5.10.0"
+
 jobs:
   build:
     runs-on: windows-latest
@@ -39,17 +42,40 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       # -----------------------------
-      # Cargo/Rust 缓存（Tauri 提速关键点）
+      # Setup Git (fix CRLF issue)
       # -----------------------------
       - name: Setup Git (fix CRLF issue)
         run: git config --global core.autocrlf false
 
+      # -----------------------------
+      # Cargo/Rust 缓存（Tauri 提速关键点）
+      # -----------------------------
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
           cache-on-failure: true
 
+      # -----------------------------
+      # 下载 MaaFramework SDK
+      # -----------------------------
+      - name: Download MaaFramework SDK
+        run: |
+          $url = "https://github.com/MaaXYZ/MaaFramework/releases/download/${{ env.MAA_VERSION }}/MAA-win-x86_64-${{ env.MAA_VERSION }}.zip"
+          Write-Host "Downloading from $url"
+
+          $zipPath = "MAA-win-x86_64.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+
+          Expand-Archive -Path $zipPath -DestinationPath "src-tauri" -Force
+          Remove-Item $zipPath
+
+          # 验证下载
+          if (Test-Path "src-tauri/MAA-win-x86_64-${{ env.MAA_VERSION }}") {
+            Write-Host "MaaFramework SDK downloaded successfully"
+          } else {
+            throw "MaaFramework SDK not found after extraction"
+          }
 
       # -----------------------------
       # 安装前端依赖
@@ -123,24 +149,6 @@ jobs:
           "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           $body | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-      # -----------------------------
-      # 准备嵌入式 Python
-      # -----------------------------
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            src-tauri/python-runtime
-            ~\AppData\Local\pip\Cache
-          key: ${{ runner.os }}-python-${{ hashFiles('src-tauri/backend/requirements.txt', 'setup_embedded_python.py') }}
-          restore-keys: |
-            ${{ runner.os }}-python-
-
-      - name: Prepare embedded Python
-        env:
-          PYTHONIOENCODING: utf-8
-        run: python setup_embedded_python.py
 
       # -----------------------------
       # 构建 Tauri 应用

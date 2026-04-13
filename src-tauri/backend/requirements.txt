@@ -1,4 +1,0 @@
-Flask
-Flask-Cors
-maafw == 5.5.0
-pillow
