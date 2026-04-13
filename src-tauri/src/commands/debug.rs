@@ -13,10 +13,7 @@ pub fn debug_run_node(
     let mut fw = maafw.lock().unwrap();
 
     // Extract node id
-    let node_id = node
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let node_id = node.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
     if node_id.is_empty() {
         return ApiResponse::error_with_status("Missing node id", 400);
@@ -34,7 +31,10 @@ pub fn debug_run_node(
         if debug_mode.as_deref() == Some("recognition_only") {
             obj.insert("next".to_string(), serde_json::Value::Array(vec![]));
             obj.insert("on_error".to_string(), serde_json::Value::Array(vec![]));
-            obj.insert("action".to_string(), serde_json::Value::String("DoNothing".to_string()));
+            obj.insert(
+                "action".to_string(),
+                serde_json::Value::String("DoNothing".to_string()),
+            );
         }
     }
 
@@ -72,10 +72,7 @@ pub fn debug_status(maafw: State<'_, Mutex<MaaFrameworkWrapper>>) -> ApiResponse
 
 /// OCR text recognition
 #[tauri::command]
-pub fn debug_ocr_text(
-    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
-    roi: Vec<i32>,
-) -> ApiResponse {
+pub fn debug_ocr_text(maafw: State<'_, Mutex<MaaFrameworkWrapper>>, roi: Vec<i32>) -> ApiResponse {
     if roi.len() != 4 {
         return ApiResponse::error_with_status("Missing or invalid roi", 400);
     }
@@ -92,10 +89,7 @@ pub fn debug_ocr_text(
     // OCR processing would go here
     // For now, return empty text
 
-    ApiResponse::ok_with_data(
-        "OK",
-        serde_json::json!({ "text": "" }),
-    )
+    ApiResponse::ok_with_data("OK", serde_json::json!({ "text": "" }))
 }
 
 /// Get recognition details

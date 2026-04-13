@@ -8,13 +8,11 @@ mod resources;
 mod response;
 
 use commands::{
-    agent_connect,
-    debug_get_reco_details, debug_ocr_text, debug_run_node, debug_status, debug_stop,
-    device_connect_adb, device_connect_win32, device_screenshot,
+    agent_connect, debug_get_reco_details, debug_ocr_text, debug_run_node, debug_status,
+    debug_stop, device_connect_adb, device_connect_win32, device_screenshot,
     resource_check_unused_images, resource_create_file, resource_get_file_nodes,
     resource_get_templates, resource_load, resource_process_images, resource_save_file_nodes,
-    resource_search_nodes,
-    system_init, system_save_config, system_search_devices,
+    resource_search_nodes, system_init, system_save_config, system_search_devices,
 };
 use maafw::MaaFrameworkWrapper;
 use resources::ResourcesManager;

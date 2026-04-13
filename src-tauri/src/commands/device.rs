@@ -31,6 +31,7 @@ pub fn device_connect_adb(
 
 /// Connect to Win32 window
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn device_connect_win32(
     maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
     hwnd: i64,
@@ -60,9 +61,7 @@ pub fn device_connect_win32(
 
 /// Get screenshot
 #[tauri::command]
-pub fn device_screenshot(
-    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
-) -> ScreenshotResponse {
+pub fn device_screenshot(maafw: State<'_, Mutex<MaaFrameworkWrapper>>) -> ScreenshotResponse {
     let mut fw = maafw.lock().unwrap();
 
     if let Some(image_base64) = fw.screencap() {

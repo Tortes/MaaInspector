@@ -1,5 +1,5 @@
-use tauri::{AppHandle, Emitter};
 use crate::response::{DebugStreamPayload, NextListNode};
+use tauri::{AppHandle, Emitter};
 
 /// Event names for debug streaming
 pub const EVENT_NODE_NEXT_LIST: &str = "debug:node_next_list";
@@ -38,10 +38,12 @@ impl DebugEventBroker {
                 name: Some(name),
                 next_list: Some(next_list_nodes),
                 focus,
-                timestamp: Some(std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0)),
+                timestamp: Some(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as i64)
+                        .unwrap_or(0),
+                ),
                 ..Default::default()
             };
 
@@ -67,10 +69,12 @@ impl DebugEventBroker {
                 name: Some(name),
                 status: Some(status),
                 focus,
-                timestamp: Some(std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0)),
+                timestamp: Some(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as i64)
+                        .unwrap_or(0),
+                ),
                 ..Default::default()
             };
 

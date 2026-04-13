@@ -1,5 +1,5 @@
 use crate::resources::ResourcesManager;
-use crate::response::{ApiResponse, ResourceLoadResponse, FileNodesResponse};
+use crate::response::{ApiResponse, FileNodesResponse, ResourceLoadResponse};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -34,12 +34,13 @@ pub fn resource_get_file_nodes(
     let guard = resources_manager.lock().unwrap();
 
     if let Some(manager) = guard.as_ref()
-        && let Some(nodes) = manager.get_nodes_by_file(&source, &filename) {
-            return FileNodesResponse {
-                nodes: Some(serde_json::to_value(nodes).unwrap_or(serde_json::Value::Null)),
-                list: None,
-            };
-        }
+        && let Some(nodes) = manager.get_nodes_by_file(&source, &filename)
+    {
+        return FileNodesResponse {
+            nodes: Some(serde_json::to_value(nodes).unwrap_or(serde_json::Value::Null)),
+            list: None,
+        };
+    }
 
     FileNodesResponse {
         nodes: None,
@@ -173,10 +174,7 @@ pub fn resource_get_templates(
                     }
 
                     if !node_images.is_empty() {
-                        results.insert(
-                            node_id,
-                            serde_json::Value::Array(node_images),
-                        );
+                        results.insert(node_id, serde_json::Value::Array(node_images));
                     }
                 }
             }
@@ -207,7 +205,11 @@ pub fn resource_check_unused_images(
     if let Some(manager) = guard.as_ref() {
         let paths_to_check: Vec<String> = del_images
             .iter()
-            .filter_map(|img| img.get("path").and_then(|p| p.as_str()).map(|s| s.to_string()))
+            .filter_map(|img| {
+                img.get("path")
+                    .and_then(|p| p.as_str())
+                    .map(|s| s.to_string())
+            })
             .collect();
 
         if paths_to_check.is_empty() {
@@ -281,7 +283,10 @@ pub fn resource_process_images(
                 if let Some(arr) = results.get_mut("deleted").and_then(|v| v.as_array_mut()) {
                     arr.push(serde_json::Value::String(path));
                 }
-            } else if let Some(arr) = results.get_mut("delete_failed").and_then(|v| v.as_array_mut()) {
+            } else if let Some(arr) = results
+                .get_mut("delete_failed")
+                .and_then(|v| v.as_array_mut())
+            {
                 arr.push(serde_json::json!({
                     "path": path,
                     "reason": "File not found"
@@ -299,7 +304,10 @@ pub fn resource_process_images(
                     if let Some(arr) = results.get_mut("saved").and_then(|v| v.as_array_mut()) {
                         arr.push(serde_json::Value::String(p.to_string()));
                     }
-                } else if let Some(arr) = results.get_mut("save_failed").and_then(|v| v.as_array_mut()) {
+                } else if let Some(arr) = results
+                    .get_mut("save_failed")
+                    .and_then(|v| v.as_array_mut())
+                {
                     arr.push(serde_json::json!({
                         "path": p,
                         "reason": "Save failed"

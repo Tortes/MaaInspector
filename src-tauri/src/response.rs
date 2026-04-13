@@ -177,10 +177,7 @@ mod tests {
 
     #[test]
     fn test_api_response_serialization() {
-        let response = ApiResponse::ok_with_data(
-            "Test",
-            serde_json::json!({ "id": 123 }),
-        );
+        let response = ApiResponse::ok_with_data("Test", serde_json::json!({ "id": 123 }));
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"success\":true"));
         assert!(json.contains("\"message\":\"Test\""));

@@ -28,9 +28,7 @@ pub fn system_save_config(
 
 /// Search for devices (ADB and/or Win32)
 #[tauri::command]
-pub fn system_search_devices(
-    device_type: Option<String>,
-) -> serde_json::Value {
+pub fn system_search_devices(device_type: Option<String>) -> serde_json::Value {
     let req_type = device_type.map(|s| s.to_lowercase()).unwrap_or_default();
     let want_adb = req_type.is_empty() || req_type == "adb";
     let want_win32 = req_type.is_empty() || req_type == "win32control";

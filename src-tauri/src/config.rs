@@ -64,15 +64,13 @@ impl AppConfig {
         }
 
         match fs::read_to_string(&config_path) {
-            Ok(content) => {
-                match serde_json::from_str(&content) {
-                    Ok(config) => config,
-                    Err(e) => {
-                        eprintln!("Failed to parse config.json: {}", e);
-                        Self::default()
-                    }
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!("Failed to parse config.json: {}", e);
+                    Self::default()
                 }
-            }
+            },
             Err(e) => {
                 eprintln!("Failed to read config.json: {}", e);
                 Self::default()
@@ -83,15 +81,13 @@ impl AppConfig {
     pub fn save(&self, config_dir: &str) -> bool {
         let config_path = Path::new(config_dir).join(CONFIG_FILE);
         match serde_json::to_string_pretty(&self) {
-            Ok(content) => {
-                match fs::write(&config_path, content) {
-                    Ok(_) => true,
-                    Err(e) => {
-                        eprintln!("Failed to write config.json: {}", e);
-                        false
-                    }
+            Ok(content) => match fs::write(&config_path, content) {
+                Ok(_) => true,
+                Err(e) => {
+                    eprintln!("Failed to write config.json: {}", e);
+                    false
                 }
-            }
+            },
             Err(e) => {
                 eprintln!("Failed to serialize config: {}", e);
                 false
@@ -109,7 +105,8 @@ impl AppConfig {
                         }
                     }
                     "resource_profiles" => {
-                        if let Ok(v) = serde_json::from_value::<Vec<ResourceProfile>>(value.clone()) {
+                        if let Ok(v) = serde_json::from_value::<Vec<ResourceProfile>>(value.clone())
+                        {
                             self.resource_profiles = v;
                         }
                     }

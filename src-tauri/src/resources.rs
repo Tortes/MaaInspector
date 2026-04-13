@@ -27,7 +27,11 @@ impl ResourcesManager {
         let normalized_paths: Vec<PathBuf> = paths
             .iter()
             .filter(|p| !p.is_empty())
-            .map(|p| PathBuf::from(p).canonicalize().unwrap_or_else(|_| PathBuf::from(p)))
+            .map(|p| {
+                PathBuf::from(p)
+                    .canonicalize()
+                    .unwrap_or_else(|_| PathBuf::from(p))
+            })
             .collect();
 
         let mut manager = Self {
@@ -57,14 +61,17 @@ impl ResourcesManager {
                 continue;
             }
 
-            self.files_cache.insert(resource_path.clone(), HashMap::new());
+            self.files_cache
+                .insert(resource_path.clone(), HashMap::new());
 
             for entry in WalkDir::new(&pipeline_path)
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
             {
-                let relative_path = entry.path().strip_prefix(&pipeline_path)
+                let relative_path = entry
+                    .path()
+                    .strip_prefix(&pipeline_path)
                     .unwrap_or(entry.path())
                     .to_string_lossy()
                     .to_string();
@@ -74,23 +81,24 @@ impl ResourcesManager {
 
                 let full_path = entry.path();
                 if let Ok(content) = fs::read_to_string(full_path)
-                    && let Ok(json) = serde_json::from_str::<JsonValue>(&content) {
-                        let normalized = self.normalize_data(json);
-                        self.files_cache
-                            .get_mut(resource_path)
-                            .unwrap()
-                            .insert(relative_path.clone(), normalized.clone());
+                    && let Ok(json) = serde_json::from_str::<JsonValue>(&content)
+                {
+                    let normalized = self.normalize_data(json);
+                    self.files_cache
+                        .get_mut(resource_path)
+                        .unwrap()
+                        .insert(relative_path.clone(), normalized.clone());
 
-                        // Build index
-                        for (node_id, node_data) in normalized.iter() {
-                            self.node_index.push(NodeIndexEntry {
-                                resource_path: resource_path.clone(),
-                                filename: relative_path.clone(),
-                                node_id: node_id.clone(),
-                                data: node_data.clone(),
-                            });
-                        }
+                    // Build index
+                    for (node_id, node_data) in normalized.iter() {
+                        self.node_index.push(NodeIndexEntry {
+                            resource_path: resource_path.clone(),
+                            filename: relative_path.clone(),
+                            node_id: node_id.clone(),
+                            data: node_data.clone(),
+                        });
                     }
+                }
             }
         }
     }
@@ -105,10 +113,11 @@ impl ResourcesManager {
         } else if let Some(arr) = data.as_array() {
             for item in arr {
                 if let Some(item_obj) = item.as_object()
-                    && let Some(nid) = item_obj.get("id").and_then(|v| v.as_str()) {
-                        let ndata = item_obj.get("data").cloned().unwrap_or(JsonValue::Null);
-                        result.insert(nid.to_string(), ndata);
-                    }
+                    && let Some(nid) = item_obj.get("id").and_then(|v| v.as_str())
+                {
+                    let ndata = item_obj.get("data").cloned().unwrap_or(JsonValue::Null);
+                    result.insert(nid.to_string(), ndata);
+                }
             }
         }
 
@@ -118,24 +127,25 @@ impl ResourcesManager {
     fn normalize_template_paths(&self, data: &mut HashMap<String, JsonValue>) {
         for (_, node_data) in data.iter_mut() {
             if let Some(obj) = node_data.as_object_mut()
-                && let Some(template) = obj.get("template") {
-                    if let Some(tpl_str) = template.as_str() {
-                        let normalized = tpl_str.replace("\\", "/");
-                        obj.insert("template".to_string(), JsonValue::String(normalized));
-                    } else if let Some(tpl_arr) = template.as_array() {
-                        let normalized: Vec<JsonValue> = tpl_arr
-                            .iter()
-                            .map(|t| {
-                                if let Some(s) = t.as_str() {
-                                    JsonValue::String(s.replace("\\", "/"))
-                                } else {
-                                    t.clone()
-                                }
-                            })
-                            .collect();
-                        obj.insert("template".to_string(), JsonValue::Array(normalized));
-                    }
+                && let Some(template) = obj.get("template")
+            {
+                if let Some(tpl_str) = template.as_str() {
+                    let normalized = tpl_str.replace("\\", "/");
+                    obj.insert("template".to_string(), JsonValue::String(normalized));
+                } else if let Some(tpl_arr) = template.as_array() {
+                    let normalized: Vec<JsonValue> = tpl_arr
+                        .iter()
+                        .map(|t| {
+                            if let Some(s) = t.as_str() {
+                                JsonValue::String(s.replace("\\", "/"))
+                            } else {
+                                t.clone()
+                            }
+                        })
+                        .collect();
+                    obj.insert("template".to_string(), JsonValue::Array(normalized));
                 }
+            }
         }
     }
 
@@ -164,7 +174,8 @@ impl ResourcesManager {
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
                 .map(|e| {
-                    e.path().strip_prefix(&pipeline_path)
+                    e.path()
+                        .strip_prefix(&pipeline_path)
                         .unwrap_or(e.path())
                         .to_string_lossy()
                         .to_string()
@@ -194,14 +205,21 @@ impl ResourcesManager {
         results
     }
 
-    pub fn get_nodes_by_file(&self, resource_path: &str, filename: &str) -> Option<HashMap<String, JsonValue>> {
-        let path = PathBuf::from(resource_path).canonicalize().unwrap_or_else(|_| PathBuf::from(resource_path));
+    pub fn get_nodes_by_file(
+        &self,
+        resource_path: &str,
+        filename: &str,
+    ) -> Option<HashMap<String, JsonValue>> {
+        let path = PathBuf::from(resource_path)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(resource_path));
 
         // Try cache first
         if let Some(files) = self.files_cache.get(&path)
-            && let Some(nodes) = files.get(filename) {
-                return Some(nodes.clone());
-            }
+            && let Some(nodes) = files.get(filename)
+        {
+            return Some(nodes.clone());
+        }
 
         // Read from file
         let pipeline_path = self.get_pipeline_dir(&path);
@@ -212,15 +230,18 @@ impl ResourcesManager {
         }
 
         if let Ok(content) = fs::read_to_string(&full_path)
-            && let Ok(json) = serde_json::from_str::<JsonValue>(&content) {
-                return Some(self.normalize_data(json));
-            }
+            && let Ok(json) = serde_json::from_str::<JsonValue>(&content)
+        {
+            return Some(self.normalize_data(json));
+        }
 
         None
     }
 
     pub fn save_nodes(&mut self, resource_path: &str, filename: &str, content: JsonValue) -> usize {
-        let path = PathBuf::from(resource_path).canonicalize().unwrap_or_else(|_| PathBuf::from(resource_path));
+        let path = PathBuf::from(resource_path)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(resource_path));
         let mut normalized = self.normalize_data(content);
         self.normalize_template_paths(&mut normalized);
 
@@ -228,11 +249,11 @@ impl ResourcesManager {
         let full_path = pipeline_path.join(filename);
 
         // Ensure directory exists (including subdirectories)
-        if let Some(parent) = full_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                eprintln!("Failed to create pipeline directory: {}", e);
-                return 0;
-            }
+        if let Some(parent) = full_path.parent()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            eprintln!("Failed to create pipeline directory: {}", e);
+            return 0;
         }
 
         // Convert HashMap to JsonValue for saving
@@ -243,10 +264,11 @@ impl ResourcesManager {
             .into();
 
         if let Ok(json_str) = serde_json::to_string_pretty(&json_value)
-            && let Err(e) = fs::write(&full_path, json_str) {
-                eprintln!("Failed to write file: {}", e);
-                return 0;
-            }
+            && let Err(e) = fs::write(&full_path, json_str)
+        {
+            eprintln!("Failed to write file: {}", e);
+            return 0;
+        }
 
         // Update cache
         self.files_cache
@@ -258,7 +280,9 @@ impl ResourcesManager {
     }
 
     pub fn create_file(&mut self, resource_path: &str, filename: &str) -> bool {
-        let path = PathBuf::from(resource_path).canonicalize().unwrap_or_else(|_| PathBuf::from(resource_path));
+        let path = PathBuf::from(resource_path)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(resource_path));
         let fname = if filename.to_lowercase().ends_with(".json") {
             filename.to_string()
         } else {
@@ -317,10 +341,13 @@ impl ResourcesManager {
 
         for entry in &self.node_index {
             // Exclude current file
-            if !exclude_file.is_empty() && entry.filename == exclude_file
-                && (exclude_source_norm.to_string_lossy().is_empty() || entry.resource_path == exclude_source_norm) {
-                    continue;
-                }
+            if !exclude_file.is_empty()
+                && entry.filename == exclude_file
+                && (exclude_source_norm.to_string_lossy().is_empty()
+                    || entry.resource_path == exclude_source_norm)
+            {
+                continue;
+            }
 
             let node_data = &entry.data;
             let display_id = if let Some(obj) = node_data.as_object() {
@@ -336,7 +363,9 @@ impl ResourcesManager {
             let matched = if let Some(ref p) = pattern {
                 targets.iter().any(|t| p.is_match(t))
             } else {
-                targets.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                targets
+                    .iter()
+                    .any(|t| t.to_lowercase().contains(&query_lower))
             };
 
             if matched {
@@ -405,10 +434,11 @@ impl ResourcesManager {
         // Ensure parent directory exists
         let parent = full_path.parent();
         if let Some(p) = parent
-            && let Err(e) = fs::create_dir_all(p) {
-                eprintln!("Failed to create image directory: {}", e);
-                return false;
-            }
+            && let Err(e) = fs::create_dir_all(p)
+        {
+            eprintln!("Failed to create image directory: {}", e);
+            return false;
+        }
 
         // Decode base64
         let data = if base64_data.contains(";base64,") {
@@ -422,7 +452,9 @@ impl ResourcesManager {
             base64_data
         };
 
-        if let Ok(decoded) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data) {
+        if let Ok(decoded) =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
+        {
             if let Err(e) = fs::write(&full_path, decoded) {
                 eprintln!("Failed to write image: {}", e);
                 return false;
@@ -450,12 +482,18 @@ impl ResourcesManager {
         let parent = full_path.parent();
         let image_base = self.get_image_dir(&path);
         if let Some(p) = parent
-            && p != image_base && p.is_dir() {
-                let contents: Vec<_> = WalkDir::new(p).min_depth(1).max_depth(1).into_iter().collect();
-                if contents.is_empty() {
-                    let _ = fs::remove_dir(p);
-                }
+            && p != image_base
+            && p.is_dir()
+        {
+            let contents: Vec<_> = WalkDir::new(p)
+                .min_depth(1)
+                .max_depth(1)
+                .into_iter()
+                .collect();
+            if contents.is_empty() {
+                let _ = fs::remove_dir(p);
             }
+        }
 
         true
     }

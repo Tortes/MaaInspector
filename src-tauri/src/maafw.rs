@@ -5,7 +5,7 @@
 
 use crate::config::DeviceInfo;
 use crate::events::DebugEventBroker;
-use crate::response::{RecognitionDetail, BoxScore};
+use crate::response::{BoxScore, RecognitionDetail};
 use maa_framework::controller::Controller;
 use maa_framework::resource::Resource;
 use maa_framework::tasker::Tasker;
@@ -93,21 +93,22 @@ impl MaaFrameworkWrapper {
         let config_str = serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string());
 
         match Controller::new_adb(adb_path, address, &config_str, "") {
-            Ok(ctrl) => {
-                match ctrl.post_connection() {
-                    Ok(id) => {
-                        let status = ctrl.wait(id);
-                        if status.succeeded() {
-                            self.controller = Some(ctrl);
-                            (true, None)
-                        } else {
-                            (false, Some(format!("Failed to connect to {}", address)))
-                        }
+            Ok(ctrl) => match ctrl.post_connection() {
+                Ok(id) => {
+                    let status = ctrl.wait(id);
+                    if status.succeeded() {
+                        self.controller = Some(ctrl);
+                        (true, None)
+                    } else {
+                        (false, Some(format!("Failed to connect to {}", address)))
                     }
-                    Err(e) => (false, Some(format!("Connection error: {}", e))),
                 }
-            }
-            Err(e) => (false, Some(format!("Failed to create ADB controller: {}", e))),
+                Err(e) => (false, Some(format!("Connection error: {}", e))),
+            },
+            Err(e) => (
+                false,
+                Some(format!("Failed to create ADB controller: {}", e)),
+            ),
         }
     }
 
@@ -124,7 +125,8 @@ impl MaaFrameworkWrapper {
         // Note: sys::MaaWin32ScreencapMethod and sys::MaaWin32InputMethod are u64
         let screencap = screencap_method.unwrap_or(sys::MaaWin32ScreencapMethod_GDI as i32) as u64;
         let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as u64;
-        let keyboard = keyboard_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as u64;
+        let keyboard =
+            keyboard_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as u64;
 
         match Controller::new_win32(hwnd as *mut std::ffi::c_void, screencap, mouse, keyboard) {
             Ok(ctrl) => {
@@ -142,12 +144,19 @@ impl MaaFrameworkWrapper {
                     Err(e) => (false, Some(format!("Connection error: {}", e))),
                 }
             }
-            Err(e) => (false, Some(format!("Failed to create Win32 controller: {}", e))),
+            Err(e) => (
+                false,
+                Some(format!("Failed to create Win32 controller: {}", e)),
+            ),
         }
     }
 
     /// Run task with pipeline override
-    pub fn run_task(&mut self, entry: &str, pipeline_override: serde_json::Value) -> Option<String> {
+    pub fn run_task(
+        &mut self,
+        entry: &str,
+        pipeline_override: serde_json::Value,
+    ) -> Option<String> {
         if self.tasker.is_none() {
             match Tasker::new() {
                 Ok(t) => self.tasker = Some(t),
@@ -198,12 +207,18 @@ impl MaaFrameworkWrapper {
                 };
 
                 // Parse details JSON
-                let detail: serde_json::Value = serde_json::from_str(details).unwrap_or(serde_json::Value::Null);
+                let detail: serde_json::Value =
+                    serde_json::from_str(details).unwrap_or(serde_json::Value::Null);
 
                 if msg.starts_with("Node.NextList") {
                     // Node next list event
-                    let task_id = detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    let name = detail.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let task_id =
+                        detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let name = detail
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
                     let next_list: Vec<(String, bool, bool)> = detail
                         .get("list")
@@ -211,9 +226,16 @@ impl MaaFrameworkWrapper {
                         .map(|arr| {
                             arr.iter()
                                 .filter_map(|item| {
-                                    let name = item.get("name").and_then(|v| v.as_str())?.to_string();
-                                    let jump_back = item.get("jump_back").and_then(|v| v.as_bool()).unwrap_or(false);
-                                    let anchor = item.get("anchor").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    let name =
+                                        item.get("name").and_then(|v| v.as_str())?.to_string();
+                                    let jump_back = item
+                                        .get("jump_back")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    let anchor = item
+                                        .get("anchor")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
                                     Some((name, jump_back, anchor))
                                 })
                                 .collect()
@@ -224,18 +246,31 @@ impl MaaFrameworkWrapper {
                     broker_clone.emit_node_next_list(task_id, name, next_list, focus);
                 } else if msg.starts_with("Node.Recognition") {
                     // Node recognition event
-                    let task_id = detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    let reco_id = detail.get("reco_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    let name = detail.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let task_id =
+                        detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let reco_id =
+                        detail.get("reco_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let name = detail
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let focus = detail.get("focus").cloned();
 
-                    broker_clone.emit_node_recognition(task_id, reco_id, name, noti_type.to_string(), focus);
+                    broker_clone.emit_node_recognition(
+                        task_id,
+                        reco_id,
+                        name,
+                        noti_type.to_string(),
+                        focus,
+                    );
                 }
             });
         }
 
         // Convert pipeline_override to JSON string
-        let override_str = serde_json::to_string(&pipeline_override).unwrap_or_else(|_| "{}".to_string());
+        let override_str =
+            serde_json::to_string(&pipeline_override).unwrap_or_else(|_| "{}".to_string());
 
         // Post task
         match tasker.post_task(entry, &override_str) {
@@ -373,7 +408,10 @@ impl MaaFrameworkWrapper {
                         None
                     },
                     raw_detail: Some(detail.detail.clone()),
-                    raw_image: detail.raw_image.as_ref().and_then(|v| self.encode_raw_image(v)),
+                    raw_image: detail
+                        .raw_image
+                        .as_ref()
+                        .and_then(|v| self.encode_raw_image(v)),
                     draw_images: Some(
                         detail
                             .draw_images
@@ -401,7 +439,10 @@ impl MaaFrameworkWrapper {
 
                 // Encode as PNG using ImageBuffer's write_to method
                 let mut png_data = Vec::new();
-                match rgb_img.write_to(&mut std::io::Cursor::new(&mut png_data), image::ImageFormat::Png) {
+                match rgb_img.write_to(
+                    &mut std::io::Cursor::new(&mut png_data),
+                    image::ImageFormat::Png,
+                ) {
                     Ok(_) => {
                         let encoded = base64::Engine::encode(
                             &base64::engine::general_purpose::STANDARD,
