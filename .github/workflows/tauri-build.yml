@@ -26,6 +26,12 @@ jobs:
           fetch-depth: 0
 
       # -----------------------------
+      # 删除 pnpm-lock.yaml，强制使用 npm
+      # -----------------------------
+      - name: Remove pnpm-lock.yaml
+        run: Remove-Item -Path "pnpm-lock.yaml" -Force -ErrorAction SilentlyContinue
+
+      # -----------------------------
       # Node.js + npm 缓存
       # -----------------------------
       - name: Setup Node.js
@@ -64,18 +70,35 @@ jobs:
           $url = "https://github.com/MaaXYZ/MaaFramework/releases/download/${{ env.MAA_VERSION }}/MAA-win-x86_64-${{ env.MAA_VERSION }}.zip"
           Write-Host "Downloading from $url"
 
-          $zipPath = "MAA-win-x86_64.zip"
+          $zipPath = "MAA-sdk.zip"
           Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
 
-          Expand-Archive -Path $zipPath -DestinationPath "src-tauri" -Force
+          # 解压到临时目录，然后找到实际文件夹名
+          $tempDir = "MAA-temp"
+          Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
           Remove-Item $zipPath
 
-          # 验证下载
-          if (Test-Path "src-tauri/MAA-win-x86_64-${{ env.MAA_VERSION }}") {
-            Write-Host "MaaFramework SDK downloaded successfully"
-          } else {
-            throw "MaaFramework SDK not found after extraction"
+          # 查找解压后的文件夹
+          $extractedFolder = Get-ChildItem -Path $tempDir -Directory | Select-Object -First 1
+          if (-not $extractedFolder) {
+            throw "No folder found in extracted archive"
           }
+
+          Write-Host "Extracted folder: $($extractedFolder.Name)"
+
+          # 移动到 src-tauri 目录，重命名为期望的名称
+          $targetName = "MAA-win-x86_64-${{ env.MAA_VERSION }}"
+          $targetPath = "src-tauri/$targetName"
+
+          # 如果目标已存在，先删除
+          if (Test-Path $targetPath) {
+            Remove-Item $targetPath -Recurse -Force
+          }
+
+          Move-Item -Path $extractedFolder.FullName -Destination $targetPath -Force
+          Remove-Item $tempDir -Force -Recurse -ErrorAction SilentlyContinue
+
+          Write-Host "MaaFramework SDK ready at $targetPath"
 
       # -----------------------------
       # 安装前端依赖
