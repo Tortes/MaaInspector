@@ -109,6 +109,8 @@ jobs:
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - name: Run tests
+        env:
+          MAA_SDK_PATH: ${{ github.workspace }}\src-tauri\MAA-win-x86_64-${{ env.MAA_VERSION }}
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
   build:
@@ -181,6 +183,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAA_SDK_PATH: ${{ github.workspace }}\src-tauri\MAA-win-x86_64-${{ env.MAA_VERSION }}
         with:
           tagName: 'v0.0.0-ci'
           releaseName: 'MaaInspector CI Build'

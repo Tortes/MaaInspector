@@ -186,6 +186,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAA_SDK_PATH: ${{ github.workspace }}\src-tauri\MAA-win-x86_64-${{ env.MAA_VERSION }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "MaaInspector ${{ github.ref_name }}"
