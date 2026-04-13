@@ -6,29 +6,57 @@ on:
   pull_request:
     branches: [master, main]
 
+env:
+  MAA_VERSION: "v5.10.0"
+
 jobs:
   test-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: npm run type-check
+        run: pnpm run type-check
 
       - name: Run tests
-        run: npm run test
+        run: pnpm run test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint frontend
+        run: pnpm run lint
 
   test-backend:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -37,16 +65,42 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Setup Git (fix CRLF issue)
+        run: git config --global core.autocrlf false
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          workspaces: "src-tauri -> target"
+          cache-on-failure: true
+
+      - name: Download MaaFramework SDK
+        shell: pwsh
+        run: |
+          $url = "https://github.com/MaaXYZ/MaaFramework/releases/download/${{ env.MAA_VERSION }}/MAA-win-x86_64-${{ env.MAA_VERSION }}.zip"
+          Write-Host "Downloading from $url"
+
+          $zipPath = "MAA-sdk.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+
+          $tempDir = "MAA-temp"
+          Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+          Remove-Item $zipPath
+
+          $extractedFolder = Get-ChildItem -Path $tempDir -Directory | Select-Object -First 1
+          if (-not $extractedFolder) {
+            throw "No folder found in extracted archive"
+          }
+
+          $targetName = "MAA-win-x86_64-${{ env.MAA_VERSION }}"
+          $targetPath = "src-tauri/$targetName"
+
+          if (Test-Path $targetPath) {
+            Remove-Item $targetPath -Recurse -Force
+          }
+
+          Move-Item -Path $extractedFolder.FullName -Destination $targetPath -Force
+          Remove-Item $tempDir -Force -Recurse -ErrorAction SilentlyContinue
 
       - name: Check formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
@@ -58,58 +112,83 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
   build:
-    needs: [test-frontend, test-backend]
+    needs: [test-frontend, test-backend, lint]
     runs-on: windows-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove package-lock.json
+        shell: pwsh
+        run: Remove-Item -Path "package-lock.json" -Force -ErrorAction SilentlyContinue
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Setup Git (fix CRLF issue)
+        run: git config --global core.autocrlf false
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          workspaces: "src-tauri -> target"
+          cache-on-failure: true
+
+      - name: Download MaaFramework SDK
+        shell: pwsh
+        run: |
+          $url = "https://github.com/MaaXYZ/MaaFramework/releases/download/${{ env.MAA_VERSION }}/MAA-win-x86_64-${{ env.MAA_VERSION }}.zip"
+          Write-Host "Downloading from $url"
+
+          $zipPath = "MAA-sdk.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+
+          $tempDir = "MAA-temp"
+          Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+          Remove-Item $zipPath
+
+          $extractedFolder = Get-ChildItem -Path $tempDir -Directory | Select-Object -First 1
+          if (-not $extractedFolder) {
+            throw "No folder found in extracted archive"
+          }
+
+          $targetName = "MAA-win-x86_64-${{ env.MAA_VERSION }}"
+          $targetPath = "src-tauri/$targetName"
+
+          if (Test-Path $targetPath) {
+            Remove-Item $targetPath -Recurse -Force
+          }
+
+          Move-Item -Path $extractedFolder.FullName -Destination $targetPath -Force
+          Remove-Item $tempDir -Force -Recurse -ErrorAction SilentlyContinue
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'MaaInspector v__VERSION__'
-          releaseBody: 'See CHANGELOG.md for details.'
+          tagName: 'v0.0.0-ci'
+          releaseName: 'MaaInspector CI Build'
+          releaseBody: 'CI test build - not for release'
           releaseDraft: true
-          prerelease: false
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint frontend
-        run: npm run lint || true
+          prerelease: true
+          projectPath: "."
+          tauriScript: "pnpm tauri"
+          includeDebug: false
+          includeRelease: true
+          uploadPlainBinary: false
