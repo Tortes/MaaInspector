@@ -26,20 +26,26 @@ jobs:
           fetch-depth: 0
 
       # -----------------------------
-      # 删除 pnpm-lock.yaml，强制使用 npm
+      # 删除 package-lock.json，强制使用 pnpm
       # -----------------------------
-      - name: Remove pnpm-lock.yaml
-        run: Remove-Item -Path "pnpm-lock.yaml" -Force -ErrorAction SilentlyContinue
+      - name: Remove package-lock.json
+        run: Remove-Item -Path "package-lock.json" -Force -ErrorAction SilentlyContinue
 
       # -----------------------------
-      # Node.js + npm 缓存
+      # pnpm 设置
+      # -----------------------------
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      # -----------------------------
+      # Node.js + pnpm 缓存
       # -----------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: npm
-          cache-dependency-path: package-lock.json
 
       # -----------------------------
       # 安装 Rust
@@ -104,7 +110,7 @@ jobs:
       # 安装前端依赖
       # -----------------------------
       - name: Install frontend deps
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       # -----------------------------
       # 从 Tag 设置应用版本号
@@ -194,6 +200,6 @@ jobs:
           updaterJsonPreferNsis: true
 
           projectPath: "."
-          tauriScript: "npm run tauri"
+          tauriScript: "pnpm tauri"
 
           uploadPlainBinary: false
