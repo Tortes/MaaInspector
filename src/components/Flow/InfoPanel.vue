@@ -7,7 +7,6 @@ import {
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
-import type { RequestOptions } from '../../services/httpClient'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '../../utils/pipelineTransform'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
@@ -30,13 +29,13 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }): void
-  (e: 'load-images', payload: Record<string, TemplateImage[]>): void
-  (e: 'save-nodes', payload: { source: string; filename: string }): void
-  (e: 'device-connected', status: boolean): void
-  (e: 'request-switch-file', payload: { filename: string; source: string }): void
-  (e: 'update-canvas-config', payload: { edgeType?: EdgeType; spacing?: SpacingKey }): void
-  (e: 'update-pipeline-version', payload: 'V1' | 'V2'): void
+  'load-nodes': [payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }]
+  'load-images': [payload: Record<string, TemplateImage[]>]
+  'save-nodes': [payload: { source: string; filename: string }]
+  'device-connected': [status: boolean]
+  'request-switch-file': [payload: { filename: string; source: string }]
+  'update-canvas-config': [payload: { edgeType?: EdgeType; spacing?: SpacingKey }]
+  'update-pipeline-version': [payload: 'V1' | 'V2']
 }>()
 
 // --- 内部组件 ---
@@ -126,7 +125,7 @@ const selectedResourceFile = ref('')  // 存储唯一ID: source|filename
 const availableFiles = ref<ResourceFileInfo[]>([])
 
 // --- 工具函数：生成和解析唯一ID ---
-const makeFileId = (source: string, filename: string) => `${source}|${filename}`
+const makeFileId = (source: string, filename: string | null) => `${source}|${filename ?? ''}`
 const parseFileId = (id: string) => {
   if (!id) return { source: '', filename: '' }
   const sepIndex = id.lastIndexOf('|')
@@ -144,7 +143,7 @@ function useStatusModule(api: any, label: string) {
   const message = ref(`${label}未连接`)
   const info = ref<Record<string, unknown>>({})
 
-  const connect = async (payload?: any, options?: RequestOptions) => {
+  const connect = async (payload?: any, options?: Record<string, unknown>) => {
     if (status.value === 'connecting') return
     status.value = 'connecting'
     message.value = '处理中...'
@@ -260,7 +259,7 @@ const win32KeyboardOptions = computed<DropdownOption[]>(() => {
 const fetchAndEmitNodes = async () => {
   if (!selectedResourceFile.value) return
   const fileObj = getFileObjById(selectedResourceFile.value)
-  if (!fileObj) return
+  if (!fileObj || !fileObj.value) return
 
   try {
     resourceCtrl.message = '加载节点中...'
@@ -296,7 +295,7 @@ const handleSaveNodes = async () => {
   isSaving.value = true
   try {
     const fileObj = getFileObjById(selectedResourceFile.value)
-    if (!fileObj) throw new Error('未找到当前文件')
+    if (!fileObj || !fileObj.value) throw new Error('未找到当前文件')
     emit('save-nodes', {source: fileObj.source, filename: fileObj.value})
   } catch (e: any) {
     console.error('保存失败', e)
@@ -332,7 +331,7 @@ defineExpose({executeFileSwitch, handleSaveNodes})
 const handleFileSelectChange = (newFileId: string) => {
   if (newFileId === selectedResourceFile.value) return
   const fileObj = getFileObjById(newFileId)
-  if (!fileObj) return
+  if (!fileObj || !fileObj.value) return
 
   emit('request-switch-file', {
     filename: fileObj.value,
@@ -495,7 +494,9 @@ const handleResourceLoad = async () => {
       if (!selectedResourceFile.value || !fileStillExists) {
         if (availableFiles.value.length > 0) {
           const firstFile = availableFiles.value[0]
-          await executeFileSwitch(firstFile.value, firstFile.source)
+          if (firstFile.value) {
+            await executeFileSwitch(firstFile.value, firstFile.source)
+          }
         } else {
           selectedResourceFile.value = ''
         }
@@ -522,7 +523,7 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
       f.value === simpleName &&
       f.source.replace(/\\/g, '/').toLowerCase() === normalizedPath
     )
-    if (newFileObj) {
+    if (newFileObj && newFileObj.value) {
       await executeFileSwitch(newFileObj.value, newFileObj.source)
       resourceCtrl.message = '新建成功并已加载'
     }

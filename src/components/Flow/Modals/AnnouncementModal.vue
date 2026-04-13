@@ -1,20 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { Bell, X, Clock, CheckCircle, AlertTriangle, Sparkles, Bug } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { Bell, X, Clock, CheckCircle, Sparkles, Bug } from 'lucide-vue-next'
+
+import { changelogContent } from '../../../changelog'
 
 interface AnnouncementProps {
   visible: boolean
 }
 
-const props = withDefaults(defineProps<AnnouncementProps>(), {
-  visible: false
-})
+defineProps<AnnouncementProps>()
 
 defineEmits<{
   (e: 'close'): void
 }>()
 
-// 解析后的公告数据
 interface AnnouncementItem {
   version: string
   date: string
@@ -23,53 +22,6 @@ interface AnnouncementItem {
   fixes: string[]
 }
 
-const announcements = ref<AnnouncementItem[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
-
-// 从本地文件加载changelog
-const loadChangelog = async () => {
-  loading.value = true
-  error.value = null
-
-  try {
-    // 尝试从public目录加载changelog.md
-    const baseUrl = import.meta.env.BASE_URL || '/'
-    const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-    const changelogUrl = `${normalizedBase}changelog.md`
-    const response = await fetch(changelogUrl, { cache: 'no-store' })
-    if (!response.ok) {
-      throw new Error('无法加载更新日志')
-    }
-    const content = await response.text()
-    announcements.value = parseMarkdown(content)
-  } catch (e) {
-    console.error('加载changelog失败:', e)
-    error.value = '加载更新日志失败'
-
-    // 使用默认示例数据作为fallback
-    announcements.value = [
-      {
-        version: 'v1.2.0',
-        date: '2025-01-19',
-        features: ['🎨 新增应用设置面板,支持个性化配置', '📢 新增更新公告功能,及时了解最新动态', '🖼️ 优化设备截图预览性能'],
-        improvements: ['⚡ 提升画布加载速度', '🎯 改进节点搜索体验', '📱 响应式布局优化'],
-        fixes: ['修复资源文件切换时的状态保存问题', '修复Win32设备连接参数配置bug']
-      },
-      {
-        version: 'v1.1.0',
-        date: '2025-01-15',
-        features: ['🔧 支持Win32窗口设备连接', '🎛️ 新增多种截图和输入方法配置'],
-        improvements: ['⚡ 优化节点属性编辑器性能', '📝 改进流程图导出功能'],
-        fixes: ['修复ADB设备连接超时问题', '修复节点删除时的状态同步bug']
-      }
-    ]
-  } finally {
-    loading.value = false
-  }
-}
-
-// 解析markdown格式的changelog
 const parseMarkdown = (content: string): AnnouncementItem[] => {
   const items: AnnouncementItem[] = []
   const lines = content.split(/\r?\n/)
@@ -120,7 +72,6 @@ const parseMarkdown = (content: string): AnnouncementItem[] => {
   }
 
   for (const line of lines) {
-    // 匹配版本行: ## v1.0.0 (2024-01-01) / ## v1.0.0 (since v0.9.0) / ## v1.0.0 - 2024-01-01
     const versionMatch = line.match(/^##\s+v?([\d.]+)(?:\s*\(([^)]+)\))?(?:\s*-\s*(.+))?/)
     if (versionMatch) {
       if (currentItem) {
@@ -138,7 +89,6 @@ const parseMarkdown = (content: string): AnnouncementItem[] => {
       continue
     }
 
-    // 匹配章节标题: ### 新功能 / ### 优化 / ### 修复 (可能同一行带列表)
     if (line.startsWith('###')) {
       const sectionLine = line.replace(/^###\s*/, '').trim()
       const inlineMatch = sectionLine.match(/^(.*?)(?:\s*[-*]\s+(.+))$/)
@@ -154,7 +104,6 @@ const parseMarkdown = (content: string): AnnouncementItem[] => {
       continue
     }
 
-    // 匹配列表项: - xxx 或 * xxx
     const listMatch = line.match(/^[-*]\s*(.+)/)
     if (listMatch && currentItem) {
       const text = listMatch[1].trim()
@@ -175,18 +124,7 @@ const parseMarkdown = (content: string): AnnouncementItem[] => {
   return items
 }
 
-onMounted(() => {
-  if (props.visible) {
-    loadChangelog()
-  }
-})
-
-// 监听visible状态,每次打开时重新加载
-watch(() => props.visible, (val: boolean) => {
-  if (val) {
-    loadChangelog()
-  }
-})
+const announcements = computed(() => parseMarkdown(changelogContent))
 </script>
 
 <template>
@@ -209,24 +147,8 @@ watch(() => props.visible, (val: boolean) => {
 
         <!-- 内容区域 -->
         <div class="flex-1 overflow-y-auto custom-scrollbar">
-          <!-- 加载中 -->
-          <div v-if="loading" class="flex items-center justify-center py-12">
-            <div class="text-slate-400 flex items-center gap-2">
-              <svg class="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4" stroke-dashoffset="31.4"/>
-              </svg>
-              加载中...
-            </div>
-          </div>
-
-          <!-- 错误 -->
-          <div v-else-if="error" class="flex flex-col items-center justify-center py-12 text-slate-400">
-            <AlertTriangle :size="48" class="mb-2 opacity-50"/>
-            <p class="text-sm">{{ error }}</p>
-          </div>
-
           <!-- 公告列表 -->
-          <div v-else-if="announcements.length > 0" class="p-5 space-y-4">
+          <div v-if="announcements.length > 0" class="p-5 space-y-4">
             <div v-for="(item, index) in announcements" :key="index"
                  class="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-xl overflow-hidden">
               <!-- 版本头部 -->

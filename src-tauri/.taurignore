@@ -1,0 +1,6 @@
+# Ignore build artifacts and logs
+debug/
+target/
+*.log
+*.tmp
+config.json

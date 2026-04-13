@@ -1,13 +1,22 @@
 {
   "name": "MaaInspector",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
+  "description": "为 MaaFramework 打造的可视化调试工具",
+  "author": "TanYaShue",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix",
+    "type-check": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -26,13 +35,16 @@
     "@tauri-apps/cli": "^2",
     "@types/dagre": "^0.7.53",
     "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.22",
     "baseline-browser-mapping": "^2.10.8",
+    "jsdom": "^29.0.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
+    "vitest": "^3.2.4",
     "vue-tsc": "^2.1.10"
   }
 }

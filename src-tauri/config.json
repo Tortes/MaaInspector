@@ -1,0 +1,25 @@
+{
+  "devices": [],
+  "resource_profiles": [
+    {
+      "name": "New Profile",
+      "paths": [
+        "D:\\DeveProject\\MFWPH\\assets\\resource\\MaaYYs\\resource_pack\\base"
+      ]
+    }
+  ],
+  "current_state": {
+    "device_index": -1,
+    "resource_profile_index": 0,
+    "resource_file": "活动\\周年\\999.json",
+    "resource_source": "\\\\?\\D:\\DeveProject\\MFWPH\\assets\\resource\\MaaYYs\\resource_pack\\base",
+    "agent_socket_id": "",
+    "edge_type": "default",
+    "spacing": "loose",
+    "pipeline_version": "V1"
+  },
+  "default_resource_path": null,
+  "default_socket_id": null,
+  "agent_socket_id": "",
+  "last_connected_device": null
+}

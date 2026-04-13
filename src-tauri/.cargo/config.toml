@@ -1,0 +1,3 @@
+# Configure MaaFramework SDK path
+[env]
+MAA_SDK_PATH = { value = "MAA-win-x86_64-v5.10.0", relative = true }

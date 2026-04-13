@@ -5,3 +5,9 @@ declare module "*.vue" {
   const component: DefineComponent<{}, {}, any>;
   export default component;
 }
+
+// 声明 .md 文件的 raw 导入
+declare module "*.md?raw" {
+  const content: string;
+  export default content;
+}

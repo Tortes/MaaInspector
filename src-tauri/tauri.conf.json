@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MaaInspector",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "identifier": "com.black.maainspector",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,8 +13,12 @@
     "windows": [
       {
         "title": "MaaInspector",
-        "width": 800,
-        "height": 600
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true
       }
     ],
     "security": {
@@ -28,10 +32,15 @@
   },
   "bundle": {
     "active": true,
-    "targets": "nsis",
+    "targets": ["nsis", "msi"],
     "windows": {
       "wix": {
         "language": "zh-CN"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
       }
     },
     "icon": [
@@ -42,8 +51,10 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "python-runtime",
-      "backend"
-    ]
+      "MAA-win-x86_64-v5.10.0"
+    ],
+    "shortDescription": "MaaFramework 可视化调试工具",
+    "longDescription": "MaaInspector 是为 MaaFramework 打造的可视化调试工具，支持流程图编辑、节点调试、设备连接等功能。",
+    "category": "DeveloperTool"
   }
 }

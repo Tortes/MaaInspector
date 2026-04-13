@@ -7,14 +7,30 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output
 dist
 dist-ssr
 *.local
 
+# Tauri
+src-tauri/target
+src-tauri/debug
+src-tauri/MAA-win-x86_64-v*
+src-tauri/WixTools
+src-tauri/*.msi
+src-tauri/*.nsis
+
+# Test coverage
+coverage
+.nyc_output
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo
@@ -23,12 +39,22 @@ dist-ssr
 *.sln
 *.sw?
 
-# Python runtime and temporary files
+# OS files
+Thumbs.db
+.DS_Store
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python (legacy)
 src-tauri/python-runtime/
 get-pip.py
 /test/
-/backend/config/
-/backend/debug/
-/.vscode/
+/backend/
 **/__pycache__/
-backend/config.json
+*.pyc
+
+# Claude Code
+.claude/
