@@ -18,9 +18,58 @@ use maafw::MaaFrameworkWrapper;
 use resources::ResourcesManager;
 use std::sync::Mutex;
 
+/// Load MaaFramework DLL from the correct location
+/// In development: MAA_SDK_PATH or project root
+/// In production: exe_dir/MAA-win-x86_64-v5.10.0/bin/MaaFramework.dll
+fn load_maa_library() -> Result<(), String> {
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Failed to get exe path: {}", e))?;
+    let exe_dir = exe_path.parent()
+        .ok_or("Failed to get exe directory")?;
+
+    // Candidate paths to search for the DLL
+    let candidates: Vec<std::path::PathBuf> = vec![
+        // Packaged location: exe_dir/MAA-win-x86_64-v5.10.0/bin/MaaFramework.dll
+        exe_dir.join("MAA-win-x86_64-v5.10.0").join("bin").join("MaaFramework.dll"),
+        // MAA_SDK_PATH environment variable
+        std::env::var("MAA_SDK_PATH")
+            .map(|p| std::path::PathBuf::from(p).join("bin").join("MaaFramework.dll"))
+            .unwrap_or_else(|_| exe_dir.join("MaaFramework.dll")),
+        // Fallback: exe_dir directly (for dev builds)
+        exe_dir.join("MaaFramework.dll"),
+    ];
+
+    // Find the first existing DLL
+    let dll_path = candidates.iter()
+        .find(|p| p.exists())
+        .cloned();
+
+    match dll_path {
+        Some(path) => {
+            maa_framework::load_library(&path)
+                .map_err(|e| format!("Failed to load MaaFramework.dll from {}: {}", path.display(), e))?;
+            println!("Loaded MaaFramework.dll from: {}", path.display());
+            Ok(())
+        }
+        None => {
+            let tried_paths = candidates.iter()
+                .map(|p| format!("  - {}", p.display()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            Err(format!("MaaFramework.dll not found. Tried:\n{}", tried_paths))
+        }
+    }
+}
+
 /// Tauri library entry point
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load MaaFramework DLL before using any API
+    if let Err(e) = load_maa_library() {
+        eprintln!("ERROR: {}", e);
+        panic!("Failed to load MaaFramework library: {}", e);
+    }
+
     let maafw = Mutex::new(MaaFrameworkWrapper::new());
     let resources_manager: Mutex<Option<ResourcesManager>> = Mutex::new(None);
     let config_dir = "./".to_string();
