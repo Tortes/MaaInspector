@@ -24,6 +24,7 @@ src-tauri/MAA-win-x86_64-v*
 src-tauri/WixTools
 src-tauri/*.msi
 src-tauri/*.nsis
+src-tauri/config.json
 
 # Test coverage
 coverage
