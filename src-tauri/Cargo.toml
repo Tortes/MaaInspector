@@ -53,8 +53,8 @@ windows-sys = { version = "0.59.0", features = [
 ] }
 
 [profile.release]
-lto = true
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 panic = "abort"
 strip = true
 
