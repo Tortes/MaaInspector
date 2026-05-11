@@ -40,6 +40,21 @@ const emit = defineEmits<{
   (e: 'save-with-deletions'): void
 }>()
 
+const handleReorderImages = (newImages: ImageItem[]) => {
+  localImages.value = newImages
+}
+
+const handleBatchDelete = (paths: string[]) => {
+  paths.forEach(path => {
+    deleteFromImages(path)
+    deleteFromTempImages(path)
+  })
+}
+
+const handleBatchRestore = (paths: string[]) => {
+  paths.forEach(path => restoreImage(path))
+}
+
 // 状态
 const saveImagePath = ref<string>('')
 const imageCounter = ref<number>(1)
@@ -397,6 +412,9 @@ saveImagePath.value = generateDefaultSavePath()
         @delete-image="deleteFromImages"
         @delete-temp="deleteFromTempImages"
         @restore-image="restoreImage"
+        @reorder="handleReorderImages"
+        @batch-delete="handleBatchDelete"
+        @batch-restore="handleBatchRestore"
       />
 
     </div>

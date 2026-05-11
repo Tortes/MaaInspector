@@ -15,15 +15,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Timeout for controller operations (screencap, connection, etc.)
-const CONTROLLER_TIMEOUT_MS: u64 = 5000;
+const CONTROLLER_TIMEOUT_MS: u64 = 30000;
+/// Timeout for connection operations (longer for emulators)
+const CONNECTION_TIMEOUT_MS: u64 = 60000;
 /// Poll interval for checking operation status
 const STATUS_POLL_INTERVAL_MS: u64 = 50;
 
 /// Wait for controller operation with timeout
 /// Returns true if operation succeeded, false if failed or timed out
-fn wait_with_timeout(controller: &Controller, id: i64) -> bool {
+fn wait_with_timeout(controller: &Controller, id: i64, timeout_ms: u64) -> bool {
     let start = Instant::now();
-    let timeout = Duration::from_millis(CONTROLLER_TIMEOUT_MS);
+    let timeout = Duration::from_millis(timeout_ms);
     let poll_interval = Duration::from_millis(STATUS_POLL_INTERVAL_MS);
 
     loop {
@@ -44,13 +46,23 @@ fn wait_with_timeout(controller: &Controller, id: i64) -> bool {
         if start.elapsed() > timeout {
             eprintln!(
                 "Controller operation timeout after {}ms",
-                CONTROLLER_TIMEOUT_MS
+                timeout_ms
             );
             return false;
         }
 
         std::thread::sleep(poll_interval);
     }
+}
+
+/// Wait for controller operation with default timeout
+fn wait_with_default_timeout(controller: &Controller, id: i64) -> bool {
+    wait_with_timeout(controller, id, CONTROLLER_TIMEOUT_MS)
+}
+
+/// Wait for connection operation with longer timeout
+fn wait_for_connection(controller: &Controller, id: i64) -> bool {
+    wait_with_timeout(controller, id, CONNECTION_TIMEOUT_MS)
 }
 
 /// MaaFramework wrapper - equivalent to Python MaaFW class
@@ -135,7 +147,7 @@ impl MaaFrameworkWrapper {
         match Controller::new_adb(adb_path, address, &config_str, "") {
             Ok(ctrl) => match ctrl.post_connection() {
                 Ok(id) => {
-                    if !wait_with_timeout(&ctrl, id) {
+                    if !wait_for_connection(&ctrl, id) {
                         (false, Some(format!("Connection timeout or failed for {}", address)))
                     } else {
                         self.controller = Some(ctrl);
@@ -172,7 +184,7 @@ impl MaaFrameworkWrapper {
                 // Post connection and wait with timeout
                 match ctrl.post_connection() {
                     Ok(id) => {
-                        if !wait_with_timeout(&ctrl, id) {
+                        if !wait_for_connection(&ctrl, id) {
                             (false, Some(format!("Connection timeout or failed for hwnd {}", hwnd)))
                         } else {
                             self.controller = Some(ctrl);
@@ -341,7 +353,7 @@ impl MaaFrameworkWrapper {
         match controller.post_screencap() {
             Ok(id) => {
                 // Use timeout wait instead of blocking wait
-                if !wait_with_timeout(controller, id) {
+                if !wait_with_default_timeout(controller, id) {
                     eprintln!("Screencap timeout or failed");
                     return None;
                 }

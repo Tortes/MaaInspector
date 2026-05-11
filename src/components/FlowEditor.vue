@@ -59,7 +59,8 @@ const {
   handleConnect, handleEdgesChange, handleNodeUpdate, loadNodes, createNodeObject, applyLayout,
   getNodesData, getImageData, clearTempImageData, clearDirty, markDataChanged,
   setNodeStatus, selectNodeById,
-  setEdgeJumpBack, layoutChainFromNode // 引入新功能
+  setEdgeJumpBack, layoutChainFromNode,
+  imageManager
 } = useFlowGraph()
 const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
 
@@ -363,21 +364,14 @@ const isSpacingKey = (value: unknown): value is SpacingKey => value === 'compact
 const handleLoadImages = (imageDataMap: Record<string, unknown>) => {
   if (!imageDataMap) return
   const nodeList = nodes.value
-  let hasChanges = false
 
   for (let i = 0; i < nodeList.length; i++) {
     const node = nodeList[i]
     const images = imageDataMap[node.id]
 
     if (isTemplateImageArray(images)) {
-      const meta = node.data || { id: node.id, type: node.type || 'custom', data: {} }
-      nodeList[i] = { ...node, data: { ...meta, _images: images } }
-      hasChanges = true
+      imageManager.setNodeImages(node.id, images)
     }
-  }
-
-  if (hasChanges) {
-    nodes.value = [...nodeList]
   }
 }
 

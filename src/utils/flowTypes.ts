@@ -21,6 +21,11 @@ export interface UsedImageInfo {
   used_by: string[]
 }
 
+export interface ImageCacheEntry {
+  path: string
+  base64: string
+}
+
 export interface FlowBusinessData {
   id?: string
   recognition?: string

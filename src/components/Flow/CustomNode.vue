@@ -3,7 +3,9 @@ import { computed, ref, inject, watch, type Ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { Anchor as AnchorIcon } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
+import LazyImage from '../Common/LazyImage.vue'
 import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic'
+import { useImageManager } from '../../utils/useImageManager'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload } from '../../utils/flowTypes'
 
 const props = defineProps<{
@@ -16,6 +18,8 @@ const updateNode = inject<(payload: NodeUpdatePayload) => void>('updateNode', ()
 const closeAllDetailsSignal = inject<Ref<number>>('closeAllDetailsSignal', ref(0))
 const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
 const pipelineVersion = inject<Ref<'V1' | 'V2'>>('pipelineVersion', ref('V1'))
+
+const imageManager = useImageManager()
 
 // 获取 UI 配置
 const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MAP['DirectHit'])
@@ -79,8 +83,7 @@ const nodeImages = computed<TemplateImage[]>(() => {
   const paths = Array.isArray(template) ? template : (typeof template === 'string' ? [template] : [])
   if (!paths.length) return []
 
-  const allImages = [...(props.data._images || []), ...(props.data._temp_images || [])] as TemplateImage[]
-  return allImages.filter(img => img.found && img.base64 && img.path && paths.includes(img.path)).slice(0, 16)
+  return imageManager.getImagesForDisplayWithCache(props.id, paths)
 })
 
 // Grid 样式计算
@@ -179,7 +182,7 @@ const contentHeightClass = computed(() => {
                   v-memo="[img.path, img.base64, idx < gridCols, idx < nodeImages.length - gridCols]"
                   class="relative overflow-hidden border-white/50 group/img"
                   :class="{ 'border-r': (idx + 1) % gridCols !== 0, 'border-b': idx < nodeImages.length - gridCols }">
-                <img :src="img.base64" class="w-full h-full object-fill transform hover:scale-110 transition-transform duration-300"/>
+                <LazyImage :src="img.base64" className="w-full h-full object-fill transform hover:scale-110 transition-transform duration-300"/>
                 <div class="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-end justify-center p-1 pointer-events-none">
                   <span class="text-[9px] text-white font-mono truncate w-full text-center leading-tight">{{ getFileName(img.path) }}</span>
                 </div>

@@ -10,6 +10,7 @@ import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
 import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic'
+import { useImageManager } from '../../utils/useImageManager'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage } from '../../utils/flowTypes'
 
 type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
@@ -48,6 +49,8 @@ const {
   getArrayList, setArrayList, updateJsonFromForm, handleJsonInput,
   focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
 } = formMethods
+
+const imageManager = useImageManager()
 
 // UI 状态
 const activeTab = ref('basic')
@@ -270,9 +273,11 @@ const normalizeTemplateTarget = (payload?: TemplateTargetPayload): TemplateTarge
 const openImageManager = (payload?: TemplateTargetPayload) => {
   const templateTarget = normalizeTemplateTarget(payload)
   const targetPaths = getTargetTemplatePaths(templateTarget)
-  const images = toImageItems(props.nodeData?._images)
-  const tempImages = toImageItems(props.nodeData?._temp_images)
-  const deletedImages = toImageItems(props.nodeData?._del_images)
+  const nodeId = props.nodeId || ''
+  
+  const images = toImageItems(imageManager.getNodeSavedImages(nodeId))
+  const tempImages = toImageItems(imageManager.getNodeTempImages(nodeId))
+  const deletedImages = toImageItems(imageManager.getNodeDeletedImages(nodeId))
 
   deviceScreenConfig.mode = 'image_manager'
   deviceScreenConfig.title = '模板图片管理'
@@ -284,7 +289,7 @@ const openImageManager = (payload?: TemplateTargetPayload) => {
   deviceScreenConfig.tempImageList = filterImagesByPaths(tempImages, targetPaths)
   deviceScreenConfig.deletedImageList = filterImagesByPaths(deletedImages, targetPaths)
   deviceScreenConfig.filename = props.currentFilename || ''
-  deviceScreenConfig.nodeId = props.nodeId || ''
+  deviceScreenConfig.nodeId = nodeId
   deviceScreenConfig.templateTarget = templateTarget
   showDeviceScreen.value = true
 }

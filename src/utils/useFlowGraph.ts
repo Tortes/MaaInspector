@@ -2,6 +2,7 @@
 import { ref, shallowRef, triggerRef, markRaw, computed } from 'vue'
 import { useVueFlow, MarkerType } from '@vue-flow/core'
 import { useLayout } from './useLayout'
+import { useImageManager } from './useImageManager'
 import { SPACING_OPTIONS, type EdgeType } from './flowOptions'
 import type {
   FlowBusinessData,
@@ -39,6 +40,8 @@ export function useFlowGraph() {
   const selectedNodeId = ref<string | null>(null)
 
   const nodeTypes = { custom: markRaw(CustomNode) }
+  
+  const imageManager = useImageManager()
 
   const PORT_MAPPING: Record<string, PortMapping> = {
     'source-a': { field: 'next', type: 'array', color: '#3b82f6' },
@@ -481,9 +484,9 @@ export function useFlowGraph() {
     if (action === 'delete_images' || (action === 'save_screenshot' && Array.isArray((actionData as Record<string, unknown>).deletePaths))) {
       const deletePaths = (actionData as Record<string, unknown>).deletePaths as string[] || []
       if (!deletePaths.length) return
-      const currentImages = meta._images || []
-      meta._del_images = [...(meta._del_images || []), ...currentImages.filter(img => deletePaths.includes(img.path))]
-      meta._images = currentImages.filter(img => !deletePaths.includes(img.path))
+      
+      deletePaths.forEach(path => imageManager.deleteImage(node.id, path))
+      
       if (templateTarget) {
         deletePaths.forEach(path => {
           updateCompositeTemplate(meta, templateTarget, current => current.filter(p => p !== path))
@@ -496,8 +499,9 @@ export function useFlowGraph() {
     if (action === 'add_temp_image') {
       const { imagePath, imageBase64 } = actionData as Record<string, string>
       if (!imagePath || !imageBase64) return
-      if (!meta._temp_images) meta._temp_images = []
-      meta._temp_images.push({ path: imagePath, base64: imageBase64, found: true })
+      
+      imageManager.addTempImage(node.id, imagePath, imageBase64)
+      
       if (templateTarget) {
         updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])
       } else {
@@ -507,30 +511,23 @@ export function useFlowGraph() {
 
     if (action === 'restore_image') {
       const { imagePath } = actionData as Record<string, string>
-      const delImages = meta._del_images || []
-      const imageToRestore = delImages.find(img => img.path === imagePath)
-      if (imageToRestore) {
-        meta._del_images = delImages.filter(img => img.path !== imagePath)
-        if (!meta._images) meta._images = []
-        meta._images.push(imageToRestore)
-        if (templateTarget) {
-          updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])
-        } else {
-          modifyTemplatePath(meta, imagePath, 'add')
-        }
+      imageManager.restoreImage(node.id, imagePath)
+      
+      if (templateTarget) {
+        updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])
+      } else {
+        modifyTemplatePath(meta, imagePath, 'add')
       }
     }
 
     if (action === 'save_image_changes') {
-      const { validPaths, images, tempImages, deletedImages } = actionData as Record<string, unknown> & {
+      const { validPaths, images } = actionData as Record<string, unknown> & {
         validPaths?: string[]
         images?: unknown[]
-        tempImages?: unknown[]
-        deletedImages?: unknown[]
       }
-      meta._images = (images as TemplateImage[]) || []
-      meta._temp_images = (tempImages as TemplateImage[]) || []
-      meta._del_images = (deletedImages as TemplateImage[]) || []
+      
+      imageManager.setNodeImages(node.id, (images as TemplateImage[]) || [])
+      
       if (!meta.data) meta.data = {}
       if (templateTarget) {
         updateCompositeTemplate(meta, templateTarget, () => (validPaths && validPaths.length ? [...validPaths] : []))
@@ -615,28 +612,11 @@ export function useFlowGraph() {
   }
 
   const getImageData = (): ImageDataPayload => {
-    const delImages: ImageDataPayload['delImages'] = []
-    const tempImages: ImageDataPayload['tempImages'] = []
-    nodes.value.forEach(node => {
-      if (node.data?._isMissing) return
-      node.data?._del_images?.forEach(img => img.path && delImages.push({ path: img.path, nodeId: node.id }))
-      node.data?._temp_images?.forEach(img => img.path && img.base64 && tempImages.push({ path: img.path, base64: img.base64, nodeId: node.id }))
-    })
-    return { delImages, tempImages }
+    return imageManager.getImageData()
   }
 
   const clearTempImageData = () => {
-    nodes.value.forEach(node => {
-      const meta = ensureNodeMeta(node)
-      if (!meta || meta._isMissing) return
-      if (meta._temp_images?.length) {
-        if (!meta._images) meta._images = []
-        meta._images.push(...meta._temp_images)
-        meta._temp_images = []
-      }
-      meta._del_images = []
-    })
-    triggerRef(nodes)
+    imageManager.clearTempImageData()
   }
 
   const layoutChainFromNode = (startId: string, spacingKey: SpacingKey = currentSpacing.value) => {
@@ -677,7 +657,8 @@ export function useFlowGraph() {
       applyLayoutOnRefs(nodes, edges, k || currentSpacing.value)
       setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50)
     },
-    layoutChainFromNode
+    layoutChainFromNode,
+    imageManager
   }
 }
 

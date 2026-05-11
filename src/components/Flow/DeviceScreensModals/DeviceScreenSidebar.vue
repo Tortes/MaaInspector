@@ -42,6 +42,9 @@ const emit = defineEmits<{
   (e: 'delete-image', path: string): void
   (e: 'delete-temp', path: string): void
   (e: 'restore-image', path: string): void
+  (e: 'reorder', images: TemplateImage[]): void
+  (e: 'batch-delete', paths: string[]): void
+  (e: 'batch-restore', paths: string[]): void
 }>()
 
 // 复制选区数据
@@ -238,6 +241,9 @@ const handleApply = (edited: string) => {
           @delete-image="$emit('delete-image', $event)"
           @delete-temp="$emit('delete-temp', $event)"
           @restore="$emit('restore-image', $event)"
+          @reorder="$emit('reorder', $event)"
+          @batch-delete="$emit('batch-delete', $event)"
+          @batch-restore="$emit('batch-restore', $event)"
         />
 
         <div class="p-3 border-t border-slate-200 bg-white space-y-2 shrink-0">
