@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { ref, provide, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, provide, onMounted, onBeforeUnmount, computed, defineAsyncComponent } from 'vue'
 import { VueFlow, useVueFlow, Panel, type EdgeMouseEvent, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { FolderSearch } from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
-import NodeSearch from './Flow/NodeSearch.vue'
-import NodeDebugPanel from './Flow/NodeDebugPanel.vue'
-import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
-import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue'
+
+// 懒加载非关键组件
+const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
+const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
+const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
+const DeleteImagesConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/DeleteImagesConfirmModal.vue'))
+
 import { useFlowGraph } from '../utils/useFlowGraph'
 import { toPipelineV2Nodes } from '../utils/pipelineTransform'
 import { resourceApi ,debugApi } from '../services/api'
@@ -464,6 +467,7 @@ const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'st
     <VueFlow
         v-model:nodes="nodes" v-model:edges="edges" :node-types="nodeTypesObject"
         :default-zoom="1" :min-zoom="0.1" :max-zoom="4" fit-view-on-init
+        :only-render-visible-elements="true"
         :is-valid-connection="onValidateConnection"
         :nodes-draggable="isFileLoaded" :nodes-connectable="isFileLoaded" :elements-selectable="isFileLoaded"
         @connect="handleConnect" @edges-change="handleEdgesChange"

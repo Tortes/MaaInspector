@@ -350,7 +350,7 @@ saveImagePath.value = generateDefaultSavePath()
 <template>
   <div v-if="visible"
        class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-       @click.self="handleBackgroundClick">
+       @mousedown.self="handleBackgroundClick">
     <div
         class="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
         :class="props.mode === 'image_manager' ? 'max-w-[98vw]' : 'max-w-[95vw]'"

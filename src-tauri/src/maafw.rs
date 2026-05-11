@@ -12,6 +12,46 @@ use maa_framework::tasker::Tasker;
 use maa_framework::toolkit::Toolkit;
 use maa_framework::{set_debug_mode, sys};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+/// Timeout for controller operations (screencap, connection, etc.)
+const CONTROLLER_TIMEOUT_MS: u64 = 5000;
+/// Poll interval for checking operation status
+const STATUS_POLL_INTERVAL_MS: u64 = 50;
+
+/// Wait for controller operation with timeout
+/// Returns true if operation succeeded, false if failed or timed out
+fn wait_with_timeout(controller: &Controller, id: i64) -> bool {
+    let start = Instant::now();
+    let timeout = Duration::from_millis(CONTROLLER_TIMEOUT_MS);
+    let poll_interval = Duration::from_millis(STATUS_POLL_INTERVAL_MS);
+
+    loop {
+        // Check status (non-blocking)
+        let status = controller.status(id);
+
+        // Use sys constants to determine status
+        // MaaStatus_Succeeded = 3000, MaaStatus_Failed = 4000, MaaStatus_Invalid = 0
+        if status.succeeded() {
+            return true;
+        }
+        if status.failed() {
+            eprintln!("Controller operation failed");
+            return false;
+        }
+
+        // Pending or Running - check timeout
+        if start.elapsed() > timeout {
+            eprintln!(
+                "Controller operation timeout after {}ms",
+                CONTROLLER_TIMEOUT_MS
+            );
+            return false;
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+}
 
 /// MaaFramework wrapper - equivalent to Python MaaFW class
 pub struct MaaFrameworkWrapper {
@@ -95,12 +135,11 @@ impl MaaFrameworkWrapper {
         match Controller::new_adb(adb_path, address, &config_str, "") {
             Ok(ctrl) => match ctrl.post_connection() {
                 Ok(id) => {
-                    let status = ctrl.wait(id);
-                    if status.succeeded() {
+                    if !wait_with_timeout(&ctrl, id) {
+                        (false, Some(format!("Connection timeout or failed for {}", address)))
+                    } else {
                         self.controller = Some(ctrl);
                         (true, None)
-                    } else {
-                        (false, Some(format!("Failed to connect to {}", address)))
                     }
                 }
                 Err(e) => (false, Some(format!("Connection error: {}", e))),
@@ -130,15 +169,14 @@ impl MaaFrameworkWrapper {
 
         match Controller::new_win32(hwnd as *mut std::ffi::c_void, screencap, mouse, keyboard) {
             Ok(ctrl) => {
-                // Post connection and wait
+                // Post connection and wait with timeout
                 match ctrl.post_connection() {
                     Ok(id) => {
-                        let status = ctrl.wait(id);
-                        if status.succeeded() {
+                        if !wait_with_timeout(&ctrl, id) {
+                            (false, Some(format!("Connection timeout or failed for hwnd {}", hwnd)))
+                        } else {
                             self.controller = Some(ctrl);
                             (true, None)
-                        } else {
-                            (false, Some(format!("Failed to connect to hwnd {}", hwnd)))
                         }
                     }
                     Err(e) => (false, Some(format!("Connection error: {}", e))),
@@ -302,8 +340,9 @@ impl MaaFrameworkWrapper {
         // Post screencap
         match controller.post_screencap() {
             Ok(id) => {
-                let status = controller.wait(id);
-                if !status.succeeded() {
+                // Use timeout wait instead of blocking wait
+                if !wait_with_timeout(controller, id) {
+                    eprintln!("Screencap timeout or failed");
                     return None;
                 }
 

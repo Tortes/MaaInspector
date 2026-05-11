@@ -5,6 +5,8 @@ import {
   Terminal, Activity, CheckCircle2, XCircle
 } from 'lucide-vue-next'
 import { deviceApi, debugApi } from '../../services/api.ts'
+import { withCache } from '../../services/cache.ts'
+import { createThrottledHandler } from '../../utils/throttle'
 import type { FlowNode } from '../../utils/flowTypes'
 
 // ... (原有类型定义保持不变) ...
@@ -89,7 +91,6 @@ const searchValue = ref('')
 const selectedNodeId = ref('')
 const isOptionOpen = ref(false)
 const previewUrl = ref('')
-const isLoadingPreview = ref(false)
 const events = ref<DebugEventRecord[]>([])
 const isStreamRunning = ref(false)
 const selectedDetail = ref<{
@@ -110,6 +111,7 @@ const fullImagePreview = ref<{ visible: boolean; src: string }>({ visible: false
 
 let stopStream: (() => void) | null = null
 let previewTimer: ReturnType<typeof setInterval> | null = null
+let isFetchingPreview = false // Prevent concurrent screenshot requests
 
 // ... (computed 保持不变) ...
 const nodeOptions = computed(() => (props.nodes || []).map(node => ({
@@ -198,18 +200,22 @@ const stopResize = () => {
 // ... (原有业务逻辑 fetchPreview, upsertNextList 等保持不变) ...
 
 const fetchPreview = async () => {
-  if (isLoadingPreview.value) return
-  isLoadingPreview.value = true
+  if (isFetchingPreview) return // Prevent request pile-up
+  isFetchingPreview = true
   try {
-    const res = await deviceApi.getScreenshot({
-      context: { feature: 'device', action: 'screenshot', component: 'NodeDebugPanel' }
-    })
+    const res = await withCache(
+      'device-preview',
+      () => deviceApi.getScreenshot({
+        context: { feature: 'device', action: 'screenshot', component: 'NodeDebugPanel' }
+      }),
+      1000 // 1秒缓存
+    )
     previewUrl.value = (res as any)?.image || (res as any)?.data || ''
   } catch (e) {
     console.warn('[DebugPanel] 获取设备预览失败，使用占位图', e)
     previewUrl.value = ''
   } finally {
-    isLoadingPreview.value = false
+    isFetchingPreview = false
   }
 }
 
@@ -339,7 +345,8 @@ const applyRecognition = (payload: RecognitionPayload) => {
   if (mapped) emit('update-node-status', { nodeId: targetName, status: mapped })
 }
 
-const handleSsePayload = (payload: SsePayload) => {
+// SSE 事件处理（带节流）
+const processSsePayload = (payload: SsePayload) => {
   if (!payload || !payload.type) return
   if (payload.type === 'node_next_list') {
     upsertNextList(payload)
@@ -348,6 +355,15 @@ const handleSsePayload = (payload: SsePayload) => {
     applyRecognition(payload)
   }
 }
+
+// 创建节流处理器（50ms 节流，批处理大小 10）
+const throttledSseHandler = createThrottledHandler(processSsePayload, {
+  throttleMs: 50,
+  batchSize: 10,
+  enableBatch: true
+})
+
+const handleSsePayload = throttledSseHandler.handler
 
 const startRealtimeStream = () => {
   if (isStreamRunning.value) return
@@ -585,6 +601,7 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', stopResize)
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mousemove', onResize)
+  throttledSseHandler.clear() // 清理节流队列
   stopRealtimeStream()
   stopPreviewAutoRefresh()
 })

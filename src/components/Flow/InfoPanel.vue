@@ -7,6 +7,7 @@ import {
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
+import {withCache} from '../../services/cache.ts'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '../../utils/pipelineTransform'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
@@ -339,13 +340,17 @@ const handleFileSelectChange = (newFileId: string) => {
   })
 }
 
-// --- 设备截图逻辑 ---
+// --- 设备截图逻辑（带缓存） ---
 const fetchDeviceScreenshot = async () => {
   if (deviceCtrl.status !== 'connected') return
   try {
-    const res = await deviceApi.getScreenshot({
-      context: { feature: 'device', action: 'screenshot', component: 'InfoPanel' }
-    })
+    const res = await withCache(
+      'device-screenshot',
+      () => deviceApi.getScreenshot({
+        context: { feature: 'device', action: 'screenshot', component: 'InfoPanel' }
+      }),
+      1000 // 1秒缓存
+    )
     // image 字段直接在响应对象上
     if (res.success && res.image) {
       deviceScreenshot.value = res.image
