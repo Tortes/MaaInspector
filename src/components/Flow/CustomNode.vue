@@ -137,8 +137,8 @@ const contentHeightClass = computed(() => {
           <component v-if="config.icon" :is="config.icon" :size="18"/>
         </div>
         <div>
-          <div class="font-bold text-slate-700 text-sm truncate max-w-[160px] flex items-center gap-1" :title="data.id">
-            <span class="truncate">{{ data.id }}</span>
+          <div class="font-bold text-slate-700 text-sm truncate max-w-[160px] flex items-center gap-1" :title="data._originalId || data.id">
+            <span class="truncate">{{ data._originalId || data.id }}</span>
             <AnchorIcon v-if="isAnchor" :size="12" class="text-amber-500 shrink-0" title="锚点节点" />
           </div>
           <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1">{{ config.label }}</div>
