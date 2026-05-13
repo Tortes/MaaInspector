@@ -63,8 +63,8 @@ const applyIdChange = () => {
   
   if (props.data._isMissing && props.data._originalId && props.data._originalId !== props.id) {
     const confirmed = window.confirm(
-      `This is a duplicate missing node (original ID: "${props.data._originalId}"). ` +
-      `Renaming will only affect this instance. Do you want to continue?`
+      `这是一个重复的缺失节点（原始 ID: "${props.data._originalId}"）。` +
+      `重命名仅会影响此实例。是否继续？`
     )
     if (!confirmed) {
       editingId.value = props.id
