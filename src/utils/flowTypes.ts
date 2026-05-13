@@ -44,6 +44,7 @@ export interface FlowNodeMeta {
   type: string
   data?: FlowBusinessData
   _isMissing?: boolean
+  _originalId?: string
   status?: 'idle' | 'running' | 'error' | 'success' | string
   _result?: unknown
   _images?: TemplateImage[]
