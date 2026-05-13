@@ -32,6 +32,9 @@ importers:
       element-plus:
         specifier: ^2.11.7
         version: 2.13.1(vue@3.5.27(typescript@5.6.3))
+      elkjs:
+        specifier: ^0.11.1
+        version: 0.11.1
       lucide-vue-next:
         specifier: ^0.554.0
         version: 0.554.0(vue@3.5.27(typescript@5.6.3))
@@ -968,6 +971,9 @@ packages:
     resolution: {integrity: sha512-eG4BDBGdAsUGN6URH1PixzZb0ngdapLivIk1meghS1uEueLvQ3aljSKrCt5x6sYb6mUk8eGtzTQFgsPmLavQcA==}
     peerDependencies:
       vue: ^3.3.0
+
+  elkjs@0.11.1:
+    resolution: {integrity: sha512-zxxR9k+rx5ktMwT/FwyLdPCrq7xN6e4VGGHH8hA01vVYKjTFik7nHOxBnAYtrgYUB1RpAiLvA1/U2YraWxyKKg==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -2395,6 +2401,8 @@ snapshots:
       vue: 3.5.27(typescript@5.6.3)
     transitivePeerDependencies:
       - '@vue/composition-api'
+
+  elkjs@0.11.1: {}
 
   emoji-regex@8.0.0: {}
 

@@ -1,6 +1,8 @@
 import type { Connection, Edge, EdgeChange, Node } from '@vue-flow/core'
 
-export type SpacingKey = 'compact' | 'normal' | 'loose'
+export type SpacingKey = 'very-compact' | 'compact' | 'normal' | 'loose' | 'extra-loose'
+export type LayoutAlgorithm = 'layered' | 'stress' | 'mrtree'
+export type LayoutDirection = 'TB' | 'LR'
 export type MenuType = 'pane' | 'node' | 'edge'
 export type NodeStatus = 'success' | 'error' | 'running' | 'ignored' | null
 

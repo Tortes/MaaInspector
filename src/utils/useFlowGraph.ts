@@ -1,7 +1,7 @@
 // src/composables/useFlowGraph.ts
 import { ref, shallowRef, triggerRef, markRaw, computed } from 'vue'
 import { useVueFlow, MarkerType } from '@vue-flow/core'
-import { useLayout } from './useLayout'
+import { useLayout, type LayoutOptions } from './useLayout'
 import { useImageManager } from './useImageManager'
 import { SPACING_OPTIONS, type EdgeType } from './flowOptions'
 import type {
@@ -16,6 +16,8 @@ import type {
   NodeStatus,
   NodeUpdatePayload,
   SpacingKey,
+  LayoutAlgorithm,
+  LayoutDirection,
   TemplateImage
 } from './flowTypes'
 import CustomNode from '../components/Flow/CustomNode.vue'
@@ -33,6 +35,8 @@ export function useFlowGraph() {
   const edges = shallowRef<FlowEdge[]>([])
   const currentEdgeType = ref<EdgeType>('smoothstep')
   const currentSpacing = ref<SpacingKey>('normal')
+  const currentAlgorithm = ref<LayoutAlgorithm>('layered')
+  const currentDirection = ref<LayoutDirection>('TB')
   const currentFilename = ref('')
   const currentSource = ref('')
   const originalDataSnapshot = ref('')
@@ -50,11 +54,9 @@ export function useFlowGraph() {
 
   const { addEdges, removeEdges, findNode, fitView } = useVueFlow()
   const {
-    layout,
-    layoutWithSpacing,
+    elkLayout,
     applyLayoutOnRefs,
-    applyOrderedChainLayout,
-    getSpacingConfig
+    applyOrderedChainLayout
   } = useLayout()
 
   const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
@@ -587,24 +589,35 @@ export function useFlowGraph() {
 
     normalizeLinksAcrossNodes(newNodes)
 
-    const layoutedNodes = layoutWithSpacing(newNodes, newEdges, getSpacingConfig())
-    nodes.value = layoutedNodes
-    edges.value = newEdges
-    triggerRef(nodes)
-    triggerRef(edges)
+    const layoutOptions: LayoutOptions = {
+      algorithm: currentAlgorithm.value,
+      direction: currentDirection.value,
+      spacing: currentSpacing.value
+    }
+    elkLayout(newNodes, newEdges, layoutOptions).then(layoutedNodes => {
+      nodes.value = layoutedNodes
+      edges.value = newEdges
+      triggerRef(nodes)
+      triggerRef(edges)
 
-    currentFilename.value = filename || ''
-    currentSource.value = source || ''
+      currentFilename.value = filename || ''
+      currentSource.value = source || ''
 
-    const snapshot = JSON.stringify(getNodesData())
-    dataSnapshot.value = snapshot
-    originalDataSnapshot.value = snapshot
-    selectedNodeId.value = null
-    setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
+      const snapshot = JSON.stringify(getNodesData())
+      dataSnapshot.value = snapshot
+      originalDataSnapshot.value = snapshot
+      selectedNodeId.value = null
+      setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
+    })
   }
 
-  const layoutTaskChain = (rootId: string) => {
-    const result = applyOrderedChainLayout(nodes, edges, rootId, currentSpacing.value)
+  const layoutTaskChain = async (rootId: string) => {
+    const layoutOptions: LayoutOptions = {
+      algorithm: currentAlgorithm.value,
+      direction: currentDirection.value,
+      spacing: currentSpacing.value
+    }
+    const result = await applyOrderedChainLayout(nodes, edges, rootId, layoutOptions)
     if (!result) return
 
     const { chainIds } = result
@@ -619,8 +632,13 @@ export function useFlowGraph() {
     imageManager.clearTempImageData()
   }
 
-  const layoutChainFromNode = (startId: string, spacingKey: SpacingKey = currentSpacing.value) => {
-    const result = applyOrderedChainLayout(nodes, edges, startId, spacingKey)
+  const layoutChainFromNode = async (startId: string, spacingKey: SpacingKey = currentSpacing.value) => {
+    const layoutOptions: LayoutOptions = {
+      algorithm: currentAlgorithm.value,
+      direction: currentDirection.value,
+      spacing: spacingKey
+    }
+    const result = await applyOrderedChainLayout(nodes, edges, startId, layoutOptions)
     if (!result) return
 
     const { chainIds } = result
@@ -633,6 +651,8 @@ export function useFlowGraph() {
     nodeTypes,
     currentEdgeType,
     currentSpacing,
+    currentAlgorithm,
+    currentDirection,
     isDirty,
     currentFilename,
     currentSource,
@@ -652,9 +672,14 @@ export function useFlowGraph() {
     markDataChanged,
     setNodeStatus,
     selectNodeById,
-    layout,
-    applyLayout: (k?: SpacingKey) => {
-      applyLayoutOnRefs(nodes, edges, k || currentSpacing.value)
+    elkLayout,
+    applyLayout: async (options?: Partial<LayoutOptions>) => {
+      const layoutOptions: LayoutOptions = {
+        algorithm: options?.algorithm || currentAlgorithm.value,
+        direction: options?.direction || currentDirection.value,
+        spacing: options?.spacing || currentSpacing.value
+      }
+      await applyLayoutOnRefs(nodes, edges, layoutOptions)
       setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50)
     },
     layoutChainFromNode,

@@ -16,7 +16,7 @@ const DeleteImagesConfirmModal = defineAsyncComponent(() => import('./Flow/Modal
 import { useFlowGraph } from '../utils/useFlowGraph'
 import { toPipelineV2Nodes } from '../utils/pipelineTransform'
 import { resourceApi ,debugApi } from '../services/api'
-import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, TemplateImage, MenuType, NodeStatus, UsedImageInfo, LoadNodesPayload } from '../utils/flowTypes'
+import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, TemplateImage, MenuType, NodeStatus, UsedImageInfo, LoadNodesPayload } from '../utils/flowTypes'
 import type { EdgeType } from '../utils/flowOptions'
 
 type DebugMode = 'standard' | 'recognition_only'
@@ -54,7 +54,7 @@ interface PendingSaveConfig {
 }
 
 const {
-  nodes, edges, nodeTypes, currentEdgeType, currentSpacing, isDirty, currentFilename, currentSource,
+  nodes, edges, nodeTypes, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection, isDirty, currentFilename, currentSource,
   onValidateConnection,
   handleConnect, handleEdgesChange, handleNodeUpdate, loadNodes, createNodeObject, applyLayout,
   getNodesData, getImageData, clearTempImageData, clearDirty, markDataChanged,
@@ -169,7 +169,7 @@ type MenuAction = {
   action: string
   type: MenuType
   data: FlowNode | FlowEdge | null
-  payload?: string | EdgeType | SpacingKey | null
+  payload?: string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection | null
 }
 
 const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
@@ -267,9 +267,15 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
         layoutChainFromNode(data.id, currentSpacing.value)
       }
       break
-    case 'layout': applyLayout(currentSpacing.value); break
+    case 'layout': applyLayout(); break
+    case 'changeAlgorithm':
+      if (isLayoutAlgorithm(payload)) { currentAlgorithm.value = payload; applyLayout({ algorithm: payload }) }
+      break
+    case 'changeDirection':
+      if (isLayoutDirection(payload)) { currentDirection.value = payload; applyLayout({ direction: payload }) }
+      break
     case 'changeSpacing':
-      if (isSpacingKey(payload)) { currentSpacing.value = payload; applyLayout(payload) }
+      if (isSpacingKey(payload)) { currentSpacing.value = payload; applyLayout({ spacing: payload }) }
       break
     case 'changeEdgeType':
       if (isEdgeType(payload)) { currentEdgeType.value = payload; edges.value = edges.value.map(e => ({ ...e, type: payload })) }
@@ -359,7 +365,12 @@ const isUsedImageInfoArray = (value: unknown): value is UsedImageInfo[] => {
   )
 }
 const isEdgeType = (value: unknown): value is EdgeType => value === 'smoothstep' || value === 'default'
-const isSpacingKey = (value: unknown): value is SpacingKey => value === 'compact' || value === 'normal' || value === 'loose'
+const isSpacingKey = (value: unknown): value is SpacingKey => 
+  value === 'very-compact' || value === 'compact' || value === 'normal' || value === 'loose' || value === 'extra-loose'
+const isLayoutAlgorithm = (value: unknown): value is LayoutAlgorithm => 
+  value === 'layered' || value === 'stress' || value === 'mrtree'
+const isLayoutDirection = (value: unknown): value is LayoutDirection => 
+  value === 'TB' || value === 'LR'
 
 const handleLoadImages = (imageDataMap: Record<string, unknown>) => {
   if (!imageDataMap) return
@@ -497,6 +508,8 @@ const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'st
           v-bind="menu"
           :currentEdgeType="currentEdgeType"
           :currentSpacing="currentSpacing"
+          :currentAlgorithm="currentAlgorithm"
+          :currentDirection="currentDirection"
           :debug-panel-visible="debugPanel.visible"
           :search-visible="searchVisible"
           @close="closeMenu"

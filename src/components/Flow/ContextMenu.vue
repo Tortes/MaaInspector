@@ -5,10 +5,17 @@ import {
   Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
 } from 'lucide-vue-next'
 import { recognitionMenuOptions } from '../../utils/nodeLogic'
-import { EDGE_TYPE_OPTIONS, SPACING_TYPE_OPTIONS, type EdgeType, type OptionItem } from '../../utils/flowOptions'
-import type { SpacingKey, MenuType, FlowNode, FlowEdge } from '../../utils/flowTypes'
+import { 
+  EDGE_TYPE_OPTIONS, 
+  SPACING_TYPE_OPTIONS, 
+  LAYOUT_ALGORITHM_OPTIONS, 
+  LAYOUT_DIRECTION_OPTIONS,
+  type EdgeType, 
+  type OptionItem 
+} from '../../utils/flowOptions'
+import type { SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType, FlowNode, FlowEdge } from '../../utils/flowTypes'
 
-type SubmenuItem = OptionItem<string | EdgeType | SpacingKey> & { color?: string }
+type SubmenuItem = OptionItem<string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection> & { color?: string }
 
 type MenuItem =
   | { type: 'divider'; key?: string }
@@ -36,19 +43,21 @@ const props = defineProps<{
   data?: FlowNode | FlowEdge | null
   currentEdgeType?: EdgeType
   currentSpacing?: SpacingKey
+  currentAlgorithm?: LayoutAlgorithm
+  currentDirection?: LayoutDirection
   debugPanelVisible?: boolean
   searchVisible?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'action', payload: { action: string; type: MenuType; data: FlowNode | FlowEdge | null; payload?: string | EdgeType | SpacingKey | null }): void
+  (e: 'action', payload: { action: string; type: MenuType; data: FlowNode | FlowEdge | null; payload?: string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection | null }): void
 }>()
 
 const mainMenuRef = ref<HTMLElement | null>(null)
 const mainMenuHeight = ref<number>(0)
 
-const handleAction = (action: string, payload: string | EdgeType | SpacingKey | null = null) => {
+const handleAction = (action: string, payload: string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection | null = null) => {
   emit('action', {action, type: props.type, data: props.data ?? null, payload})
   emit('close')
 }
@@ -133,10 +142,30 @@ const menuItems = computed<MenuItem[]>(() => {
       {type: 'divider'},
       {
         type: 'item',
-        label: '自动布局 (Dagre)',
+        label: '自动布局 (ELK)',
         action: 'layout',
         icon: Move,
         color: 'text-indigo-600'
+      },
+      {
+        type: 'item',
+        key: 'layout-algorithm',
+        label: '布局算法',
+        icon: LAYOUT_ALGORITHM_OPTIONS[0]?.icon,
+        color: 'text-purple-600',
+        action: 'changeAlgorithm',
+        submenu: LAYOUT_ALGORITHM_OPTIONS,
+        submenuAction: 'changeAlgorithm'
+      },
+      {
+        type: 'item',
+        key: 'layout-direction',
+        label: '布局方向',
+        icon: LAYOUT_DIRECTION_OPTIONS[0]?.icon,
+        color: 'text-blue-600',
+        action: 'changeDirection',
+        submenu: LAYOUT_DIRECTION_OPTIONS,
+        submenuAction: 'changeDirection'
       },
       {
         type: 'item',
@@ -249,7 +278,7 @@ const menuItems = computed<MenuItem[]>(() => {
                     {{ parseLabel(sub.label).note }}
                   </span>
                   <Check
-                      v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing)"
+                      v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing) || (item.key === 'layout-algorithm' && sub.value === currentAlgorithm) || (item.key === 'layout-direction' && sub.value === currentDirection)"
                       :size="16"
                       class="text-blue-600"
                   />

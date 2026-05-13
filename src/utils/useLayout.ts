@@ -1,12 +1,13 @@
 import type { Ref } from 'vue'
-import dagre from 'dagre'
+import ELK from 'elkjs/lib/elk.bundled.js'
 import { useVueFlow } from '@vue-flow/core'
-import type { FlowEdge, FlowNode, SpacingKey, SpacingOption } from './flowTypes'
+import type { FlowEdge, FlowNode, SpacingKey, LayoutAlgorithm, LayoutDirection } from './flowTypes'
+import { SPACING_OPTIONS } from './flowOptions'
 
-export const SPACING_OPTIONS: Record<SpacingKey, SpacingOption> = {
-  compact: { ranksep: 80, nodesep: 120 },
-  normal: { ranksep: 120, nodesep: 180 },
-  loose: { ranksep: 300, nodesep: 300 }
+export interface LayoutOptions {
+  algorithm: LayoutAlgorithm
+  direction: LayoutDirection
+  spacing: SpacingKey
 }
 
 export const NODE_SIZE_PADDING = {
@@ -16,80 +17,100 @@ export const NODE_SIZE_PADDING = {
   extraHeight: 20
 }
 
-const getSpacingConfig = (key: SpacingKey = 'normal'): SpacingOption =>
+const elk = new ELK()
+
+const getSpacingConfig = (key: SpacingKey = 'normal') =>
   SPACING_OPTIONS[key] || SPACING_OPTIONS.normal
 
-const resolveSpacing = (spacingOrKey?: SpacingKey | SpacingOption): SpacingOption =>
-  typeof spacingOrKey === 'string' ? getSpacingConfig(spacingOrKey) : (spacingOrKey || getSpacingConfig())
+const directionToElk = (direction: LayoutDirection): string => {
+  return direction === 'LR' ? 'RIGHT' : 'DOWN'
+}
 
 export function useLayout() {
   const { findNode } = useVueFlow()
 
-  const layout = (
+  const elkLayout = async (
     nodes: FlowNode[],
     edges: FlowEdge[],
-    options: SpacingOption = getSpacingConfig()
-  ): FlowNode[] => {
-    const dagreGraph = new dagre.graphlib.Graph()
-    dagreGraph.setDefaultEdgeLabel(() => ({}))
+    options: LayoutOptions = { algorithm: 'layered', direction: 'TB', spacing: 'normal' }
+  ): Promise<FlowNode[]> => {
+    const spacing = getSpacingConfig(options.spacing)
+    const elkDirection = directionToElk(options.direction)
 
-    dagreGraph.setGraph({
-      rankdir: 'TB',
-      ranksep: options.ranksep,
-      nodesep: options.nodesep
-    })
+    const layoutOptions: Record<string, string> = {
+      'elk.algorithm': options.algorithm,
+      'elk.direction': elkDirection,
+    }
 
-    nodes.forEach((node) => {
-      const nodeEl = findNode(node.id)
-      const width = (nodeEl?.dimensions?.width ?? NODE_SIZE_PADDING.fallbackWidth) + NODE_SIZE_PADDING.extraWidth
-      const height = (nodeEl?.dimensions?.height ?? NODE_SIZE_PADDING.fallbackHeight) + NODE_SIZE_PADDING.extraHeight
-      dagreGraph.setNode(node.id, { width, height })
-    })
+    if (options.algorithm === 'stress') {
+      layoutOptions['elk.stress.desiredEdgeLength'] = String(spacing.nodeSpacing)
+    } else if (options.algorithm === 'mrtree') {
+      layoutOptions['elk.spacing.nodeNode'] = String(spacing.nodeSpacing)
+      layoutOptions['elk.spacing.edgeEdge'] = String(spacing.edgeSpacing)
+    } else {
+      layoutOptions['elk.spacing.nodeNode'] = String(spacing.nodeSpacing)
+      layoutOptions['elk.spacing.edgeEdge'] = String(spacing.edgeSpacing)
+      layoutOptions['elk.layered.spacing.nodeNodeBetweenLayers'] = String(spacing.nodeSpacing)
+      layoutOptions['elk.edgeRouting'] = 'ORTHOGONAL'
+    }
+
+    const elkGraph = {
+      id: 'root',
+      layoutOptions,
+      children: nodes.map((node) => {
+        const nodeEl = findNode(node.id)
+        const width = (nodeEl?.dimensions?.width ?? NODE_SIZE_PADDING.fallbackWidth) + NODE_SIZE_PADDING.extraWidth
+        const height = (nodeEl?.dimensions?.height ?? NODE_SIZE_PADDING.fallbackHeight) + NODE_SIZE_PADDING.extraHeight
+        return {
+          id: node.id,
+          width,
+          height
+        }
+      }),
+      edges: edges.map((edge) => ({
+        id: edge.id,
+        sources: [edge.source],
+        targets: [edge.target]
+      }))
+    }
 
     const handleOrder: Record<string, number> = {
       'source-a': 1,
       'source-c': 3
     }
 
-    const sortedEdges = [...edges].sort((a, b) => {
-      const weightA = handleOrder[a.sourceHandle ?? ''] ?? 2
-      const weightB = handleOrder[b.sourceHandle ?? ''] ?? 2
+    elkGraph.edges.sort((a, b) => {
+      const edgeA = edges.find(e => e.id === a.id)
+      const edgeB = edges.find(e => e.id === b.id)
+      const weightA = handleOrder[edgeA?.sourceHandle ?? ''] ?? 2
+      const weightB = handleOrder[edgeB?.sourceHandle ?? ''] ?? 2
       return weightA - weightB
     })
 
-    sortedEdges.forEach((edge) => {
-      dagreGraph.setEdge(edge.source, edge.target)
-    })
-
-    dagre.layout(dagreGraph)
-
-    return nodes.map((node) => {
-      const nodeWithPosition = dagreGraph.node(node.id) as dagre.Node | undefined
-      const x = nodeWithPosition ? nodeWithPosition.x - nodeWithPosition.width / 2 : 0
-      const y = nodeWithPosition ? nodeWithPosition.y - nodeWithPosition.height / 2 : 0
-      return {
-        ...node,
-        position: { x, y }
-      }
-    })
+    try {
+      const layouted = await elk.layout(elkGraph)
+      return nodes.map((node) => {
+        const elkNode = layouted.children?.find(c => c.id === node.id)
+        return {
+          ...node,
+          position: {
+            x: elkNode?.x ?? 0,
+            y: elkNode?.y ?? 0
+          }
+        }
+      })
+    } catch (error) {
+      console.error('[useLayout] ELK layout failed:', error)
+      return nodes
+    }
   }
 
-  const layoutWithSpacing = (
-    nodes: FlowNode[],
-    edges: FlowEdge[],
-    spacingOrKey: SpacingKey | SpacingOption = 'normal'
-  ): FlowNode[] => {
-    const spacing = resolveSpacing(spacingOrKey)
-    return layout(nodes, edges, spacing)
-  }
-
-  const applyLayoutOnRefs = (
+  const applyLayoutOnRefs = async (
     nodesRef: Ref<FlowNode[]>,
     edgesRef: Ref<FlowEdge[]>,
-    spacingOrKey: SpacingKey | SpacingOption = 'normal'
-  ) => {
-    const spacing = resolveSpacing(spacingOrKey)
-    const layouted = layout(nodesRef.value, edgesRef.value, spacing)
+    options: LayoutOptions = { algorithm: 'layered', direction: 'TB', spacing: 'normal' }
+  ): Promise<FlowNode[]> => {
+    const layouted = await elkLayout(nodesRef.value, edgesRef.value, options)
     nodesRef.value = layouted
     return layouted
   }
@@ -104,16 +125,16 @@ export function useLayout() {
       .filter(Boolean)
   }
 
-  const computeOrderedChainLayout = (
+  const computeOrderedChainLayout = async (
     rootId: string,
     nodesRef: Ref<FlowNode[]>,
     edgesRef: Ref<FlowEdge[]>,
-    spacingOrKey: SpacingKey | SpacingOption = 'normal'
+    options: LayoutOptions = { algorithm: 'layered', direction: 'TB', spacing: 'normal' }
   ) => {
     if (!rootId) return null
     const root = findNode(rootId)
     if (!root) return null
-    const spacing = resolveSpacing(spacingOrKey)
+    const spacing = getSpacingConfig(options.spacing)
 
     const visited = new Set<string>([rootId])
     const levels: Array<string[]> = []
@@ -142,15 +163,15 @@ export function useLayout() {
 
     if (!levels.length) return null
 
+    const isHorizontal = options.direction === 'LR'
     const chainPositions: Record<string, { x: number; y: number }> = {}
     levels.forEach((levelNodes, depth) => {
-      const totalWidth = (levelNodes.length - 1) * spacing.nodesep
-      const startX = -totalWidth / 2
+      const totalSize = (levelNodes.length - 1) * spacing.nodeSpacing
+      const start = -totalSize / 2
       levelNodes.forEach((nodeId, index) => {
-        chainPositions[nodeId] = {
-          x: startX + index * spacing.nodesep,
-          y: depth * spacing.ranksep
-        }
+        chainPositions[nodeId] = isHorizontal
+          ? { x: depth * spacing.nodeSpacing, y: start + index * spacing.nodeSpacing }
+          : { x: start + index * spacing.nodeSpacing, y: depth * spacing.nodeSpacing }
       })
     })
 
@@ -159,9 +180,11 @@ export function useLayout() {
     if (remainingNodes.length) {
       const remainingIds = new Set(remainingNodes.map(n => n.id))
       const remainingEdges = edgesRef.value.filter(e => remainingIds.has(e.source) && remainingIds.has(e.target))
-      const layouted = layoutWithSpacing(remainingNodes, remainingEdges, spacing)
+      const layouted = await elkLayout(remainingNodes, remainingEdges, options)
       const chainXs = Object.values(chainPositions).map(p => p.x)
-      const offsetX = (chainXs.length ? Math.max(...chainXs) : 0) + spacing.nodesep * 2
+      const offsetX = isHorizontal
+        ? (chainXs.length ? Math.max(...chainXs) : 0) + spacing.nodeSpacing * 2
+        : (chainXs.length ? Math.max(...chainXs) : 0) + spacing.nodeSpacing * 2
       layouted.forEach(n => {
         remainingPositions[n.id] = {
           x: (n.position?.x || 0) + offsetX,
@@ -173,13 +196,13 @@ export function useLayout() {
     return { chainPositions, remainingPositions, chainIds: visited }
   }
 
-  const applyOrderedChainLayout = (
+  const applyOrderedChainLayout = async (
     nodesRef: Ref<FlowNode[]>,
     edgesRef: Ref<FlowEdge[]>,
     rootId: string,
-    spacingOrKey: SpacingKey | SpacingOption = 'normal'
+    options: LayoutOptions = { algorithm: 'layered', direction: 'TB', spacing: 'normal' }
   ) => {
-    const result = computeOrderedChainLayout(rootId, nodesRef, edgesRef, spacingOrKey)
+    const result = await computeOrderedChainLayout(rootId, nodesRef, edgesRef, options)
     if (!result) return null
 
     const { chainPositions, remainingPositions } = result
@@ -192,8 +215,7 @@ export function useLayout() {
   }
 
   return {
-    layout,
-    layoutWithSpacing,
+    elkLayout,
     applyLayoutOnRefs,
     computeOrderedChainLayout,
     applyOrderedChainLayout,
@@ -202,4 +224,3 @@ export function useLayout() {
     NODE_SIZE_PADDING
   }
 }
-
