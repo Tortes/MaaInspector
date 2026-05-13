@@ -544,6 +544,7 @@ export function useFlowGraph() {
     const newNodes: FlowNode[] = []
     const newEdges: FlowEdge[] = []
     const createdNodeIds = new Set<string>()
+    const missingNodeCount = new Map<string, number>()
 
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
       newNodes.push(createNodeObject(nodeId, nodeContent))
@@ -570,8 +571,20 @@ export function useFlowGraph() {
             const isAnchorTarget = flags.anchor
 
             if (!createdNodeIds.has(targetId)) {
-              newNodes.push(createNodeObject(targetId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true))
-              createdNodeIds.add(targetId)
+              const currentCount = missingNodeCount.get(targetId) || 0
+
+              if (currentCount === 0) {
+                missingNodeCount.set(targetId, 1)
+                newNodes.push(createNodeObject(targetId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true))
+                createdNodeIds.add(targetId)
+              } else {
+                const newCount = currentCount + 1
+                missingNodeCount.set(targetId, newCount)
+                const uniqueId = `${targetId}_${newCount}`
+                newNodes.push(createNodeObject(uniqueId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true, targetId))
+                createdNodeIds.add(uniqueId)
+                targetId = uniqueId
+              }
             }
 
             newEdges.push({
