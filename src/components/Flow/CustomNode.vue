@@ -60,6 +60,18 @@ const handleUpdateData = (newData: FlowBusinessData) => updateNode({
 const applyIdChange = () => {
   const newId = editingId.value?.trim()
   if (!newId || newId === props.id) return
+  
+  if (props.data._isMissing && props.data._originalId && props.data._originalId !== props.id) {
+    const confirmed = window.confirm(
+      `This is a duplicate missing node (original ID: "${props.data._originalId}"). ` +
+      `Renaming will only affect this instance. Do you want to continue?`
+    )
+    if (!confirmed) {
+      editingId.value = props.id
+      return
+    }
+  }
+  
   handleUpdateId({ oldId: props.id, newId })
 }
 
