@@ -1,0 +1,11 @@
+{
+  "NodeA": {
+    "next": "MissingNode"
+  },
+  "NodeB": {
+    "next": "MissingNode"
+  },
+  "NodeC": {
+    "next": "MissingNode"
+  }
+}

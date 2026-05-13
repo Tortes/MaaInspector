@@ -570,17 +570,18 @@ export function useFlowGraph() {
             const isJumpBack = flags.jumpBack
             const isAnchorTarget = flags.anchor
 
-            if (!createdNodeIds.has(targetId)) {
+            // Only reuse existing node if it's a real (non-missing) node
+            const isRealNode = rawNodesData[targetId] !== undefined
+
+            if (!isRealNode) {
               const currentCount = missingNodeCount.get(targetId) || 0
+              missingNodeCount.set(targetId, currentCount + 1)
 
               if (currentCount === 0) {
-                missingNodeCount.set(targetId, 1)
                 newNodes.push(createNodeObject(targetId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true))
                 createdNodeIds.add(targetId)
               } else {
-                const newCount = currentCount + 1
-                missingNodeCount.set(targetId, newCount)
-                const uniqueId = `${targetId}_${newCount}`
+                const uniqueId = `${targetId}_${currentCount + 1}`
                 newNodes.push(createNodeObject(uniqueId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true, targetId))
                 createdNodeIds.add(uniqueId)
                 targetId = uniqueId
