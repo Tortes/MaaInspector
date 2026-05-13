@@ -218,7 +218,7 @@ export function useFlowGraph() {
     return connection.targetHandle === 'in'
   }
 
-  const createNodeObject = (id: string, rawContent: FlowBusinessData, isMissing = false): FlowNode => {
+  const createNodeObject = (id: string, rawContent: FlowBusinessData, isMissing = false, originalId?: string): FlowNode => {
     const sanitizedContent = { ...rawContent }
     delete (sanitizedContent as Record<string, unknown>).interrupt
 
@@ -237,6 +237,7 @@ export function useFlowGraph() {
           ? { id, ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}) }
           : { ...sanitizedContent, id, recognition: logicType },
         _isMissing: isMissing,
+        _originalId: originalId || (isMissing ? id : undefined),
         status: 'idle'
       }
     }
