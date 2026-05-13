@@ -166,4 +166,87 @@ describe('Duplicate Missing Nodes', () => {
     expect(exportedData).toHaveProperty('NodeB')
     expect(exportedData).toHaveProperty('NodeC')
   })
+
+  it('should create duplicate missing nodes for on_error field', () => {
+    const { loadNodes, nodes, edges } = useFlowGraph()
+    
+    const testData = {
+      NodeA: { on_error: 'MissingNode' },
+      NodeB: { on_error: 'MissingNode' },
+    }
+
+    loadNodes({
+      filename: 'test.json',
+      source: JSON.stringify(testData),
+      nodes: testData,
+    })
+
+    const missingNodes = nodes.value.filter(n => n.data?._isMissing)
+    expect(missingNodes).toHaveLength(2)
+
+    const missingNodeIds = missingNodes.map(n => n.id)
+    expect(missingNodeIds).toContain('MissingNode')
+    expect(missingNodeIds).toContain('MissingNode_2')
+
+    // Check edges point to correct targets
+    const edgeTargets = edges.value.map(e => e.target)
+    expect(edgeTargets).toContain('MissingNode')
+    expect(edgeTargets).toContain('MissingNode_2')
+  })
+
+  it('should create duplicate missing nodes for timeout_next field', () => {
+    const { loadNodes, nodes, edges } = useFlowGraph()
+    
+    const testData = {
+      NodeA: { timeout_next: 'MissingNode' },
+      NodeB: { timeout_next: 'MissingNode' },
+    }
+
+    loadNodes({
+      filename: 'test.json',
+      source: JSON.stringify(testData),
+      nodes: testData,
+    })
+
+    const missingNodes = nodes.value.filter(n => n.data?._isMissing)
+    expect(missingNodes).toHaveLength(2)
+
+    const missingNodeIds = missingNodes.map(n => n.id)
+    expect(missingNodeIds).toContain('MissingNode')
+    expect(missingNodeIds).toContain('MissingNode_2')
+
+    // Check edges point to correct targets
+    const edgeTargets = edges.value.map(e => e.target)
+    expect(edgeTargets).toContain('MissingNode')
+    expect(edgeTargets).toContain('MissingNode_2')
+  })
+
+  it('should handle array-type targets with duplicate missing nodes', () => {
+    const { loadNodes, nodes, edges } = useFlowGraph()
+    
+    const testData = {
+      NodeA: { next: ['MissingNode', 'MissingNode'] },
+      NodeB: { next: 'MissingNode' },
+    }
+
+    loadNodes({
+      filename: 'test.json',
+      source: JSON.stringify(testData),
+      nodes: testData,
+    })
+
+    const missingNodes = nodes.value.filter(n => n.data?._isMissing)
+    expect(missingNodes).toHaveLength(3)
+
+    const missingNodeIds = missingNodes.map(n => n.id)
+    expect(missingNodeIds).toContain('MissingNode')
+    expect(missingNodeIds).toContain('MissingNode_2')
+    expect(missingNodeIds).toContain('MissingNode_3')
+
+    // Check edges point to correct targets
+    const edgeTargets = edges.value.map(e => e.target)
+    expect(edgeTargets).toContain('MissingNode')
+    expect(edgeTargets).toContain('MissingNode_2')
+    expect(edgeTargets).toContain('MissingNode_3')
+  })
 })
