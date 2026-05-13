@@ -237,7 +237,7 @@ export function useFlowGraph() {
           ? { id, ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}) }
           : { ...sanitizedContent, id, recognition: logicType },
         _isMissing: isMissing,
-        _originalId: originalId || (isMissing ? id : undefined),
+        _originalId: originalId,
         status: 'idle'
       }
     }
@@ -574,14 +574,18 @@ export function useFlowGraph() {
             const isRealNode = rawNodesData[targetId] !== undefined
 
             if (!isRealNode) {
-              const currentCount = missingNodeCount.get(targetId) || 0
+              let currentCount = missingNodeCount.get(targetId) || 0
               missingNodeCount.set(targetId, currentCount + 1)
 
               if (currentCount === 0) {
                 newNodes.push(createNodeObject(targetId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true))
                 createdNodeIds.add(targetId)
               } else {
-                const uniqueId = `${targetId}_${currentCount + 1}`
+                let uniqueId = `${targetId}_${currentCount + 1}`
+                while (createdNodeIds.has(uniqueId) || rawNodesData[uniqueId] !== undefined) {
+                  currentCount++
+                  uniqueId = `${targetId}_${currentCount + 1}`
+                }
                 newNodes.push(createNodeObject(uniqueId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true, targetId))
                 createdNodeIds.add(uniqueId)
                 targetId = uniqueId

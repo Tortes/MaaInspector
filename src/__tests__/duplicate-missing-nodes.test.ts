@@ -68,10 +68,15 @@ describe('Duplicate Missing Nodes', () => {
     expect(missingNodeIds).toContain('MissingNode_2')
     expect(missingNodeIds).toContain('MissingNode_3')
 
-    // Check that all missing nodes display "MissingNode" as their name
-    missingNodes.forEach(node => {
+    // Check that duplicate missing nodes have _originalId set to "MissingNode"
+    const duplicateNodes = missingNodes.filter(n => n.id !== 'MissingNode')
+    duplicateNodes.forEach(node => {
       expect(node.data?._originalId).toBe('MissingNode')
     })
+    
+    // First missing node should not have _originalId
+    const firstMissingNode = missingNodes.find(n => n.id === 'MissingNode')
+    expect(firstMissingNode?.data?._originalId).toBeUndefined()
   })
 
   it('should create edges from each source node to its corresponding missing node', () => {
@@ -114,7 +119,7 @@ describe('Duplicate Missing Nodes', () => {
     const missingNodes = nodes.value.filter(n => n.data?._isMissing)
     expect(missingNodes).toHaveLength(1)
     expect(missingNodes[0].id).toBe('MissingNode')
-    expect(missingNodes[0].data?._originalId).toBe('MissingNode')
+    expect(missingNodes[0].data?._originalId).toBeUndefined()
   })
 
   it('should handle multiple different missing nodes', () => {
