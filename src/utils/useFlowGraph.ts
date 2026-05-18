@@ -255,7 +255,10 @@ export function useFlowGraph() {
     const sourceMeta = ensureNodeMeta(sourceNode)
     if (!sourceMeta || !sourceMeta.data) return
     const data = sourceMeta.data as FlowBusinessData
-    const storedId = buildLinkId(targetId, isAnchorTarget, isJumpBack)
+    // For duplicate missing nodes, use the original ID (without suffix) for storage
+    const targetNode = findNode(targetId)
+    const actualTargetId = (targetNode?.data?._isMissing && targetNode?.data?._originalId) ? targetNode.data._originalId : targetId
+    const storedId = buildLinkId(actualTargetId, isAnchorTarget, isJumpBack)
 
     if (isArrayType) {
       if (!Array.isArray(data[field])) data[field] = []
@@ -387,7 +390,11 @@ export function useFlowGraph() {
         if (typeof val !== 'string') return val
         const flags = parseLinkFlags(val)
         const targetId = flags.id || val
-        if (targetId !== oldId) return val
+        // For duplicate missing nodes, also check if the stored ID matches the original ID
+        const oldNode = findNode(oldId)
+        const originalId = oldNode?.data?._originalId
+        if (targetId !== oldId && targetId !== originalId) return val
+        // Use the new ID directly (without suffix) for storage
         return buildLinkId(newId, flags.anchor, flags.jumpBack)
       }
       const replaceField = (d: Record<string, unknown>, field: string) => {
@@ -524,12 +531,14 @@ export function useFlowGraph() {
     }
 
     if (action === 'save_image_changes') {
-      const { validPaths, images } = actionData as Record<string, unknown> & {
+      const { validPaths, images, tempImages } = actionData as Record<string, unknown> & {
         validPaths?: string[]
-        images?: unknown[]
+        images?: TemplateImage[]
+        tempImages?: TemplateImage[]
       }
       
-      imageManager.setNodeImages(node.id, (images as TemplateImage[]) || [])
+      const allImages = [...(images || []), ...(tempImages || [])]
+      imageManager.setNodeImages(node.id, allImages)
       
       if (!meta.data) meta.data = {}
       if (templateTarget) {
