@@ -37,7 +37,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'load-nodes': [payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }]
-  'load-images': [payload: Record<string, TemplateImage[]>]
+  'load-images': [payload: Record<string, TemplateImage[]>, basePath?: string]
   'save-nodes': [payload: { source: string; filename: string }]
   'device-connected': [status: boolean]
   'request-switch-file': [payload: { filename: string; source: string }]
@@ -304,7 +304,12 @@ const fetchAndEmitNodes = async () => {
         context: { feature: 'resource', action: 'get_templates', component: 'InfoPanel' }
       })
       perfLog('InfoPanel.getTemplateImages', templateStart, { filename: fileObj.value })
-      if (imgRes.results) emit('load-images', imgRes.results as Record<string, TemplateImage[]>)
+      console.log('[DEBUG InfoPanel] imgRes keys:', Object.keys(imgRes), 'results type:', typeof imgRes.results, 'results keys:', imgRes.results ? Object.keys(imgRes.results as object) : 'null')
+      if (imgRes.results) {
+        const basePath = (imgRes as Record<string, unknown>).base_image_path as string | undefined
+        console.log('[DEBUG InfoPanel] basePath:', basePath, 'results sample:', JSON.stringify(imgRes.results).substring(0, 500))
+        emit('load-images', imgRes.results as Record<string, TemplateImage[]>, basePath)
+      }
     } catch (imgError) {
       console.warn("图片加载失败", imgError)
     }

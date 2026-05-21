@@ -5,7 +5,7 @@ import { Anchor as AnchorIcon } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
 import LazyImage from '../Common/LazyImage.vue'
 import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic'
-import { useImageManager } from '../../utils/useImageManager'
+import type { useImageManager } from '../../utils/useImageManager'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload, LayoutDirection } from '../../utils/flowTypes'
 
 const props = defineProps<{
@@ -20,7 +20,7 @@ const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
 const currentDirection = inject<Ref<LayoutDirection>>('currentDirection', ref('TB'))
 const pipelineVersion = inject<Ref<'V1' | 'V2'>>('pipelineVersion', ref('V1'))
 
-const imageManager = useImageManager()
+const imageManager = inject<ReturnType<typeof useImageManager>>('imageManager')!
 
 // 获取 UI 配置
 const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MAP['DirectHit'])
@@ -99,7 +99,11 @@ const nodeImages = computed<TemplateImage[]>(() => {
   const paths = Array.isArray(template) ? template : (typeof template === 'string' ? [template] : [])
   if (!paths.length) return []
 
-  return imageManager.getImagesForDisplayWithCache(props.id, paths)
+  const result = imageManager.getImagesForDisplayWithCache(props.id, paths)
+  if (isImageNode.value && paths.length > 0) {
+    console.log('[DEBUG CustomNode] id:', props.id, 'type:', props.data.type, 'paths:', paths, 'result count:', result.length)
+  }
+  return result
 })
 
 // Grid 样式计算
@@ -204,10 +208,10 @@ const contentHeightClass = computed(() => {
           <div class="w-full bg-slate-50 rounded-lg border border-slate-200 border-dashed overflow-hidden relative transition-all duration-300" :class="contentHeightClass">
             <div v-if="nodeImages.length > 0" class="grid w-full h-full" :class="gridClass">
               <div v-for="(img, idx) in nodeImages" :key="img.path"
-                  v-memo="[img.path, img.base64, idx < gridCols, idx < nodeImages.length - gridCols]"
+                  v-memo="[img.path, img.url, idx < gridCols, idx < nodeImages.length - gridCols]"
                   class="relative overflow-hidden border-white/50 group/img"
                   :class="{ 'border-r': (idx + 1) % gridCols !== 0, 'border-b': idx < nodeImages.length - gridCols }">
-                <LazyImage :src="img.base64" className="w-full h-full object-fill transform hover:scale-110 transition-transform duration-300"/>
+                <LazyImage :src="img.url" className="w-full h-full object-fill transform hover:scale-110 transition-transform duration-300"/>
                 <div class="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-end justify-center p-1 pointer-events-none">
                   <span class="text-[9px] text-white font-mono truncate w-full text-center leading-tight">{{ getFileName(img.path) }}</span>
                 </div>

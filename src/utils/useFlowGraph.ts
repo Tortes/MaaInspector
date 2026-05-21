@@ -563,7 +563,7 @@ export function useFlowGraph() {
       const { imagePath, imageBase64 } = actionData as Record<string, string>
       if (!imagePath || !imageBase64) return
       
-      imageManager.addTempImage(node.id, imagePath, imageBase64)
+      imageManager.addTempImage(node.id, imagePath, undefined, imageBase64)
       
       if (templateTarget) {
         updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])

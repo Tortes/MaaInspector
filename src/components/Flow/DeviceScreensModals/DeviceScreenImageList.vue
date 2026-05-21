@@ -156,7 +156,7 @@ const hasSelection = computed(() => selectedPaths.value.size > 0)
           </div>
           <div class="w-full h-full bg-slate-100 flex items-center justify-center relative">
             <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
-            <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+            <img :src="item.url" class="w-full h-full object-contain relative z-10"/>
             <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-black/60">
               <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
                 {{ item.path }}
@@ -189,7 +189,7 @@ const hasSelection = computed(() => selectedPaths.value.size > 0)
             <Trash2 :size="12"/>
           </button>
           <div class="w-full h-full flex items-center justify-center relative bg-emerald-50">
-            <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+            <img :src="item.url" class="w-full h-full object-contain relative z-10"/>
             <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-emerald-600/80">
               <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
                 {{ item.path }}
@@ -222,7 +222,7 @@ const hasSelection = computed(() => selectedPaths.value.size > 0)
             <RotateCw :size="12"/>
           </button>
           <div class="w-full h-full bg-slate-200 flex items-center justify-center relative opacity-50 grayscale">
-            <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+            <img :src="item.url" class="w-full h-full object-contain relative z-10"/>
             <div class="absolute bottom-0 left-0 right-0 bg-slate-500/80 backdrop-blur-[1px] py-1 px-1 z-20 truncate">
               <div class="text-[9px] text-white/70 font-mono text-center truncate select-none" :title="item.path">
                 {{ item.path }}

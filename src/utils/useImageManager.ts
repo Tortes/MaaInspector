@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import type { TemplateImage, ImageDataPayload } from './flowTypes'
 
 interface NodeImageState {
@@ -8,7 +9,7 @@ interface NodeImageState {
 }
 
 export function useImageManager() {
-  const imageCache = reactive(new Map<string, string>())
+  const imageUrlCache = reactive(new Map<string, string>())
   const nodeImageStates = new Map<string, NodeImageState>()
 
   function ensureNodeState(nodeId: string): NodeImageState {
@@ -22,30 +23,29 @@ export function useImageManager() {
     return nodeImageStates.get(nodeId)!
   }
 
-  const getImageBase64 = (path: string): string | undefined => {
-    return imageCache.get(path)
-  }
-
-  const setImageCache = (path: string, base64: string) => {
-    imageCache.set(path, base64)
-  }
-
-  const batchSetImageCache = (entries: Array<{ path: string; base64: string }>) => {
-    entries.forEach(({ path, base64 }) => {
-      if (path && base64) {
-        imageCache.set(path, base64)
-      }
-    })
+  const getImageUrl = (fullPath: string): string | undefined => {
+    if (!fullPath) return undefined
+    if (!imageUrlCache.has(fullPath)) {
+      const url = convertFileSrc(fullPath)
+      console.log('[DEBUG getImageUrl] fullPath:', fullPath, '-> url:', url)
+      imageUrlCache.set(fullPath, url)
+    }
+    return imageUrlCache.get(fullPath)
   }
 
   const setNodeImages = (nodeId: string, images: TemplateImage[]) => {
     const state = ensureNodeState(nodeId)
-    state.images = images
-    images.forEach(img => {
-      if (img.path && img.base64) {
-        imageCache.set(img.path, img.base64)
+    const enriched = images.map(img => ({
+      ...img,
+      url: img.fullPath ? getImageUrl(img.fullPath) : img.url
+    }))
+    state.images = enriched
+    enriched.forEach(img => {
+      if (img.fullPath && img.url) {
+        imageUrlCache.set(img.fullPath, img.url)
       }
     })
+    console.log('[DEBUG setNodeImages] nodeId:', nodeId, 'count:', enriched.length, 'first url:', enriched[0]?.url, 'first fullPath:', enriched[0]?.fullPath)
   }
 
   const getNodeImages = (nodeId: string): TemplateImage[] => {
@@ -68,13 +68,16 @@ export function useImageManager() {
     return state ? [...state.delImages] : []
   }
 
-  const addTempImage = (nodeId: string, path: string, base64: string) => {
+  const addTempImage = (nodeId: string, path: string, fullPath?: string, base64?: string) => {
     const state = ensureNodeState(nodeId)
     const existing = state.tempImages.find(img => img.path === path)
     if (!existing) {
-      state.tempImages.push({ path, base64, found: true })
+      const url = fullPath ? getImageUrl(fullPath) : undefined
+      state.tempImages.push({ path, fullPath, url, base64, found: true })
+    } else if (fullPath) {
+      existing.fullPath = fullPath
+      existing.url = getImageUrl(fullPath)
     }
-    imageCache.set(path, base64)
   }
 
   const deleteImage = (nodeId: string, path: string) => {
@@ -138,11 +141,10 @@ export function useImageManager() {
 
   const clearAll = () => {
     nodeImageStates.clear()
-    imageCache.clear()
+    imageUrlCache.clear()
   }
 
   const exportState = () => ({
-    imageCache: Array.from(imageCache.entries()),
     nodeImageStates: Array.from(nodeImageStates.entries()).map(([nodeId, state]) => [
       nodeId,
       {
@@ -160,14 +162,20 @@ export function useImageManager() {
     clearAll()
     if (!snapshot) return
 
-    snapshot.imageCache?.forEach(([path, base64]) => {
-      if (path && base64) imageCache.set(path, base64)
-    })
     snapshot.nodeImageStates?.forEach(([nodeId, state]) => {
+      const images = JSON.parse(JSON.stringify(state.images || [])) as TemplateImage[]
+      const tempImages = JSON.parse(JSON.stringify(state.tempImages || [])) as TemplateImage[]
+      const delImages = JSON.parse(JSON.stringify(state.delImages || [])) as TemplateImage[]
+
+      const enrichImages = (imgs: TemplateImage[]) => imgs.map(img => ({
+        ...img,
+        url: img.fullPath ? getImageUrl(img.fullPath) : img.url
+      }))
+
       nodeImageStates.set(nodeId, {
-        images: JSON.parse(JSON.stringify(state.images || [])) as TemplateImage[],
-        tempImages: JSON.parse(JSON.stringify(state.tempImages || [])) as TemplateImage[],
-        delImages: JSON.parse(JSON.stringify(state.delImages || [])) as TemplateImage[]
+        images: enrichImages(images),
+        tempImages: enrichImages(tempImages),
+        delImages: enrichImages(delImages)
       })
     })
   }
@@ -183,17 +191,15 @@ export function useImageManager() {
   const getImagesForDisplay = (nodeId: string, templatePaths: string[]): TemplateImage[] => {
     const allImages = getNodeImages(nodeId)
     return allImages
-      .filter(img => img.found && img.base64 && img.path && templatePaths.includes(img.path))
+      .filter(img => img.found && img.path && templatePaths.includes(img.path))
       .slice(0, 16)
   }
 
   const getImagesForDisplayWithCache = (nodeId: string, templatePaths: string[]): TemplateImage[] => {
     const state = nodeImageStates.get(nodeId)
     if (!state) {
-      return templatePaths
-        .filter(path => imageCache.has(path))
-        .map(path => ({ path, base64: imageCache.get(path), found: true }))
-        .slice(0, 16)
+      console.log('[DEBUG getImagesForDisplayWithCache] NO STATE for nodeId:', nodeId, 'templatePaths:', templatePaths)
+      return []
     }
 
     const result: TemplateImage[] = []
@@ -202,17 +208,13 @@ export function useImageManager() {
       if (result.length >= 16) break
 
       const stateImg = [...state.images, ...state.tempImages].find(img => img.path === path)
-      if (stateImg && stateImg.base64) {
+      if (stateImg && stateImg.url) {
         result.push(stateImg)
         continue
       }
-
-      const cachedBase64 = imageCache.get(path)
-      if (cachedBase64) {
-        result.push({ path, base64: cachedBase64, found: true })
-      }
     }
 
+    console.log('[DEBUG getImagesForDisplayWithCache] nodeId:', nodeId, 'templatePaths:', templatePaths, 'state.images count:', state.images.length, 'result count:', result.length, 'result urls:', result.map(r => r.url))
     return result
   }
 
@@ -223,10 +225,8 @@ export function useImageManager() {
   }
 
   return {
-    imageCache,
-    getImageBase64,
-    setImageCache,
-    batchSetImageCache,
+    imageUrlCache,
+    getImageUrl,
     setNodeImages,
     getNodeImages,
     getNodeSavedImages,

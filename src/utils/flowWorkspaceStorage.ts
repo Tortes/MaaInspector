@@ -28,11 +28,7 @@ const stripSnapshotPayload = (state: FlowWorkspaceState): FlowWorkspaceState => 
                       _temp_images: stripImageBase64(node.data._temp_images)
                     }
                   : node.data
-              })),
-              imageState: {
-                imageCache: [],
-                nodeImageStates: []
-              }
+              }))
             }
           : tab.snapshot.flowState
       }

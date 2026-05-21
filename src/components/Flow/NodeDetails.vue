@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, inject, reactive, ref, watch } from 'vue'
 import { FileJson, GitBranch, Info, MessageSquare, Play, Settings, X, Zap } from 'lucide-vue-next'
 import DeviceScreen from './DeviceScreen.vue'
 import BasicPropsTab from './NodeDetailsPanels/BasicPropsTab.vue'
@@ -10,7 +10,7 @@ import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
 import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic'
-import { useImageManager } from '../../utils/useImageManager'
+import type { useImageManager } from '../../utils/useImageManager'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage } from '../../utils/flowTypes'
 
 type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
@@ -50,7 +50,7 @@ const {
   focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
 } = formMethods
 
-const imageManager = useImageManager()
+const imageManager = inject<ReturnType<typeof useImageManager>>('imageManager')!
 
 // UI 状态
 const activeTab = ref('basic')

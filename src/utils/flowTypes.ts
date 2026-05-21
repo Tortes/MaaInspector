@@ -16,6 +16,8 @@ export interface TemplateImage {
   base64?: string
   found?: boolean
   nodeId?: string
+  fullPath?: string
+  url?: string
 }
 
 export interface UsedImageInfo {

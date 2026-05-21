@@ -36,6 +36,9 @@ pub fn resource_get_file_nodes(
     if let Some(manager) = guard.as_ref()
         && let Some(nodes) = manager.get_nodes_by_file(&source, &filename)
     {
+        let node_keys: Vec<String> = nodes.keys().cloned().collect();
+        eprintln!("[DEBUG resource_get_file_nodes] source: {}, filename: {}, node_count: {}, keys: {:?}",
+            source, filename, nodes.len(), node_keys);
         return FileNodesResponse {
             nodes: Some(serde_json::to_value(nodes).unwrap_or(serde_json::Value::Null)),
             list: None,
@@ -136,6 +139,8 @@ pub fn resource_get_templates(
     if let Some(manager) = guard.as_ref() {
         let nodes = manager.get_nodes_by_file(&source, &filename);
         let image_base = manager.get_image_base_path(&source);
+        eprintln!("[DEBUG resource_get_templates] source: {}, filename: {}, has_nodes: {}, image_base: {}",
+            source, filename, nodes.is_some(), image_base.display());
 
         let mut results: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
 
@@ -165,11 +170,16 @@ pub fn resource_get_templates(
 
                     for tpl in templates_arr {
                         let full_img = manager.get_image_full_path(&source, &tpl);
-                        let b64 = manager.encode_image_to_base64(&full_img);
+                        let found = full_img.exists();
+                        let full_path_str = full_img.to_string_lossy()
+                            .replace("\\", "/")
+                            .replace("//?/", "");
+                        eprintln!("[DEBUG resource_get_templates] node_id: {}, tpl: {}, full_path: {}, found: {}",
+                            node_id, tpl, full_path_str, found);
                         node_images.push(serde_json::json!({
                             "path": tpl,
-                            "found": b64.is_some(),
-                            "base64": b64
+                            "found": found,
+                            "fullPath": full_path_str
                         }));
                     }
 
@@ -180,10 +190,12 @@ pub fn resource_get_templates(
             }
         }
 
+        eprintln!("[DEBUG resource_get_templates] results count: {}, keys: {:?}",
+            results.len(), results.keys().collect::<Vec<_>>());
         return ApiResponse::ok_with_data(
             "Loaded",
             serde_json::json!({
-                "base_image_path": image_base.to_string_lossy().to_string(),
+                "base_image_path": image_base.to_string_lossy().replace("\\", "/"),
                 "results": results
             }),
         );

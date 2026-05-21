@@ -13,7 +13,7 @@ type FlowEditorExpose = {
   snapshotState: () => void
   getSnapshot: () => FlowEditorSnapshot
   handleLoadNodesWrapper: (payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }) => Promise<void>
-  handleLoadImages: (imageDataMap: Record<string, unknown>) => void
+  handleLoadImages: (imageDataMap: Record<string, unknown>, basePath?: string) => void
   handleSaveNodes: (payload: { source: string; filename: string }) => Promise<void>
   handleDeviceConnected: (val: boolean) => void
   handleUpdateCanvasConfig: (payload: { edgeType?: string; spacing?: string; layoutAlgorithm?: string; layoutDirection?: string }) => void
@@ -193,9 +193,10 @@ const handleLoadNodes = async (payload: { filename: string; source: string; node
   perfLog('FlowWorkspace.handleLoadNodes.total', start, { targetTabId, filename: payload.filename })
 }
 
-const handleLoadImages = (payload: Record<string, unknown>) => {
+const handleLoadImages = (payload: Record<string, unknown>, basePath?: string) => {
   const start = perfNow()
-  editorRef.value?.handleLoadImages(payload)
+  console.log('[DEBUG FlowWorkspace] handleLoadImages payload keys:', Object.keys(payload || {}), 'basePath:', basePath, 'editorRef exists:', !!editorRef.value)
+  editorRef.value?.handleLoadImages(payload, basePath)
   perfLog('FlowWorkspace.handleLoadImages', start, { imageEntryCount: Object.keys(payload || {}).length })
 }
 

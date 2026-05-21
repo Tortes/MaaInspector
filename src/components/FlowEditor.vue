@@ -83,10 +83,11 @@ const { fitView, removeEdges, findNode, screenToFlowCoordinate, viewport, setVie
 const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
 
 const closeAllDetailsSignal = ref<number>(0)
+const pipelineVersion = ref<'V1' | 'V2'>('V1')
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
 provide('currentFilename', currentFilename)
 provide('currentDirection', currentDirection)
-const pipelineVersion = ref<'V1' | 'V2'>('V1')
+provide('imageManager', imageManager)
 provide('pipelineVersion', pipelineVersion)
 const loadedFileVersion = ref<'V1' | 'V2' | ''>('')
 const isFormatDirty = computed(() => !!loadedFileVersion.value && pipelineVersion.value !== loadedFileVersion.value)
@@ -139,13 +140,29 @@ const snapshotState = () => {
   perfLog('FlowEditor.snapshotState', start, { tabId: props.tabId, filename: currentFilename.value })
 }
 
-const restoreSnapshotState = () => {
+const restoreSnapshotState = async () => {
   if (!props.snapshot?.flowState) return
   const start = perfNow()
   restoreState(props.snapshot.flowState)
   pipelineVersion.value = props.snapshot.pipelineVersion || 'V1'
   loadedFileVersion.value = props.snapshot.loadedFileVersion || ''
   isDeviceConnected.value = !!props.snapshot.isDeviceConnected
+
+  const hasImageState = props.snapshot.flowState.imageState?.nodeImageStates?.length
+  const source = props.snapshot.flowState.currentSource
+  const filename = props.snapshot.flowState.currentFilename
+  if (!hasImageState && source && filename) {
+    console.log('[DEBUG restoreSnapshotState] imageState empty, reloading images for', source, filename)
+    try {
+      const imgRes = await resourceApi.getTemplateImages(source, filename)
+      if (imgRes.results) {
+        handleLoadImages(imgRes.results as Record<string, unknown>)
+      }
+    } catch (e) {
+      console.warn('[DEBUG restoreSnapshotState] failed to reload images', e)
+    }
+  }
+
   perfLog('FlowEditor.restoreSnapshotState', start, {
     tabId: props.tabId,
     filename: props.snapshot.flowState.currentFilename,
@@ -174,7 +191,7 @@ const isSameViewport = (next?: { x: number; y: number; zoom: number }) => {
 
 onInit(async () => {
   if (props.snapshot?.flowState) {
-    restoreSnapshotState()
+    await restoreSnapshotState()
     hasRestoredSnapshot.value = true
     if (props.snapshot.viewport) {
       isRestoringViewport.value = true
@@ -485,16 +502,20 @@ const isSpacingKey = (value: unknown): value is SpacingKey => value === 'very-co
 const isLayoutAlgorithm = (value: unknown): value is LayoutAlgorithm => value === 'layered' || value === 'stress' || value === 'mrtree'
 const isLayoutDirection = (value: unknown): value is LayoutDirection => value === 'TB' || value === 'LR'
 
-const handleLoadImages = (imageDataMap: Record<string, unknown>) => {
+const handleLoadImages = (imageDataMap: Record<string, unknown>, _basePath?: string) => {
   if (!imageDataMap) return
   const start = perfNow()
   isBulkLoading.value = true
-  const nodeList = nodes.value
   try {
-    for (let i = 0; i < nodeList.length; i++) {
-      const node = nodeList[i]
-      const images = imageDataMap[node.id]
-      if (isTemplateImageArray(images)) imageManager.setNodeImages(node.id, images)
+    const entries = Object.entries(imageDataMap)
+    console.log('[DEBUG handleLoadImages] entries count:', entries.length)
+    for (const [nodeId, images] of entries) {
+      if (isTemplateImageArray(images)) {
+        console.log('[DEBUG handleLoadImages] setting nodeId:', nodeId, 'images count:', images.length, 'first:', images[0])
+        imageManager.setNodeImages(nodeId, images)
+      } else {
+        console.log('[DEBUG handleLoadImages] NOT TemplateImageArray for nodeId:', nodeId, 'value:', images)
+      }
     }
   } finally {
     isBulkLoading.value = false
@@ -502,7 +523,6 @@ const handleLoadImages = (imageDataMap: Record<string, unknown>) => {
   snapshotState()
   perfLog('FlowEditor.handleLoadImages', start, {
     tabId: props.tabId,
-    nodeCount: nodeList.length,
     imageEntryCount: Object.keys(imageDataMap).length
   })
 }
