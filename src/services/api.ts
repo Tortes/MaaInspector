@@ -53,7 +53,10 @@ export interface SystemState {
   agent_socket_id?: string;
   edge_type?: string;
   spacing?: string;
+  layout_algorithm?: string;
+  layout_direction?: string;
   pipeline_version?: string;
+  restore_workspace_on_start?: boolean;
 }
 
 export interface SystemInitResponse {

@@ -5,12 +5,12 @@ import {
   Minimize2, Maximize2, Smartphone, Circle,
   FilePlus, Save, Search, Bell, Settings as SettingsIcon
 } from 'lucide-vue-next'
-import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
 import {withCache} from '../../services/cache.ts'
+import { perfLog, perfMark, perfNow } from '../../utils/perfTrace'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '../../utils/pipelineTransform'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
-import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
+import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, TemplateImage, SpacingKey } from '../../utils/flowTypes'
 import type { EdgeType } from '../../utils/flowOptions'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
@@ -25,8 +25,14 @@ const props = defineProps<{
   edgeCount?: number
   isDirty?: boolean
   currentFilename?: string
+  selectedResourceFile?: string
+  zoom?: number
   edgeType?: EdgeType
   spacing?: SpacingKey
+  layoutAlgorithm?: LayoutAlgorithm
+  layoutDirection?: LayoutDirection
+  pipelineVersion?: 'V1' | 'V2'
+  restoreWorkspaceOnStart?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -35,8 +41,10 @@ const emit = defineEmits<{
   'save-nodes': [payload: { source: string; filename: string }]
   'device-connected': [status: boolean]
   'request-switch-file': [payload: { filename: string; source: string }]
-  'update-canvas-config': [payload: { edgeType?: EdgeType; spacing?: SpacingKey }]
+  'update:selected-resource-file': [value: string]
+  'update-canvas-config': [payload: { edgeType?: EdgeType; spacing?: SpacingKey; layoutAlgorithm?: LayoutAlgorithm; layoutDirection?: LayoutDirection }]
   'update-pipeline-version': [payload: 'V1' | 'V2']
+  'update-restore-workspace': [payload: boolean]
 }>()
 
 // --- 内部组件 ---
@@ -59,8 +67,7 @@ const StatusIndicator = defineComponent({
 })
 
 // --- 视图状态 ---
-const {viewport} = useVueFlow()
-const zoomPercentage = computed(() => Math.round((viewport.value.zoom || 1) * 100) + '%')
+const zoomPercentage = computed(() => Math.round((props.zoom || 1) * 100) + '%')
 const isCollapsed = ref(false)
 const showResourceSettings = ref(false)
 const showCreateFileModal = ref(false)
@@ -80,7 +87,7 @@ const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
 
 const resourceProfiles = ref<EditableProfile[]>([])
 const currentAgentSocket = ref<string>('')
-const pipelineVersion = ref<'V1' | 'V2'>('V1')
+const pipelineVersion = ref<'V1' | 'V2'>(props.pipelineVersion || 'V1')
 const systemStatus = ref<'connected' | 'loading' | 'error' | 'disconnected'>('disconnected')
 
 // --- 设备搜索相关 ---
@@ -122,8 +129,16 @@ let screenshotTimer: ReturnType<typeof setInterval> | null = null
 
 // --- 选中状态 ---
 const selectedProfileIndex = ref(0)
-const selectedResourceFile = ref('')  // 存储唯一ID: source|filename
+const selectedResourceFile = ref(props.selectedResourceFile || '')  // 存储唯一ID: source|filename
 const availableFiles = ref<ResourceFileInfo[]>([])
+
+watch(() => props.selectedResourceFile, (nextValue) => {
+  selectedResourceFile.value = nextValue || ''
+}, { immediate: true })
+
+watch(() => props.pipelineVersion, (nextValue) => {
+  if (nextValue === 'V1' || nextValue === 'V2') pipelineVersion.value = nextValue
+}, { immediate: true })
 
 // --- 工具函数：生成和解析唯一ID ---
 const makeFileId = (source: string, filename: string | null) => `${source}|${filename ?? ''}`
@@ -263,27 +278,37 @@ const fetchAndEmitNodes = async () => {
   if (!fileObj || !fileObj.value) return
 
   try {
+    const totalStart = perfNow()
     resourceCtrl.message = '加载节点中...'
+    const getNodesStart = perfNow()
     const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value, {
       context: { feature: 'resource', action: 'get_nodes', component: 'InfoPanel' }
     })
+    perfLog('InfoPanel.getFileNodes', getNodesStart, { filename: fileObj.value, source: fileObj.source })
     const nodes = res.nodes || {}
+    const normalizeStart = perfNow()
     const fileVersion = isPipelineV2Nodes(nodes) ? 'V2' : 'V1'
     const normalizedNodes = fileVersion === 'V2'
       ? toPipelineV1Nodes(nodes)
       : nodes
+    perfLog('InfoPanel.normalizeNodes', normalizeStart, { nodeCount: Object.keys(nodes).length, fileVersion })
 
+    const emitStart = perfNow()
     emit('load-nodes', {filename: fileObj.value, source: fileObj.source, nodes: normalizedNodes, fileVersion})
+    perfLog('InfoPanel.emitLoadNodes', emitStart, { nodeCount: Object.keys(normalizedNodes).length })
     resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
 
     try {
+      const templateStart = perfNow()
       const imgRes = await resourceApi.getTemplateImages(fileObj.source, fileObj.value, {
         context: { feature: 'resource', action: 'get_templates', component: 'InfoPanel' }
       })
+      perfLog('InfoPanel.getTemplateImages', templateStart, { filename: fileObj.value })
       if (imgRes.results) emit('load-images', imgRes.results as Record<string, TemplateImage[]>)
     } catch (imgError) {
       console.warn("图片加载失败", imgError)
     }
+    perfLog('InfoPanel.fetchAndEmitNodes.total', totalStart, { filename: fileObj.value })
 
   } catch (e: any) {
     console.error("加载节点失败", e)
@@ -308,6 +333,8 @@ const handleSaveNodes = async () => {
 }
 
 const executeFileSwitch = async (filename: string, source?: string) => {
+  const start = perfNow()
+  perfMark('InfoPanel.executeFileSwitch.start', { filename, source })
   const normSource = source ? source.replace(/\\/g, '/').toLowerCase() : ''
   let target = availableFiles.value.find((f: ResourceFileInfo) => {
     const fSource = f.source ? f.source.replace(/\\/g, '/').toLowerCase() : ''
@@ -320,6 +347,7 @@ const executeFileSwitch = async (filename: string, source?: string) => {
   if (target) {
     selectedResourceFile.value = makeFileId(target.source, target.value)
     await fetchAndEmitNodes()
+    perfLog('InfoPanel.executeFileSwitch.total', start, { filename, source })
   } else {
     alert(`无法切换: 未找到文件 ${filename}`)
   }
@@ -330,14 +358,14 @@ defineExpose({executeFileSwitch, handleSaveNodes})
 
 // [交互] 下拉框变化 -> 通知父组件处理 (newFileId 是唯一ID: source|filename)
 const handleFileSelectChange = (newFileId: string) => {
+  perfMark('InfoPanel.handleFileSelectChange', { newFileId })
   if (newFileId === selectedResourceFile.value) return
   const fileObj = getFileObjById(newFileId)
   if (!fileObj || !fileObj.value) return
 
-  emit('request-switch-file', {
-    filename: fileObj.value,
-    source: fileObj.source
-  })
+  selectedResourceFile.value = newFileId
+  emit('update:selected-resource-file', newFileId)
+  void executeFileSwitch(fileObj.value, fileObj.source)
 }
 
 // --- 设备截图逻辑（带缓存） ---
@@ -475,9 +503,12 @@ const handleDeviceConnect = async () => {
 
 const handleResourceLoad = async () => {
   try {
+    const start = perfNow()
+    resourceCtrl.message = '加载资源中...'
     const res = await resourceCtrl.connect(currentProfile.value, {
       context: { feature: 'resource', action: 'load', component: 'InfoPanel' }
     })
+    perfLog('InfoPanel.resourceLoad.connect', start, { profile: currentProfile.value?.name })
     const ok = (res as any)?.r ?? (res as any)?.success ?? true
     if (!ok) {
       resourceCtrl.message = (res as any)?.message || '资源加载失败'
@@ -496,21 +527,18 @@ const handleResourceLoad = async () => {
         }
       }
 
-      if (!selectedResourceFile.value || !fileStillExists) {
-        if (availableFiles.value.length > 0) {
-          const firstFile = availableFiles.value[0]
-          if (firstFile.value) {
-            await executeFileSwitch(firstFile.value, firstFile.source)
-          }
-        } else {
-          selectedResourceFile.value = ''
-        }
-      } else {
-        await fetchAndEmitNodes()
+      if (!fileStillExists) {
+        selectedResourceFile.value = ''
+        emit('update:selected-resource-file', '')
       }
+      resourceCtrl.status = 'connected'
+      resourceCtrl.message = `已加载资源: ${availableFiles.value.length} 个文件`
+      perfLog('InfoPanel.resourceLoad.total', start, { fileCount: availableFiles.value.length })
     }
   } catch (e: any) {
     console.error("资源加载流程异常", e)
+    resourceCtrl.status = 'failed'
+    resourceCtrl.message = '资源加载失败'
   }
 }
 
@@ -597,14 +625,19 @@ const fetchSystemState = async () => {
     if (state.agent_socket_id) currentAgentSocket.value = state.agent_socket_id
     else if (data.agent_socket_id) currentAgentSocket.value = data.agent_socket_id
 
-    if (state.edge_type || state.spacing) {
+    if (state.edge_type || state.spacing || state.layout_algorithm || state.layout_direction) {
       emit('update-canvas-config', {
         edgeType: (state.edge_type as EdgeType) || 'smoothstep',
-        spacing: (state.spacing as SpacingKey) || 'normal'
+        spacing: (state.spacing as SpacingKey) || 'normal',
+        layoutAlgorithm: (state.layout_algorithm as LayoutAlgorithm) || 'layered',
+        layoutDirection: (state.layout_direction as LayoutDirection) || 'TB'
       })
     }
     if (state.pipeline_version === 'V2' || state.pipeline_version === 'V1') {
       pipelineVersion.value = state.pipeline_version
+    }
+    if (typeof state.restore_workspace_on_start === 'boolean') {
+      emit('update-restore-workspace', state.restore_workspace_on_start)
     }
 
     // 加载最后连接成功的设备配置
@@ -670,7 +703,10 @@ const saveAllConfig = async () => {
         agent_socket_id: currentAgentSocket.value,
         edge_type: props.edgeType,
         spacing: props.spacing,
-        pipeline_version: pipelineVersion.value
+        layout_algorithm: props.layoutAlgorithm,
+        layout_direction: props.layoutDirection,
+        pipeline_version: pipelineVersion.value,
+        restore_workspace_on_start: props.restoreWorkspaceOnStart ?? true
       }
     }
       await systemApi.saveDeviceConfig(payload, {
@@ -682,7 +718,7 @@ const saveAllConfig = async () => {
 }
 
 watch([selectedProfileIndex, selectedResourceFile, currentAgentSocket, pipelineVersion], () => saveAllConfig(), {deep: false})
-watch(() => [props.edgeType, props.spacing], () => saveAllConfig(), {deep: false})
+watch(() => [props.edgeType, props.spacing, props.layoutAlgorithm, props.layoutDirection, props.restoreWorkspaceOnStart], () => saveAllConfig(), {deep: false})
 watch(pipelineVersion, (val) => {
   emit('update-pipeline-version', val)
 }, { immediate: true })
@@ -695,9 +731,22 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
   saveAllConfig()
 }
 
-const handleAppSettingsSave = (payload: { edgeType: EdgeType; spacing: SpacingKey; pipelineVersion: 'V1' | 'V2' }) => {
+const handleAppSettingsSave = (payload: {
+  edgeType: EdgeType
+  spacing: SpacingKey
+  layoutAlgorithm: LayoutAlgorithm
+  layoutDirection: LayoutDirection
+  pipelineVersion: 'V1' | 'V2'
+  restoreWorkspaceOnStart: boolean
+}) => {
   pipelineVersion.value = payload.pipelineVersion
-  emit('update-canvas-config', { edgeType: payload.edgeType, spacing: payload.spacing })
+  emit('update-canvas-config', {
+    edgeType: payload.edgeType,
+    spacing: payload.spacing,
+    layoutAlgorithm: payload.layoutAlgorithm,
+    layoutDirection: payload.layoutDirection
+  })
+  emit('update-restore-workspace', payload.restoreWorkspaceOnStart)
   showAppSettings.value = false
   saveAllConfig()
 }
@@ -1045,7 +1094,10 @@ const handleAnnouncementClose = () => {
     <AppSettingsModal :visible="showAppSettings"
                        :defaultEdgeType="props.edgeType"
                        :defaultSpacing="props.spacing"
+                       :defaultLayoutAlgorithm="props.layoutAlgorithm"
+                       :defaultLayoutDirection="props.layoutDirection"
                        :defaultPipelineVersion="pipelineVersion"
+                       :defaultRestoreWorkspaceOnStart="props.restoreWorkspaceOnStart"
                        @close="showAppSettings = false"
                        @save="handleAppSettingsSave"/>
     <AnnouncementModal :visible="showAnnouncement" @close="handleAnnouncementClose"/>

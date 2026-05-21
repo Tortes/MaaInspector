@@ -7,22 +7,21 @@ interface NodeImageState {
   delImages: TemplateImage[]
 }
 
-const imageCache = reactive(new Map<string, string>())
-
-const nodeImageStates = new Map<string, NodeImageState>()
-
-function ensureNodeState(nodeId: string): NodeImageState {
-  if (!nodeImageStates.has(nodeId)) {
-    nodeImageStates.set(nodeId, {
-      images: [],
-      tempImages: [],
-      delImages: []
-    })
-  }
-  return nodeImageStates.get(nodeId)!
-}
-
 export function useImageManager() {
+  const imageCache = reactive(new Map<string, string>())
+  const nodeImageStates = new Map<string, NodeImageState>()
+
+  function ensureNodeState(nodeId: string): NodeImageState {
+    if (!nodeImageStates.has(nodeId)) {
+      nodeImageStates.set(nodeId, {
+        images: [],
+        tempImages: [],
+        delImages: []
+      })
+    }
+    return nodeImageStates.get(nodeId)!
+  }
+
   const getImageBase64 = (path: string): string | undefined => {
     return imageCache.get(path)
   }
@@ -142,6 +141,37 @@ export function useImageManager() {
     imageCache.clear()
   }
 
+  const exportState = () => ({
+    imageCache: Array.from(imageCache.entries()),
+    nodeImageStates: Array.from(nodeImageStates.entries()).map(([nodeId, state]) => [
+      nodeId,
+      {
+        images: JSON.parse(JSON.stringify(state.images)) as TemplateImage[],
+        tempImages: JSON.parse(JSON.stringify(state.tempImages)) as TemplateImage[],
+        delImages: JSON.parse(JSON.stringify(state.delImages)) as TemplateImage[]
+      }
+    ] as const)
+  })
+
+  const restoreState = (snapshot?: {
+    imageCache?: Array<[string, string]>
+    nodeImageStates?: Array<readonly [string, NodeImageState]>
+  }) => {
+    clearAll()
+    if (!snapshot) return
+
+    snapshot.imageCache?.forEach(([path, base64]) => {
+      if (path && base64) imageCache.set(path, base64)
+    })
+    snapshot.nodeImageStates?.forEach(([nodeId, state]) => {
+      nodeImageStates.set(nodeId, {
+        images: JSON.parse(JSON.stringify(state.images || [])) as TemplateImage[],
+        tempImages: JSON.parse(JSON.stringify(state.tempImages || [])) as TemplateImage[],
+        delImages: JSON.parse(JSON.stringify(state.delImages || [])) as TemplateImage[]
+      })
+    })
+  }
+
   const getImagePaths = (nodeId: string): string[] => {
     const state = nodeImageStates.get(nodeId)
     if (!state) return []
@@ -212,6 +242,8 @@ export function useImageManager() {
     getImagePaths,
     getImagesForDisplay,
     getImagesForDisplayWithCache,
-    hasTemplateChanged
+    hasTemplateChanged,
+    exportState,
+    restoreState
   }
 }

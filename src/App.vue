@@ -1,7 +1,6 @@
 <template>
-  <!-- 整个页面容器 -->
   <div class="flex h-screen w-screen bg-gray-100 overflow-hidden">
-    <FlowEditor />
+    <FlowWorkspace />
   </div>
 </template>
 
@@ -12,5 +11,5 @@
 }
 </style>
 <script setup lang="ts">
-import FlowEditor from "./components/FlowEditor.vue";
+import FlowWorkspace from "./components/FlowWorkspace.vue";
 </script>

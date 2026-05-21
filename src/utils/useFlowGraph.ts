@@ -4,6 +4,7 @@ import { useVueFlow, MarkerType } from '@vue-flow/core'
 import { useLayout, type LayoutOptions } from './useLayout'
 import { useImageManager } from './useImageManager'
 import { SPACING_OPTIONS, type EdgeType } from './flowOptions'
+import { perfLog, perfMark, perfNow } from './perfTrace'
 import type {
   FlowBusinessData,
   FlowConnection,
@@ -67,6 +68,7 @@ export function useFlowGraph() {
   }
 
   const getNodesData = (): Record<string, FlowBusinessData> => {
+    const start = perfNow()
     const result: Record<string, FlowBusinessData> = {}
     nodes.value.forEach(node => {
       if (node.data?._isMissing) return
@@ -80,6 +82,7 @@ export function useFlowGraph() {
       delete (nodeData as Record<string, unknown>).interrupt
       result[node.id] = nodeData
     })
+    perfLog('useFlowGraph.getNodesData', start, { nodeCount: nodes.value.length, outputCount: Object.keys(result).length })
     return result
   }
 
@@ -89,8 +92,58 @@ export function useFlowGraph() {
   })
 
   const recalcDataSnapshot = () => {
+    const start = perfNow()
     dataSnapshot.value = JSON.stringify(getNodesData())
+    perfLog('useFlowGraph.recalcDataSnapshot', start, { length: dataSnapshot.value.length })
     return dataSnapshot.value
+  }
+
+  const exportState = () => {
+    const start = perfNow()
+    const state = {
+      nodes: JSON.parse(JSON.stringify(nodes.value)) as FlowNode[],
+      edges: JSON.parse(JSON.stringify(edges.value)) as FlowEdge[],
+      currentEdgeType: currentEdgeType.value,
+      currentSpacing: currentSpacing.value,
+      currentAlgorithm: currentAlgorithm.value,
+      currentDirection: currentDirection.value,
+      currentFilename: currentFilename.value,
+      currentSource: currentSource.value,
+      originalDataSnapshot: originalDataSnapshot.value,
+      dataSnapshot: dataSnapshot.value,
+      selectedNodeId: selectedNodeId.value,
+      imageState: imageManager.exportState()
+    }
+    perfLog('useFlowGraph.exportState', start, {
+      filename: currentFilename.value,
+      nodeCount: state.nodes.length,
+      edgeCount: state.edges.length
+    })
+    return state
+  }
+
+  const restoreState = (snapshot?: ReturnType<typeof exportState>) => {
+    if (!snapshot) return
+    const start = perfNow()
+    nodes.value = JSON.parse(JSON.stringify(snapshot.nodes || [])) as FlowNode[]
+    edges.value = JSON.parse(JSON.stringify(snapshot.edges || [])) as FlowEdge[]
+    currentEdgeType.value = snapshot.currentEdgeType || 'smoothstep'
+    currentSpacing.value = snapshot.currentSpacing || 'normal'
+    currentAlgorithm.value = snapshot.currentAlgorithm || 'layered'
+    currentDirection.value = snapshot.currentDirection || 'TB'
+    currentFilename.value = snapshot.currentFilename || ''
+    currentSource.value = snapshot.currentSource || ''
+    originalDataSnapshot.value = snapshot.originalDataSnapshot || ''
+    dataSnapshot.value = snapshot.dataSnapshot || ''
+    selectedNodeId.value = snapshot.selectedNodeId || null
+    imageManager.restoreState(snapshot.imageState)
+    triggerRef(nodes)
+    triggerRef(edges)
+    perfLog('useFlowGraph.restoreState', start, {
+      filename: currentFilename.value,
+      nodeCount: nodes.value.length,
+      edgeCount: edges.value.length
+    })
   }
 
   const markDataChanged = () => {
@@ -549,17 +602,22 @@ export function useFlowGraph() {
     }
   }
 
-  const loadNodes = ({ filename, source, nodes: rawNodesData }: LoadNodesPayload) => {
+  const loadNodes = async ({ filename, source, nodes: rawNodesData }: LoadNodesPayload) => {
+    const totalStart = perfNow()
+    perfMark('useFlowGraph.loadNodes.start', { filename, source, rawNodeCount: Object.keys(rawNodesData).length })
     const newNodes: FlowNode[] = []
     const newEdges: FlowEdge[] = []
     const createdNodeIds = new Set<string>()
     const missingNodeCount = new Map<string, number>()
 
+    const createNodesStart = perfNow()
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
       newNodes.push(createNodeObject(nodeId, nodeContent))
       createdNodeIds.add(nodeId)
     }
+    perfLog('useFlowGraph.loadNodes.createNodes', createNodesStart, { nodeCount: newNodes.length })
 
+    const createEdgesStart = perfNow()
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
       const linkFields: Array<{ key: 'next' | 'on_error' | 'timeout_next'; handle: keyof typeof PORT_MAPPING }> = [
         { key: 'next', handle: 'source-a' },
@@ -614,29 +672,48 @@ export function useFlowGraph() {
         }
       })
     }
+    perfLog('useFlowGraph.loadNodes.createEdges', createEdgesStart, {
+      nodeCount: newNodes.length,
+      edgeCount: newEdges.length,
+      missingNodeCount: missingNodeCount.size
+    })
 
+    const normalizeStart = perfNow()
     normalizeLinksAcrossNodes(newNodes)
+    perfLog('useFlowGraph.loadNodes.normalizeLinks', normalizeStart, { nodeCount: newNodes.length })
 
     const layoutOptions: LayoutOptions = {
       algorithm: currentAlgorithm.value,
       direction: currentDirection.value,
       spacing: currentSpacing.value
     }
-    elkLayout(newNodes, newEdges, layoutOptions).then(layoutedNodes => {
-      nodes.value = layoutedNodes
-      edges.value = newEdges
-      triggerRef(nodes)
-      triggerRef(edges)
-
-      currentFilename.value = filename || ''
-      currentSource.value = source || ''
-
-      const snapshot = JSON.stringify(getNodesData())
-      dataSnapshot.value = snapshot
-      originalDataSnapshot.value = snapshot
-      selectedNodeId.value = null
-      setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
+    const layoutStart = perfNow()
+    const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
+    perfLog('useFlowGraph.loadNodes.elkLayout', layoutStart, {
+      nodeCount: layoutedNodes.length,
+      edgeCount: newEdges.length,
+      algorithm: layoutOptions.algorithm,
+      direction: layoutOptions.direction,
+      spacing: layoutOptions.spacing
     })
+    const assignStart = perfNow()
+    nodes.value = layoutedNodes
+    edges.value = newEdges
+    triggerRef(nodes)
+    triggerRef(edges)
+    perfLog('useFlowGraph.loadNodes.assignRefs', assignStart, { nodeCount: nodes.value.length, edgeCount: edges.value.length })
+
+    currentFilename.value = filename || ''
+    currentSource.value = source || ''
+
+    const snapshotStart = perfNow()
+    const snapshot = JSON.stringify(getNodesData())
+    dataSnapshot.value = snapshot
+    originalDataSnapshot.value = snapshot
+    selectedNodeId.value = null
+    perfLog('useFlowGraph.loadNodes.dataSnapshot', snapshotStart, { length: snapshot.length })
+    setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
+    perfLog('useFlowGraph.loadNodes.total', totalStart, { filename, nodeCount: nodes.value.length, edgeCount: edges.value.length })
   }
 
   const layoutTaskChain = async (rootId: string) => {
@@ -711,7 +788,8 @@ export function useFlowGraph() {
       setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50)
     },
     layoutChainFromNode,
-    imageManager
+    imageManager,
+    exportState,
+    restoreState
   }
 }
-

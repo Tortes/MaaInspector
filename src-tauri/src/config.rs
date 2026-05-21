@@ -35,7 +35,10 @@ pub struct CurrentState {
     pub agent_socket_id: Option<String>,
     pub edge_type: Option<String>,
     pub spacing: Option<String>,
+    pub layout_algorithm: Option<String>,
+    pub layout_direction: Option<String>,
     pub pipeline_version: Option<String>,
+    pub restore_workspace_on_start: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

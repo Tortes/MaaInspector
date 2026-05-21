@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { Settings, Save, RotateCcw } from 'lucide-vue-next'
+import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '../../../utils/flowOptions'
 import type { EdgeType } from '../../../utils/flowOptions'
-import type { SpacingKey } from '../../../utils/flowTypes'
+import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../../../utils/flowTypes'
 
 export type PipelineVersion = 'V1' | 'V2'
 
@@ -10,41 +11,70 @@ interface AppSettingsProps {
   visible: boolean
   defaultEdgeType?: EdgeType
   defaultSpacing?: SpacingKey
+  defaultLayoutAlgorithm?: LayoutAlgorithm
+  defaultLayoutDirection?: LayoutDirection
   defaultPipelineVersion?: PipelineVersion
+  defaultRestoreWorkspaceOnStart?: boolean
 }
 
 const props = withDefaults(defineProps<AppSettingsProps>(), {
   visible: false,
   defaultEdgeType: 'smoothstep',
   defaultSpacing: 'normal',
-  defaultPipelineVersion: 'V1'
+  defaultLayoutAlgorithm: 'layered',
+  defaultLayoutDirection: 'TB',
+  defaultPipelineVersion: 'V1',
+  defaultRestoreWorkspaceOnStart: true
 })
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'save', payload: { edgeType: EdgeType; spacing: SpacingKey; pipelineVersion: PipelineVersion }): void
+  (e: 'save', payload: {
+    edgeType: EdgeType
+    spacing: SpacingKey
+    layoutAlgorithm: LayoutAlgorithm
+    layoutDirection: LayoutDirection
+    pipelineVersion: PipelineVersion
+    restoreWorkspaceOnStart: boolean
+  }): void
 }>()
 
 const edgeType = ref<EdgeType>(props.defaultEdgeType)
 const spacing = ref<SpacingKey>(props.defaultSpacing)
+const layoutAlgorithm = ref<LayoutAlgorithm>(props.defaultLayoutAlgorithm)
+const layoutDirection = ref<LayoutDirection>(props.defaultLayoutDirection)
 const pipelineVersion = ref<PipelineVersion>(props.defaultPipelineVersion)
+const restoreWorkspaceOnStart = ref<boolean>(props.defaultRestoreWorkspaceOnStart)
 
 watch(() => props.visible, (val: boolean) => {
   if (val) {
     edgeType.value = props.defaultEdgeType
     spacing.value = props.defaultSpacing
+    layoutAlgorithm.value = props.defaultLayoutAlgorithm
+    layoutDirection.value = props.defaultLayoutDirection
     pipelineVersion.value = props.defaultPipelineVersion
+    restoreWorkspaceOnStart.value = props.defaultRestoreWorkspaceOnStart
   }
 })
 
 const handleSave = () => {
-  emit('save', { edgeType: edgeType.value, spacing: spacing.value, pipelineVersion: pipelineVersion.value })
+  emit('save', {
+    edgeType: edgeType.value,
+    spacing: spacing.value,
+    layoutAlgorithm: layoutAlgorithm.value,
+    layoutDirection: layoutDirection.value,
+    pipelineVersion: pipelineVersion.value,
+    restoreWorkspaceOnStart: restoreWorkspaceOnStart.value
+  })
 }
 
 const handleReset = () => {
   edgeType.value = 'smoothstep'
   spacing.value = 'normal'
+  layoutAlgorithm.value = 'layered'
+  layoutDirection.value = 'TB'
   pipelineVersion.value = 'V1'
+  restoreWorkspaceOnStart.value = true
 }
 </script>
 
@@ -137,6 +167,40 @@ const handleReset = () => {
                 </p>
               </div>
 
+              <!-- 布局算法 -->
+              <div class="space-y-2">
+                <label class="text-[11px] font-bold text-slate-500 uppercase block">布局算法</label>
+                <div class="grid grid-cols-3 gap-2">
+                  <button
+                    v-for="option in LAYOUT_ALGORITHM_OPTIONS"
+                    :key="option.value"
+                    @click="layoutAlgorithm = option.value"
+                    class="py-2.5 px-3 text-xs font-medium rounded-lg border-2 transition-all"
+                    :class="layoutAlgorithm === option.value
+                      ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'">
+                    {{ option.label }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- 布局方向 -->
+              <div class="space-y-2">
+                <label class="text-[11px] font-bold text-slate-500 uppercase block">布局方向</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    v-for="option in LAYOUT_DIRECTION_OPTIONS"
+                    :key="option.value"
+                    @click="layoutDirection = option.value"
+                    class="py-2.5 px-3 text-xs font-medium rounded-lg border-2 transition-all"
+                    :class="layoutDirection === option.value
+                      ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'">
+                    {{ option.label }}
+                  </button>
+                </div>
+              </div>
+
               <!-- 保存时的 pipeline 版本 -->
               <div class="space-y-2">
                 <label class="text-[11px] font-bold text-slate-500 uppercase block">保存时的 pipeline 版本</label>
@@ -161,6 +225,19 @@ const handleReset = () => {
                 <p class="text-[10px] text-slate-400 mt-1">
                   保存 pipeline 文件时使用的格式版本
                 </p>
+              </div>
+
+              <!-- 工作区恢复 -->
+              <div class="space-y-2">
+                <label class="text-[11px] font-bold text-slate-500 uppercase block">启动时恢复工作区</label>
+                <button
+                  @click="restoreWorkspaceOnStart = !restoreWorkspaceOnStart"
+                  class="w-full py-2.5 px-3 text-xs font-medium rounded-lg border-2 transition-all text-left"
+                  :class="restoreWorkspaceOnStart
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'">
+                  {{ restoreWorkspaceOnStart ? '已开启：启动时恢复标签页与快照' : '已关闭：仅恢复应用默认设置' }}
+                </button>
               </div>
             </div>
 

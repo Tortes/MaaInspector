@@ -1,23 +1,22 @@
 <script setup lang="ts">
-import { ref, provide, onMounted, onBeforeUnmount, computed, defineAsyncComponent } from 'vue'
-import { VueFlow, useVueFlow, Panel, type EdgeMouseEvent, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
+import { ref, provide, onMounted, onBeforeUnmount, computed, defineAsyncComponent, watch, nextTick } from 'vue'
+import { VueFlow, useVueFlow, type EdgeMouseEvent, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { FolderSearch } from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
-import InfoPanel from './Flow/InfoPanel.vue'
+import { useFlowGraph } from '../utils/useFlowGraph'
+import { toPipelineV2Nodes } from '../utils/pipelineTransform'
+import { debugApi, resourceApi } from '../services/api'
+import type { FlowEditorSnapshot } from '../utils/flowWorkspaceTypes'
+import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, TemplateImage, MenuType, NodeStatus, UsedImageInfo, LoadNodesPayload } from '../utils/flowTypes'
+import type { EdgeType } from '../utils/flowOptions'
+import { perfLog, perfMark, perfNow } from '../utils/perfTrace'
 
-// 懒加载非关键组件
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
 const DeleteImagesConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/DeleteImagesConfirmModal.vue'))
-
-import { useFlowGraph } from '../utils/useFlowGraph'
-import { toPipelineV2Nodes } from '../utils/pipelineTransform'
-import { resourceApi ,debugApi } from '../services/api'
-import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, TemplateImage, MenuType, NodeStatus, UsedImageInfo, LoadNodesPayload } from '../utils/flowTypes'
-import type { EdgeType } from '../utils/flowOptions'
 
 type DebugMode = 'standard' | 'recognition_only'
 type MenuData = FlowNode | FlowEdge | null
@@ -53,6 +52,21 @@ interface PendingSaveConfig {
   filename: string
 }
 
+const props = defineProps<{
+  tabId?: string
+  snapshot?: FlowEditorSnapshot
+  defaultEdgeType?: EdgeType
+  defaultSpacing?: SpacingKey
+  defaultLayoutAlgorithm?: LayoutAlgorithm
+  defaultLayoutDirection?: LayoutDirection
+  defaultPipelineVersion?: 'V1' | 'V2'
+}>()
+
+const emit = defineEmits<{
+  snapshotChange: [snapshot: FlowEditorSnapshot, tabId?: string]
+  'request-switch-file': [payload: { filename: string; source: string }]
+}>()
+
 const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection, isDirty, currentFilename, currentSource,
   onValidateConnection,
@@ -60,16 +74,16 @@ const {
   getNodesData, getImageData, clearTempImageData, clearDirty, markDataChanged,
   setNodeStatus, selectNodeById,
   setEdgeJumpBack, layoutChainFromNode,
-  imageManager
+  imageManager,
+  exportState,
+  restoreState
 } = useFlowGraph()
 const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
-
-const { fitView, removeEdges, findNode, screenToFlowCoordinate } = useVueFlow()
+const { fitView, removeEdges, findNode, screenToFlowCoordinate, viewport, setViewport, onInit } = useVueFlow()
 const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
 
 const closeAllDetailsSignal = ref<number>(0)
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
-provide('updateNode', handleNodeUpdate)
 provide('currentFilename', currentFilename)
 provide('currentDirection', currentDirection)
 const pipelineVersion = ref<'V1' | 'V2'>('V1')
@@ -84,9 +98,6 @@ const editor = ref<EditorState>({ visible: false, nodeId: '', nodeData: null })
 const searchVisible = ref<boolean>(false)
 const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
 
-// Panels & Confirm Modals State
-type InfoPanelExpose = { executeFileSwitch: (filename: string, source: string) => Promise<void>; handleSaveNodes: () => Promise<void> }
-const infoPanelRef = ref<InfoPanelExpose | null>(null)
 const pendingFocusNodeId = ref<string | null>(null)
 const showSaveModal = ref<boolean>(false)
 const isSavingModal = ref<boolean>(false)
@@ -96,21 +107,146 @@ const isProcessingImages = ref<boolean>(false)
 const unusedImages = ref<string[]>([])
 const usedImages = ref<UsedImageInfo[]>([])
 const pendingSaveConfig = ref<PendingSaveConfig | null>(null)
-const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => { pipelineVersion.value = val }
+const isRestoringViewport = ref(false)
+const isBulkLoading = ref(false)
+
+const buildSnapshot = (): FlowEditorSnapshot => {
+  const start = perfNow()
+  const snapshot: FlowEditorSnapshot = {
+      flowState: exportState(),
+      pipelineVersion: pipelineVersion.value,
+      loadedFileVersion: loadedFileVersion.value,
+      isDeviceConnected: isDeviceConnected.value,
+      viewport: {
+        x: viewport.value.x || 0,
+        y: viewport.value.y || 0,
+        zoom: viewport.value.zoom || 1
+      },
+      selectedResourceFile: currentFilename.value ? `${currentSource.value}|${currentFilename.value}` : ''
+  }
+  perfLog('FlowEditor.buildSnapshot', start, {
+    tabId: props.tabId,
+    filename: snapshot.flowState?.currentFilename,
+    nodeCount: snapshot.flowState?.nodes?.length || 0,
+    edgeCount: snapshot.flowState?.edges?.length || 0
+  })
+  return snapshot
+}
+
+const snapshotState = () => {
+  const start = perfNow()
+  emit('snapshotChange', buildSnapshot(), props.tabId)
+  perfLog('FlowEditor.snapshotState', start, { tabId: props.tabId, filename: currentFilename.value })
+}
+
+const restoreSnapshotState = () => {
+  if (!props.snapshot?.flowState) return
+  const start = perfNow()
+  restoreState(props.snapshot.flowState)
+  pipelineVersion.value = props.snapshot.pipelineVersion || 'V1'
+  loadedFileVersion.value = props.snapshot.loadedFileVersion || ''
+  isDeviceConnected.value = !!props.snapshot.isDeviceConnected
+  perfLog('FlowEditor.restoreSnapshotState', start, {
+    tabId: props.tabId,
+    filename: props.snapshot.flowState.currentFilename,
+    nodeCount: props.snapshot.flowState.nodes?.length || 0
+  })
+}
+
+const applyDefaultSettings = () => {
+  currentEdgeType.value = props.snapshot?.defaultFlowConfig?.edgeType || props.defaultEdgeType || 'smoothstep'
+  currentSpacing.value = props.snapshot?.defaultFlowConfig?.spacing || props.defaultSpacing || 'normal'
+  currentAlgorithm.value = props.snapshot?.defaultFlowConfig?.layoutAlgorithm || props.defaultLayoutAlgorithm || 'layered'
+  currentDirection.value = props.snapshot?.defaultFlowConfig?.layoutDirection || props.defaultLayoutDirection || 'TB'
+  pipelineVersion.value = props.snapshot?.pipelineVersion || props.defaultPipelineVersion || 'V1'
+  loadedFileVersion.value = ''
+}
+
+const hasRestoredSnapshot = ref(false)
+const hasAppliedInitialViewport = ref(false)
+const isSameViewport = (next?: { x: number; y: number; zoom: number }) => {
+  if (!next) return false
+  const threshold = 0.001
+  return Math.abs((viewport.value.x || 0) - next.x) < threshold &&
+    Math.abs((viewport.value.y || 0) - next.y) < threshold &&
+    Math.abs((viewport.value.zoom || 1) - next.zoom) < threshold
+}
+
+onInit(async () => {
+  if (props.snapshot?.flowState) {
+    restoreSnapshotState()
+    hasRestoredSnapshot.value = true
+    if (props.snapshot.viewport) {
+      isRestoringViewport.value = true
+      await nextTick()
+      await setViewport({ x: props.snapshot.viewport.x, y: props.snapshot.viewport.y, zoom: props.snapshot.viewport.zoom }, { duration: 0 })
+      isRestoringViewport.value = false
+    }
+  } else {
+    applyDefaultSettings()
+    await nextTick()
+    fitView({ padding: 0.2, duration: 0 })
+    snapshotState()
+  }
+  hasAppliedInitialViewport.value = true
+})
+
+const handleNodeUpdateAndSnapshot = (payload: Parameters<typeof handleNodeUpdate>[0]) => {
+  handleNodeUpdate(payload)
+  snapshotState()
+}
+
+provide('updateNode', handleNodeUpdateAndSnapshot)
+
+const handleNodesChange = () => {
+  if (isBulkLoading.value) {
+    perfMark('FlowEditor.handleNodesChange.skippedDuringBulkLoad', { tabId: props.tabId, filename: currentFilename.value })
+    return
+  }
+  const start = perfNow()
+  snapshotState()
+  perfLog('FlowEditor.handleNodesChange', start, { tabId: props.tabId, filename: currentFilename.value })
+}
+
+const handleMoveEnd = () => {
+  if (isBulkLoading.value) return
+  if (isRestoringViewport.value) return
+  const start = perfNow()
+  snapshotState()
+  perfLog('FlowEditor.moveEndSnapshot', start, { tabId: props.tabId, zoom: viewport.value.zoom })
+}
+
+watch(() => props.snapshot?.viewport, async (nextViewport) => {
+  if (!nextViewport) return
+  if (!hasRestoredSnapshot.value) return
+  if (!hasAppliedInitialViewport.value) return
+  if (isSameViewport(nextViewport)) return
+  isRestoringViewport.value = true
+  await nextTick()
+  await setViewport({ x: nextViewport.x, y: nextViewport.y, zoom: nextViewport.zoom }, { duration: 0 })
+  isRestoringViewport.value = false
+}, { deep: true })
+
+const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {
+  pipelineVersion.value = val
+  snapshotState()
+}
 
 const handleRequestSwitch = (config: PendingSwitchConfig) => {
-  if (!isDirtyCombined.value) return executeSwitch(config)
+  if (!isDirtyCombined.value) {
+    emit('request-switch-file', { filename: config.filename, source: config.source })
+    return
+  }
   pendingSwitchConfig.value = config
   showSaveModal.value = true
 }
 
 const executeSwitch = async (config: PendingSwitchConfig) => {
-  if (!infoPanelRef.value) return
   if (config.nodeId) {
     pendingFocusNodeId.value = config.nodeId
     searchVisible.value = false
   }
-  await infoPanelRef.value.executeFileSwitch(config.filename, config.source)
+  emit('request-switch-file', { filename: config.filename, source: config.source })
 }
 
 const handleDiscardChanges = () => {
@@ -122,40 +258,37 @@ const handleDiscardChanges = () => {
 }
 
 const handleSaveAndSwitch = async () => {
-  if (!infoPanelRef.value) return
   isSavingModal.value = true
   try {
-    await infoPanelRef.value.handleSaveNodes()
+    await handleSaveNodes({ source: currentSource.value, filename: currentFilename.value })
     showSaveModal.value = false
     if (pendingSwitchConfig.value) {
       executeSwitch(pendingSwitchConfig.value)
       pendingSwitchConfig.value = null
     }
-  } catch (e) { console.error("Save failed in modal", e) }
-  finally { isSavingModal.value = false }
+  } catch (e) {
+    console.error('Save failed in modal', e)
+  } finally {
+    isSavingModal.value = false
+  }
 }
 
 const handleCancelSwitch = () => { showSaveModal.value = false; pendingSwitchConfig.value = null }
-const handleDeviceConnected = (val: boolean) => { isDeviceConnected.value = val }
+const handleDeviceConnected = (val: boolean) => { isDeviceConnected.value = val; snapshotState() }
 
-// --- Unload Protection ---
 const handleBeforeUnload = (e: BeforeUnloadEvent) => {
   if (isDirtyCombined.value) { e.preventDefault(); e.returnValue = ''; return '' }
 }
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
 
-// --- Context Menu Logic ---
 const closeMenu = () => menu.value.visible = false
 const getEvent = (params: MouseEvent | NodeMouseEvent | EdgeMouseEvent | { event: MouseEvent }) => (params as any).event || params
 const onPaneContextMenu = (params: MouseEvent) => {
   if (!isFileLoaded.value) return
   const event = getEvent(params)
   event.preventDefault()
-  menu.value = {
-    visible: true, x: event.clientX, y: event.clientY, type: 'pane', data: null,
-    flowPos: screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  }
+  menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'pane', data: null, flowPos: screenToFlowCoordinate({ x: event.clientX, y: event.clientY }) }
 }
 const onNodeContextMenu = (params: NodeMouseEvent) => {
   const event = getEvent(params); event.preventDefault()
@@ -176,7 +309,7 @@ type MenuAction = {
 const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
   closeMenu()
   switch (action) {
-    case 'add':
+    case 'add': {
       const recognition = typeof payload === 'string' ? payload : undefined
       const newId = `N-${Date.now()}`
       const newNode = createNodeObject(newId, { id: newId, recognition: recognition || 'DirectHit' })
@@ -184,59 +317,43 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       nodes.value = [...nodes.value, newNode]
       markDataChanged()
       break
+    }
     case 'add_anchor': {
       const anchorId = `A-${Date.now()}`
       const anchorNode = createNodeObject(anchorId, { id: anchorId, recognition: 'Anchor', anchor: true })
       if (menu.value.flowPos) anchorNode.position = { ...menu.value.flowPos }
-      // 仅输入端口，无输出
       anchorNode.data = { ...(anchorNode.data || {}), type: 'Anchor', id: anchorId }
       nodes.value = [...nodes.value, anchorNode]
       markDataChanged()
       break
     }
     case 'debug_this_node':
-      if (type === 'node' && isFlowNodeData(data) && data.id) {
-        handleDebugNode(String(data.id), 'standard')
-      }
+      if (type === 'node' && isFlowNodeData(data) && data.id) handleDebugNode(String(data.id), 'standard')
       break
     case 'debug_this_node_reco':
-      if (type === 'node' && isFlowNodeData(data) && data.id) {
-        handleDebugNode(String(data.id), 'recognition_only')
-      }
+      if (type === 'node' && isFlowNodeData(data) && data.id) handleDebugNode(String(data.id), 'recognition_only')
       break
     case 'debug_in_panel':
-      if (type === 'node' && isFlowNodeData(data) && data.id) {
-        debugPanel.value = { visible: true, nodeId: String(data.id) }
-      }
+      if (type === 'node' && isFlowNodeData(data) && data.id) debugPanel.value = { visible: true, nodeId: String(data.id) }
       break
     case 'edit':
       if (type === 'node' && isFlowNodeData(data)) {
         const fallback = { id: data.id, recognition: 'DirectHit' }
-        editor.value = {
-          visible: true,
-          nodeId: String(data.id || ''),
-          nodeData: JSON.parse(JSON.stringify(data.data?.data || fallback))
-        }
+        editor.value = { visible: true, nodeId: String(data.id || ''), nodeData: JSON.parse(JSON.stringify(data.data?.data || fallback)) }
       }
       break
     case 'duplicate':
       if (type === 'node' && isFlowNodeData(data) && data.data?.data && data.position) {
         const copyId = `N-${Date.now()}`
         const sourceData = data.data.data
-        const sourceMeta = data.data // 获取完整元数据
-        const copyData: FlowBusinessData = {
-          ...JSON.parse(JSON.stringify(sourceData)),
-          id: copyId
-        }
+        const sourceMeta = data.data
+        const copyData: FlowBusinessData = { ...JSON.parse(JSON.stringify(sourceData)), id: copyId }
         delete copyData.next
         delete copyData.on_error
         const copyNode = createNodeObject(copyId, copyData)
-
-        // 复制图片数据
         if (sourceMeta._images?.length && copyNode.data) {
           copyNode.data._images = JSON.parse(JSON.stringify(sourceMeta._images))
         }
-
         copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
         nodes.value = [...nodes.value, copyNode]
         markDataChanged()
@@ -247,28 +364,23 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
         removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id))
         nodes.value = nodes.value.filter(n => n.id !== data.id)
         markDataChanged()
-      }
-      else if (type === 'edge' && data?.id) {
+      } else if (type === 'edge' && data?.id) {
         removeEdges([data.id])
         markDataChanged()
       }
       break
     case 'setJumpBack':
-      if (type === 'edge' && data?.id) {
-        setEdgeJumpBack(data.id, true)
-      }
+      if (type === 'edge' && data?.id) setEdgeJumpBack(data.id, true)
       break
     case 'setNormalLink':
-      if (type === 'edge' && data?.id) {
-        setEdgeJumpBack(data.id, false)
-      }
+      if (type === 'edge' && data?.id) setEdgeJumpBack(data.id, false)
       break
     case 'layout_chain':
-      if (type === 'node' && isFlowNodeData(data) && data.id) {
-        layoutChainFromNode(data.id, currentSpacing.value)
-      }
+      if (type === 'node' && isFlowNodeData(data) && data.id) layoutChainFromNode(data.id, currentSpacing.value)
       break
-    case 'layout': applyLayout(); break
+    case 'layout':
+      applyLayout()
+      break
     case 'changeAlgorithm':
       if (isLayoutAlgorithm(payload)) { currentAlgorithm.value = payload; applyLayout({ algorithm: payload }) }
       break
@@ -281,133 +393,152 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
     case 'changeEdgeType':
       if (isEdgeType(payload)) { currentEdgeType.value = payload; edges.value = edges.value.map(e => ({ ...e, type: payload })) }
       break
-    case 'reset': fitView({ padding: 0.2, duration: 500 }); break
-    case 'clear': nodes.value = []; edges.value = []; break
-    case 'search': searchVisible.value = true; break
-    case 'closeSearch': searchVisible.value = false; break
+    case 'reset':
+      fitView({ padding: 0.2, duration: 500 })
+      break
+    case 'clear':
+      nodes.value = []
+      edges.value = []
+      break
+    case 'search':
+      searchVisible.value = true
+      break
+    case 'closeSearch':
+      searchVisible.value = false
+      break
     case 'openDebugPanel':
       debugPanel.value = { visible: true, nodeId: type === 'node' && isFlowNodeData(data) ? data.id : '' }
       break
     case 'closeDebugPanel':
       debugPanel.value = { ...debugPanel.value, visible: false, nodeId: '' }
       break
-    case 'closeAllDetails': closeAllDetailsSignal.value++; break
+    case 'closeAllDetails':
+      closeAllDetailsSignal.value++
+      break
   }
+  snapshotState()
 }
 
-// 3. 新增核心调试处理函数
 const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => {
   const node = findNode(nodeId)
   if (!node) return
-
-  // 仅重置结果缓存，状态改由后端 SSE 统一驱动
   node.data._result = null
 
   try {
-    // 2. 触发保存
-    await handleSaveNodes({
-      source: currentSource.value,
-      filename: currentFilename.value
-    })
-
-    // 3. 准备发送给接口的数据
-    const debugPayload = {
+    await handleSaveNodes({ source: currentSource.value, filename: currentFilename.value })
+    await debugApi.runNode({
       node: node.data.data,
       debug_mode: mode,
-      context: {
-        source: currentSource.value,
-        filename: currentFilename.value
-      }
-    }
-
-    // 4. 调用接口
-    await debugApi.runNode(debugPayload, {
+      context: { source: currentSource.value, filename: currentFilename.value }
+    }, {
       context: { feature: 'debug', action: 'run_node', component: 'FlowEditor' }
     })
-
   } catch (error: unknown) {
     const err = error as { message?: string }
     console.error('Debug failed:', error)
-    node.data._result = {
-      success: false,
-      error: err?.message || 'Network/Server Error'
-    }
+    node.data._result = { success: false, error: err?.message || 'Network/Server Error' }
   } finally {
     nodes.value = [...nodes.value]
+    snapshotState()
   }
 }
+
 const handleUpdateNodeStatus = ({ nodeId, status }: { nodeId: string; status: NodeStatus }) => {
   if (!nodeId || status === undefined) return
   setNodeStatus(nodeId, status)
+  snapshotState()
 }
+
 const handleLocateNode = (nodeId: string) => {
   selectNodeById(nodeId)
   setTimeout(() => fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }), 50)
 }
 
-const handleLoadNodesWrapper = (payload: LoadNodesPayload) => {
-  loadNodes(payload)
-  loadedFileVersion.value = payload.fileVersion ?? 'V1'
-  if (pendingFocusNodeId.value) {
-    const targetId = pendingFocusNodeId.value
-    setTimeout(() => { handleLocateNode(targetId); pendingFocusNodeId.value = null }, 300)
+const handleLoadNodesWrapper = async (payload: LoadNodesPayload) => {
+  const start = perfNow()
+  perfMark('FlowEditor.handleLoadNodesWrapper.start', {
+    tabId: props.tabId,
+    filename: payload.filename,
+    nodeCount: Object.keys(payload.nodes).length
+  })
+  isBulkLoading.value = true
+  try {
+    await loadNodes(payload)
+    perfLog('FlowEditor.loadNodes', start, { tabId: props.tabId, filename: payload.filename })
+    loadedFileVersion.value = payload.fileVersion ?? 'V1'
+    if (pendingFocusNodeId.value) {
+      const targetId = pendingFocusNodeId.value
+      setTimeout(() => { handleLocateNode(targetId); pendingFocusNodeId.value = null }, 300)
+    }
+  } finally {
+    isBulkLoading.value = false
   }
+  snapshotState()
+  perfLog('FlowEditor.handleLoadNodesWrapper.total', start, { tabId: props.tabId, filename: payload.filename })
 }
 
-const isTemplateImageArray = (value: unknown): value is TemplateImage[] => {
-  return Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item)
-}
-const isFlowNodeData = (value: MenuData): value is FlowNode => {
-  return !!value && 'position' in value
-}
-const isUsedImageInfoArray = (value: unknown): value is UsedImageInfo[] => {
-  return Array.isArray(value) && value.every(
-    item => typeof item === 'object' && !!item && 'path' in item && 'used_by' in item
-  )
-}
+const isTemplateImageArray = (value: unknown): value is TemplateImage[] => Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item)
+const isFlowNodeData = (value: MenuData): value is FlowNode => !!value && 'position' in value
+const isUsedImageInfoArray = (value: unknown): value is UsedImageInfo[] => Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item && 'used_by' in item)
 const isEdgeType = (value: unknown): value is EdgeType => value === 'smoothstep' || value === 'default'
-const isSpacingKey = (value: unknown): value is SpacingKey => 
-  value === 'very-compact' || value === 'compact' || value === 'normal' || value === 'loose' || value === 'extra-loose'
-const isLayoutAlgorithm = (value: unknown): value is LayoutAlgorithm => 
-  value === 'layered' || value === 'stress' || value === 'mrtree'
-const isLayoutDirection = (value: unknown): value is LayoutDirection => 
-  value === 'TB' || value === 'LR'
+const isSpacingKey = (value: unknown): value is SpacingKey => value === 'very-compact' || value === 'compact' || value === 'normal' || value === 'loose' || value === 'extra-loose'
+const isLayoutAlgorithm = (value: unknown): value is LayoutAlgorithm => value === 'layered' || value === 'stress' || value === 'mrtree'
+const isLayoutDirection = (value: unknown): value is LayoutDirection => value === 'TB' || value === 'LR'
 
 const handleLoadImages = (imageDataMap: Record<string, unknown>) => {
   if (!imageDataMap) return
+  const start = perfNow()
+  isBulkLoading.value = true
   const nodeList = nodes.value
-
-  for (let i = 0; i < nodeList.length; i++) {
-    const node = nodeList[i]
-    const images = imageDataMap[node.id]
-
-    if (isTemplateImageArray(images)) {
-      imageManager.setNodeImages(node.id, images)
+  try {
+    for (let i = 0; i < nodeList.length; i++) {
+      const node = nodeList[i]
+      const images = imageDataMap[node.id]
+      if (isTemplateImageArray(images)) imageManager.setNodeImages(node.id, images)
     }
+  } finally {
+    isBulkLoading.value = false
   }
+  snapshotState()
+  perfLog('FlowEditor.handleLoadImages', start, {
+    tabId: props.tabId,
+    nodeCount: nodeList.length,
+    imageEntryCount: Object.keys(imageDataMap).length
+  })
 }
 
-const handleUpdateCanvasConfig = ({ edgeType, spacing }: { edgeType?: string; spacing?: string }) => {
+const handleUpdateCanvasConfig = ({
+  edgeType,
+  spacing,
+  layoutAlgorithm,
+  layoutDirection
+}: {
+  edgeType?: string
+  spacing?: string
+  layoutAlgorithm?: string
+  layoutDirection?: string
+}) => {
   const nextEdgeType = isEdgeType(edgeType) ? edgeType : undefined
   const nextSpacing = isSpacingKey(spacing) ? spacing : undefined
-
+  const nextAlgorithm = isLayoutAlgorithm(layoutAlgorithm) ? layoutAlgorithm : undefined
+  const nextDirection = isLayoutDirection(layoutDirection) ? layoutDirection : undefined
   if (nextEdgeType && nextEdgeType !== currentEdgeType.value) {
     currentEdgeType.value = nextEdgeType
     edges.value = edges.value.map(edge => ({ ...edge, type: nextEdgeType }))
   }
   if (nextSpacing && nextSpacing !== currentSpacing.value) currentSpacing.value = nextSpacing
+  if (nextAlgorithm && nextAlgorithm !== currentAlgorithm.value) currentAlgorithm.value = nextAlgorithm
+  if (nextDirection && nextDirection !== currentDirection.value) currentDirection.value = nextDirection
+  snapshotState()
 }
 
-// --- Save & Image Handling ---
 const handleSaveNodes = async ({ source, filename }: { source: string; filename: string }) => {
   try {
     const { delImages, tempImages } = getImageData()
     if (delImages.length > 0 || tempImages.length > 0) {
       pendingSaveConfig.value = { source, filename }
       if (delImages.length > 0) {
-        const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages, {
-          context: { feature: 'resource', action: 'check_unused_images', component: 'FlowEditor' }
-        })
+        const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages, { context: { feature: 'resource', action: 'check_unused_images', component: 'FlowEditor' } })
         unusedImages.value = checkRes.unused_images || []
         usedImages.value = isUsedImageInfoArray(checkRes.used_images) ? checkRes.used_images : []
         if (unusedImages.value.length > 0) { showDeleteImagesModal.value = true; return }
@@ -416,31 +547,33 @@ const handleSaveNodes = async ({ source, filename }: { source: string; filename:
     } else {
       await saveNodesOnly(source, filename)
     }
-  } catch (e: unknown) { console.error('[FlowEditor] 保存失败:', e); throw e }
+  } catch (e: unknown) {
+    console.error('[FlowEditor] 保存失败:', e)
+    throw e
+  }
 }
 
 const processImagesAndSave = async (source: string, filename: string, deletePaths: string[], tempImages: { path: string; base64: string; nodeId?: string }[]) => {
   try {
     if (deletePaths.length > 0 || tempImages.length > 0) {
-      await resourceApi.processImages(source, deletePaths, tempImages, {
-        context: { feature: 'resource', action: 'process_images', component: 'FlowEditor' }
-      })
+      await resourceApi.processImages(source, deletePaths, tempImages, { context: { feature: 'resource', action: 'process_images', component: 'FlowEditor' } })
     }
     clearTempImageData()
     await saveNodesOnly(source, filename)
-  } catch (e: unknown) { console.error('[FlowEditor] 图片处理失败:', e); throw e }
+  } catch (e: unknown) {
+    console.error('[FlowEditor] 图片处理失败:', e)
+    throw e
+  }
 }
 
 const saveNodesOnly = async (source: string, filename: string) => {
   const rawNodes = getNodesData()
   const payload = pipelineVersion.value === 'V2' ? toPipelineV2Nodes(rawNodes) : rawNodes
-  const res = await resourceApi.saveFileNodes(source, filename, payload, {
-    context: { feature: 'resource', action: 'save_nodes', component: 'FlowEditor' }
-  })
+  const res = await resourceApi.saveFileNodes(source, filename, payload, { context: { feature: 'resource', action: 'save_nodes', component: 'FlowEditor' } })
   if (res.success) {
     clearDirty()
     loadedFileVersion.value = pipelineVersion.value
-    console.log('[FlowEditor] 保存成功:', filename)
+    snapshotState()
   }
 }
 
@@ -449,9 +582,14 @@ const handleConfirmDeleteImages = async () => {
   isProcessingImages.value = true
   try {
     await processImagesAndSave(pendingSaveConfig.value.source, pendingSaveConfig.value.filename, unusedImages.value, getImageData().tempImages)
-    showDeleteImagesModal.value = false; pendingSaveConfig.value = null
-  } catch (e: unknown) { const err = e as { message?: string }; alert('保存失败: ' + (err?.message || '未知错误')) }
-  finally { isProcessingImages.value = false }
+    showDeleteImagesModal.value = false
+    pendingSaveConfig.value = null
+  } catch (e: unknown) {
+    const err = e as { message?: string }
+    alert('保存失败: ' + (err?.message || '未知错误'))
+  } finally {
+    isProcessingImages.value = false
+  }
 }
 
 const handleSkipDeleteImages = async () => {
@@ -459,41 +597,47 @@ const handleSkipDeleteImages = async () => {
   isProcessingImages.value = true
   try {
     await processImagesAndSave(pendingSaveConfig.value.source, pendingSaveConfig.value.filename, [], getImageData().tempImages)
-    showDeleteImagesModal.value = false; pendingSaveConfig.value = null
-  } catch (e: unknown) { const err = e as { message?: string }; alert('保存失败: ' + (err?.message || '未知错误')) }
-  finally { isProcessingImages.value = false }
+    showDeleteImagesModal.value = false
+    pendingSaveConfig.value = null
+  } catch (e: unknown) {
+    const err = e as { message?: string }
+    alert('保存失败: ' + (err?.message || '未知错误'))
+  } finally {
+    isProcessingImages.value = false
+  }
 }
 
 const handleCancelDeleteImages = () => { showDeleteImagesModal.value = false; pendingSaveConfig.value = null }
 const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'standard')
+
+defineExpose({
+  snapshotState,
+  getSnapshot: buildSnapshot,
+  handleLoadNodesWrapper,
+  handleLoadImages,
+  handleSaveNodes,
+  handleDeviceConnected,
+  handleUpdateCanvasConfig,
+  handleUpdatePipelineVersion,
+  handleRequestSwitch
+})
 </script>
 
 <template>
   <div class="w-full h-full min-h-[500px] bg-slate-50 relative">
     <VueFlow
-        v-model:nodes="nodes" v-model:edges="edges" :node-types="nodeTypesObject"
-        :default-zoom="1" :min-zoom="0.1" :max-zoom="4" fit-view-on-init
-        :only-render-visible-elements="true"
-        :is-valid-connection="onValidateConnection"
-        :nodes-draggable="isFileLoaded" :nodes-connectable="isFileLoaded" :elements-selectable="isFileLoaded"
-        @connect="handleConnect" @edges-change="handleEdgesChange"
-        @pane-context-menu="onPaneContextMenu" @node-context-menu="onNodeContextMenu" @edge-context-menu="onEdgeContextMenu"
-        @pane-click="closeMenu" @node-click="closeMenu" @edge-click="closeMenu" @move-start="closeMenu"
+      v-model:nodes="nodes" v-model:edges="edges" :node-types="nodeTypesObject"
+      :default-zoom="1" :min-zoom="0.1" :max-zoom="4"
+      :only-render-visible-elements="true"
+      :is-valid-connection="onValidateConnection"
+      :nodes-draggable="isFileLoaded" :nodes-connectable="isFileLoaded" :elements-selectable="isFileLoaded"
+      @connect="(params) => { handleConnect(params); snapshotState() }" @edges-change="(changes) => { handleEdgesChange(changes); snapshotState() }"
+      @nodes-change="handleNodesChange"
+      @pane-context-menu="onPaneContextMenu" @node-context-menu="onNodeContextMenu" @edge-context-menu="onEdgeContextMenu"
+      @pane-click="closeMenu" @node-click="closeMenu" @edge-click="closeMenu" @move-start="closeMenu" @move-end="handleMoveEnd"
     >
-      <Background pattern-color="#cbd5e1" :gap="20"/>
-      <Controls/>
-
-      <Panel position="top-right" class="m-4 pointer-events-none !z-20">
-        <InfoPanel
-            ref="infoPanelRef" :node-count="nodes.length" :edge-count="edges.length" :is-dirty="isDirtyCombined"
-            :current-filename="currentFilename" :edge-type="currentEdgeType" :spacing="currentSpacing"
-            @load-nodes="handleLoadNodesWrapper" @load-images="handleLoadImages" @save-nodes="handleSaveNodes"
-            @device-connected="handleDeviceConnected" @request-switch-file="handleRequestSwitch"
-            @update-canvas-config="handleUpdateCanvasConfig"
-            @update-pipeline-version="handleUpdatePipelineVersion"
-        />
-      </Panel>
-
+      <Background pattern-color="#cbd5e1" :gap="20" />
+      <Controls />
       <div v-if="!isFileLoaded" class="absolute inset-0 z-10 bg-slate-100/60 backdrop-blur-[2px] flex items-center justify-center pointer-events-none transition-all">
         <div class="flex flex-col items-center gap-4 p-8 bg-white/80 border border-slate-200 rounded-2xl shadow-xl">
           <div class="p-4 bg-indigo-50 rounded-full"><FolderSearch class="w-12 h-12 text-indigo-400" /></div>
@@ -503,21 +647,20 @@ const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'st
           </div>
         </div>
       </div>
-
       <ContextMenu
-          v-if="menu.visible"
-          v-bind="menu"
-          :currentEdgeType="currentEdgeType"
-          :currentSpacing="currentSpacing"
-          :currentAlgorithm="currentAlgorithm"
-          :currentDirection="currentDirection"
-          :debug-panel-visible="debugPanel.visible"
-          :search-visible="searchVisible"
-          @close="closeMenu"
-          @action="handleMenuAction"
+        v-if="menu.visible"
+        v-bind="menu"
+        :currentEdgeType="currentEdgeType"
+        :currentSpacing="currentSpacing"
+        :currentAlgorithm="currentAlgorithm"
+        :currentDirection="currentDirection"
+        :debug-panel-visible="debugPanel.visible"
+        :search-visible="searchVisible"
+        @close="closeMenu"
+        @action="handleMenuAction"
       />
     </VueFlow>
-    <NodeSearch :visible="searchVisible" :nodes="nodes" :current-filename="currentFilename" :current-source="currentSource" @close="searchVisible = false" @locate-node="handleLocateNode" @switch-file="handleRequestSwitch"/>
+    <NodeSearch :visible="searchVisible" :nodes="nodes" :current-filename="currentFilename" :current-source="currentSource" @close="searchVisible = false" @locate-node="handleLocateNode" @switch-file="handleRequestSwitch" />
     <NodeDebugPanel
       :visible="debugPanel.visible"
       :nodes="nodes"
@@ -529,8 +672,8 @@ const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'st
       @debug-node="handleDebugNodeFromPanel"
       @update-node-status="handleUpdateNodeStatus"
     />
-    <SaveConfirmModal :visible="showSaveModal" :filename="currentFilename" :is-saving="isSavingModal" @cancel="handleCancelSwitch" @discard="handleDiscardChanges" @save="handleSaveAndSwitch"/>
-    <DeleteImagesConfirmModal :visible="showDeleteImagesModal" :unused-images="unusedImages" :used-images="usedImages" :is-processing="isProcessingImages" @cancel="handleCancelDeleteImages" @confirm="handleConfirmDeleteImages" @skip="handleSkipDeleteImages"/>
+    <SaveConfirmModal :visible="showSaveModal" :filename="currentFilename" :is-saving="isSavingModal" @cancel="handleCancelSwitch" @discard="handleDiscardChanges" @save="handleSaveAndSwitch" />
+    <DeleteImagesConfirmModal :visible="showDeleteImagesModal" :unused-images="unusedImages" :used-images="usedImages" :is-processing="isProcessingImages" @cancel="handleCancelDeleteImages" @confirm="handleConfirmDeleteImages" @skip="handleSkipDeleteImages" />
   </div>
 </template>
 
