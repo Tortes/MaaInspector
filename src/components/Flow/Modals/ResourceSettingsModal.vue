@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { Database, Plus, ArrowUp, ArrowDown, Trash2, X, Save } from 'lucide-vue-next'
 import type { ResourceProfile } from '../../../services/api'
 
@@ -24,7 +25,6 @@ const emit = defineEmits<{
 
 const editingProfiles = ref<EditableProfile[]>([])
 const editProfIndex = ref<number>(0)
-const folderInputRef = ref<HTMLInputElement | null>(null)
 
 const cloneProfiles = (profiles: EditableProfile[]): EditableProfile[] =>
   JSON.parse(JSON.stringify(profiles || [])) as EditableProfile[]
@@ -49,24 +49,15 @@ const addPathToProfile = () => {
   current.paths.push('D:/New/Path')
 }
 
-const triggerFolderPicker = () => {
-  folderInputRef.value?.click()
-}
+const triggerFolderPicker = async () => {
+  const current = editingProfiles.value[editProfIndex.value]
+  if (!current) return
 
-const handleFolderSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    const current = editingProfiles.value[editProfIndex.value]
-    if (!current) return
-    for (const file of target.files) {
-      const path = file.webkitRelativePath
-      const folderPath = path.substring(0, path.lastIndexOf('/'))
-      if (folderPath && !current.paths.includes(folderPath)) {
-        current.paths.push(folderPath)
-      }
-    }
+  const selected = await invoke<string | null>('system_pick_folder')
+
+  if (typeof selected === 'string' && selected && !current.paths.includes(selected)) {
+    current.paths.push(selected)
   }
-  target.value = ''
 }
 
 const removePath = (pIndex: number) => {
@@ -156,8 +147,6 @@ const save = () => {
                 </button>
               </div>
             </div>
-
-            <input ref="folderInputRef" type="file" webkitdirectory multiple class="hidden" @change="handleFolderSelect"/>
 
             <div
                 class="flex-1 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-1 space-y-1 custom-scrollbar">

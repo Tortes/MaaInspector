@@ -10,6 +10,14 @@ pub fn system_init(config_dir: State<'_, String>) -> serde_json::Value {
     serde_json::to_value(&config).unwrap_or(serde_json::json!({}))
 }
 
+/// Pick a local folder and return its absolute path
+#[tauri::command]
+pub fn system_pick_folder() -> Option<String> {
+    rfd::FileDialog::new()
+        .pick_folder()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// Save configuration
 #[tauri::command]
 pub fn system_save_config(

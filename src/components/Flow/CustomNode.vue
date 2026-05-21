@@ -6,7 +6,7 @@ import NodeDetails from './NodeDetails.vue'
 import LazyImage from '../Common/LazyImage.vue'
 import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic'
 import { useImageManager } from '../../utils/useImageManager'
-import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload } from '../../utils/flowTypes'
+import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload, LayoutDirection } from '../../utils/flowTypes'
 
 const props = defineProps<{
   id: string
@@ -17,6 +17,7 @@ const props = defineProps<{
 const updateNode = inject<(payload: NodeUpdatePayload) => void>('updateNode', () => console.warn('updateNode not provided'))
 const closeAllDetailsSignal = inject<Ref<number>>('closeAllDetailsSignal', ref(0))
 const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
+const currentDirection = inject<Ref<LayoutDirection>>('currentDirection', ref('TB'))
 const pipelineVersion = inject<Ref<'V1' | 'V2'>>('pipelineVersion', ref('V1'))
 
 const imageManager = useImageManager()
@@ -31,6 +32,9 @@ const isUnknown = computed(() => props.data.type === 'Unknown')
 const isAnchorType = computed(() => props.data.type === 'Anchor')
 const hasOutputs = computed(() => !isUnknown.value && !isAnchorType.value)
 const canRenameInBody = computed(() => isUnknown.value || isAnchorType.value || props.data._isMissing)
+const isHorizontalLayout = computed(() => currentDirection.value === 'LR')
+const targetHandlePosition = computed(() => isHorizontalLayout.value ? Position.Left : Position.Top)
+const sourceHandlePosition = computed(() => isHorizontalLayout.value ? Position.Right : Position.Bottom)
 
 const editingId = ref(props.id)
 watch(() => props.id, (val) => { editingId.value = val })
@@ -141,7 +145,16 @@ const contentHeightClass = computed(() => {
         @close="showDetails = false" @update-id="handleUpdateId" @update-type="handleUpdateType" @update-data="handleUpdateData"
     />
 
-    <Handle id="in" type="target" :position="Position.Top" class="!w-16 !h-3 !rounded-full !bg-slate-300 hover:!bg-slate-400 transition-colors duration-200" style="top: -6px; left: 50%; transform: translate(-50%, 0);"/>
+    <Handle
+        id="in"
+        type="target"
+        :position="targetHandlePosition"
+        class="!rounded-full !bg-slate-300 hover:!bg-slate-400 transition-colors duration-200"
+        :class="isHorizontalLayout ? '!w-3 !h-16' : '!w-16 !h-3'"
+        :style="isHorizontalLayout
+          ? { left: '-6px', top: '50%', transform: 'translate(0, -50%)' }
+          : { top: '-6px', left: '50%', transform: 'translate(-50%, 0)' }"
+    />
 
     <div class="flex items-center justify-between px-4 py-3 rounded-t-xl border-b transition-colors duration-300" :class="headerStyle">
       <div class="flex items-center">
@@ -235,16 +248,38 @@ const contentHeightClass = computed(() => {
       </div>
     </div>
 
-    <div v-if="!data._isMissing && hasOutputs" class="flex h-6 w-full border-t border-slate-100 divide-x divide-slate-100">
+    <div
+        v-if="!data._isMissing && hasOutputs"
+        class="flex border-slate-100"
+        :class="isHorizontalLayout
+          ? 'absolute top-0 right-0 h-full w-8 translate-x-full flex-col border-l divide-y divide-slate-100 rounded-r-xl overflow-hidden bg-white shadow-sm'
+          : 'h-6 w-full border-t divide-x divide-slate-100'"
+    >
       <div class="flex-1 relative group hover:bg-blue-50 flex justify-center items-center cursor-crosshair transition-colors">
         <span class="text-[10px] font-bold text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity">Next</span>
-        <Handle id="source-a" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-blue-400 !transition-opacity"/>
-        <div class="absolute bottom-0 w-full h-1 bg-blue-200 group-hover:bg-blue-500 transition-colors rounded-bl-xl"></div>
+        <Handle
+            id="source-a"
+            type="source"
+            :position="sourceHandlePosition"
+            class="!w-full !h-full !inset-0 !translate-x-0 !translate-y-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-blue-400 !transition-opacity"
+        />
+        <div
+            class="absolute bg-blue-200 group-hover:bg-blue-500 transition-colors"
+            :class="isHorizontalLayout ? 'right-0 top-0 h-full w-1' : 'bottom-0 w-full h-1 rounded-bl-xl'"
+        ></div>
       </div>
       <div class="flex-1 relative group hover:bg-rose-50 flex justify-center items-center cursor-crosshair transition-colors">
-        <span class="text-[10px] font-bold text-rose-500 opacity-60 group-hover:opacity-100 transition-opacity">Err.</span>
-        <Handle id="source-c" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-rose-400 !transition-opacity"/>
-        <div class="absolute bottom-0 w-full h-1 bg-rose-200 group-hover:bg-rose-500 transition-colors rounded-br-xl"></div>
+        <span class="text-[10px] font-bold text-rose-500 opacity-60 group-hover:opacity-100 transition-opacity" :class="isHorizontalLayout ? '-rotate-90' : ''">Err.</span>
+        <Handle
+            id="source-c"
+            type="source"
+            :position="sourceHandlePosition"
+            class="!w-full !h-full !inset-0 !translate-x-0 !translate-y-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-rose-400 !transition-opacity"
+        />
+        <div
+            class="absolute bg-rose-200 group-hover:bg-rose-500 transition-colors"
+            :class="isHorizontalLayout ? 'right-0 top-0 h-full w-1' : 'bottom-0 w-full h-1 rounded-br-xl'"
+        ></div>
       </div>
     </div>
   </div>

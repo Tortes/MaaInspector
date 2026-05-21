@@ -14,7 +14,8 @@ export const NODE_SIZE_PADDING = {
   fallbackWidth: 280,
   fallbackHeight: 150,
   extraWidth: 20,
-  extraHeight: 20
+  extraHeight: 20,
+  horizontalPortWidth: 40
 }
 
 const elk = new ELK()
@@ -29,6 +30,27 @@ const directionToElk = (direction: LayoutDirection): string => {
 export function useLayout() {
   const { findNode } = useVueFlow()
 
+  const getNodeLayoutSize = (nodeId: string, direction: LayoutDirection) => {
+    const nodeEl = findNode(nodeId)
+    return {
+      width: (nodeEl?.dimensions?.width ?? NODE_SIZE_PADDING.fallbackWidth) +
+        NODE_SIZE_PADDING.extraWidth +
+        (direction === 'LR' ? NODE_SIZE_PADDING.horizontalPortWidth : 0),
+      height: (nodeEl?.dimensions?.height ?? NODE_SIZE_PADDING.fallbackHeight) + NODE_SIZE_PADDING.extraHeight
+    }
+  }
+
+  const getStressDesiredEdgeLength = (nodeSizes: Array<{ width: number; height: number }>, options: LayoutOptions) => {
+    const spacing = getSpacingConfig(options.spacing)
+    if (!nodeSizes.length) return spacing.nodeSpacing
+
+    const averageNodeSize = nodeSizes.reduce((sum, size) => {
+      return sum + (options.direction === 'LR' ? size.width : size.height)
+    }, 0) / nodeSizes.length
+
+    return Math.round(averageNodeSize + spacing.nodeSpacing)
+  }
+
   const elkLayout = async (
     nodes: FlowNode[],
     edges: FlowEdge[],
@@ -36,6 +58,7 @@ export function useLayout() {
   ): Promise<FlowNode[]> => {
     const spacing = getSpacingConfig(options.spacing)
     const elkDirection = directionToElk(options.direction)
+    const nodeSizes = nodes.map((node) => getNodeLayoutSize(node.id, options.direction))
 
     const layoutOptions: Record<string, string> = {
       'elk.algorithm': options.algorithm,
@@ -43,7 +66,8 @@ export function useLayout() {
     }
 
     if (options.algorithm === 'stress') {
-      layoutOptions['elk.stress.desiredEdgeLength'] = String(spacing.nodeSpacing)
+      layoutOptions['elk.stress.desiredEdgeLength'] = String(getStressDesiredEdgeLength(nodeSizes, options))
+      layoutOptions['elk.spacing.nodeNode'] = String(spacing.nodeSpacing)
     } else if (options.algorithm === 'mrtree') {
       layoutOptions['elk.spacing.nodeNode'] = String(spacing.nodeSpacing)
       layoutOptions['elk.spacing.edgeEdge'] = String(spacing.edgeSpacing)
@@ -57,10 +81,8 @@ export function useLayout() {
     const elkGraph = {
       id: 'root',
       layoutOptions,
-      children: nodes.map((node) => {
-        const nodeEl = findNode(node.id)
-        const width = (nodeEl?.dimensions?.width ?? NODE_SIZE_PADDING.fallbackWidth) + NODE_SIZE_PADDING.extraWidth
-        const height = (nodeEl?.dimensions?.height ?? NODE_SIZE_PADDING.fallbackHeight) + NODE_SIZE_PADDING.extraHeight
+      children: nodes.map((node, index) => {
+        const { width, height } = nodeSizes[index]
         return {
           id: node.id,
           width,
