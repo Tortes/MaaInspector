@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, ref, onMounted, type Component} from 'vue'
+import {computed, ref, onMounted, nextTick, type Component} from 'vue'
 import {
   Trash2, Copy, PlusCircle, RefreshCw, XCircle, ChevronRight,
   Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
@@ -56,6 +56,7 @@ const emit = defineEmits<{
 
 const mainMenuRef = ref<HTMLElement | null>(null)
 const mainMenuHeight = ref<number>(0)
+const adjustedPosition = ref<{ x: number; y: number }>({ x: props.x, y: props.y })
 
 const handleAction = (action: string, payload: string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection | null = null) => {
   emit('action', {action, type: props.type, data: props.data ?? null, payload})
@@ -71,12 +72,45 @@ const parseLabel = (label: string): { main: string; note: string } => {
   return { main: label, note: '' }
 }
 
-// 计算主菜单高度
-onMounted(() => {
+// 计算主菜单高度并调整位置
+onMounted(async () => {
   if (mainMenuRef.value) {
     mainMenuHeight.value = mainMenuRef.value.clientHeight
+    await nextTick()
+    updatePosition()
   }
 })
+
+// 更新菜单位置，确保不超出视口边界
+const updatePosition = () => {
+  if (!mainMenuRef.value) return
+  
+  const menuRect = mainMenuRef.value.getBoundingClientRect()
+  const menuWidth = menuRect.width
+  const menuHeight = menuRect.height
+  
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  
+  let newX = props.x
+  let newY = props.y
+  
+  // 检查右边界
+  if (props.x + menuWidth > viewportWidth) {
+    newX = viewportWidth - menuWidth - 8 // 8px 边距
+  }
+  
+  // 检查下边界
+  if (props.y + menuHeight > viewportHeight) {
+    newY = viewportHeight - menuHeight - 8 // 8px 边距
+  }
+  
+  // 确保不超出左边界和上边界
+  newX = Math.max(8, newX)
+  newY = Math.max(8, newY)
+  
+  adjustedPosition.value = { x: newX, y: newY }
+}
 
 const menuItems = computed<MenuItem[]>(() => {
   if (props.type === 'node') {
@@ -208,7 +242,7 @@ const menuItems = computed<MenuItem[]>(() => {
   <div
     ref="mainMenuRef"
     class="fixed z-50 w-56 bg-white rounded-lg shadow-xl border border-slate-100 text-sm animate-in fade-in zoom-in-95 duration-100 origin-top-left font-sans select-none"
-    :style="{ top: `${y}px`, left: `${x}px` }"
+    :style="{ top: `${adjustedPosition.y}px`, left: `${adjustedPosition.x}px` }"
     @contextmenu.prevent
   >
     <div
