@@ -1,92 +1,90 @@
 use crate::maafw::MaaFrameworkWrapper;
 use crate::resources::ResourcesManager;
 use crate::response::{ApiResponse, FileNodesResponse, ResourceLoadResponse};
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use tauri::State;
 
 /// Load resource paths
 #[tauri::command]
-pub fn resource_load(
+pub async fn resource_load(
     maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     paths: Vec<String>,
-) -> ResourceLoadResponse {
+) -> Result<ResourceLoadResponse, String> {
     // Manage file resources (always succeeds, returns file list)
     let manager = ResourcesManager::new(paths.clone());
     let results = manager.list_all_files();
-    *resources_manager.lock().unwrap() = Some(manager);
+    *resources_manager.lock().await = Some(manager);
 
     // Try loading into MaaFramework
     let (maafw_ok, maafw_msg) = {
-        let mut fw = maafw.lock().unwrap();
-        fw.load_resource(&paths)
+        let mut fw = maafw.lock().await;
+        fw.load_resource_async(&paths).await
     };
 
-    ResourceLoadResponse {
+    Ok(ResourceLoadResponse {
         r: true,
         success: true,
         message: maafw_msg.clone().unwrap_or_else(|| "Loaded".to_string()),
         list: Some(results),
         maafw_loaded: maafw_ok,
         maafw_message: maafw_msg,
-    }
+    })
 }
 
 /// Get nodes from a file
 #[tauri::command]
-pub fn resource_get_file_nodes(
+pub async fn resource_get_file_nodes(
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     source: String,
     filename: String,
-) -> FileNodesResponse {
-    let guard = resources_manager.lock().unwrap();
+) -> Result<FileNodesResponse, String> {
+    let guard = resources_manager.lock().await;
 
     if let Some(manager) = guard.as_ref()
         && let Some(nodes) = manager.get_nodes_by_file(&source, &filename)
     {
-        let node_keys: Vec<String> = nodes.keys().cloned().collect();
-
-        return FileNodesResponse {
+        return Ok(FileNodesResponse {
             nodes: Some(serde_json::to_value(nodes).unwrap_or(serde_json::Value::Null)),
             list: None,
-        };
+        });
     }
 
-    FileNodesResponse {
+    Ok(FileNodesResponse {
         nodes: None,
         list: None,
-    }
+    })
 }
 
 /// Save nodes to a file
 #[tauri::command]
-pub fn resource_save_file_nodes(
+pub async fn resource_save_file_nodes(
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     source: String,
     filename: String,
     nodes: serde_json::Value,
-) -> ApiResponse {
-    let mut guard = resources_manager.lock().unwrap();
+) -> Result<ApiResponse, String> {
+    let mut guard = resources_manager.lock().await;
 
     if let Some(manager) = guard.as_mut() {
         let count = manager.save_nodes(&source, &filename, nodes);
-        return ApiResponse::ok_with_data(
+        return Ok(ApiResponse::ok_with_data(
             format!("Saved {} nodes", count),
             serde_json::json!({ "saved_count": count }),
-        );
+        ));
     }
 
-    ApiResponse::error_with_status("ResourcesManager not initialized", 500)
+    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
 }
 
 /// Create a new file
 #[tauri::command]
-pub fn resource_create_file(
+pub async fn resource_create_file(
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     path: String,
     filename: String,
-) -> ApiResponse {
-    let mut guard = resources_manager.lock().unwrap();
+) -> Result<ApiResponse, String> {
+    let mut guard = resources_manager.lock().await;
 
     if let Some(manager) = guard.as_mut() {
         if manager.create_file(&path, &filename) {
@@ -95,30 +93,30 @@ pub fn resource_create_file(
             } else {
                 format!("{}.json", filename)
             };
-            return ApiResponse::ok_with_data(
+            return Ok(ApiResponse::ok_with_data(
                 "Created",
                 serde_json::json!({
                     "filename": final_filename,
                     "source": path
                 }),
-            );
+            ));
         }
-        return ApiResponse::error_with_status("File already exists", 409);
+        return Ok(ApiResponse::error_with_status("File already exists", 409));
     }
 
-    ApiResponse::error_with_status("ResourcesManager not initialized", 500)
+    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
 }
 
 /// Search nodes globally
 #[tauri::command]
-pub fn resource_search_nodes(
+pub async fn resource_search_nodes(
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     query: String,
     use_regex: Option<bool>,
     current_filename: Option<String>,
     current_source: Option<String>,
-) -> serde_json::Value {
-    let guard = resources_manager.lock().unwrap();
+) -> Result<serde_json::Value, String> {
+    let guard = resources_manager.lock().await;
 
     if let Some(manager) = guard.as_ref() {
         let results = manager.search_nodes(
@@ -128,20 +126,20 @@ pub fn resource_search_nodes(
             &current_source.unwrap_or_default(),
             50,
         );
-        return serde_json::json!({ "results": results });
+        return Ok(serde_json::json!({ "results": results }));
     }
 
-    serde_json::json!({ "results": [] })
+    Ok(serde_json::json!({ "results": [] }))
 }
 
 /// Get template images for nodes
 #[tauri::command]
-pub fn resource_get_templates(
+pub async fn resource_get_templates(
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     source: String,
     filename: String,
-) -> ApiResponse {
-    let guard = resources_manager.lock().unwrap();
+) -> Result<ApiResponse, String> {
+    let guard = resources_manager.lock().await;
 
     if let Some(manager) = guard.as_ref() {
         let nodes = manager.get_nodes_by_file(&source, &filename);
@@ -196,27 +194,27 @@ pub fn resource_get_templates(
         }
 
 
-        return ApiResponse::ok_with_data(
+        return Ok(ApiResponse::ok_with_data(
             "Loaded",
             serde_json::json!({
                 "base_image_path": image_base.to_string_lossy().replace("\\", "/"),
                 "results": results
             }),
-        );
+        ));
     }
 
-    ApiResponse::error_with_status("ResourcesManager not initialized", 500)
+    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
 }
 
 /// Check unused images
 #[tauri::command]
-pub fn resource_check_unused_images(
+pub async fn resource_check_unused_images(
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     source: String,
     current_filename: Option<String>,
     del_images: Vec<serde_json::Value>,
-) -> ApiResponse {
-    let guard = resources_manager.lock().unwrap();
+) -> Result<ApiResponse, String> {
+    let guard = resources_manager.lock().await;
 
     if let Some(manager) = guard.as_ref() {
         let paths_to_check: Vec<String> = del_images
@@ -229,13 +227,13 @@ pub fn resource_check_unused_images(
             .collect();
 
         if paths_to_check.is_empty() {
-            return ApiResponse::ok_with_data(
+            return Ok(ApiResponse::ok_with_data(
                 "No images to check",
                 serde_json::json!({
                     "unused_images": [],
                     "used_images": []
                 }),
-            );
+            ));
         }
 
         let used_map = manager.check_image_references(
@@ -260,27 +258,27 @@ pub fn resource_check_unused_images(
             })
             .collect();
 
-        return ApiResponse::ok_with_data(
+        return Ok(ApiResponse::ok_with_data(
             "Checked",
             serde_json::json!({
                 "unused_images": unused_images,
                 "used_images": used_images
             }),
-        );
+        ));
     }
 
-    ApiResponse::error_with_status("ResourcesManager not initialized", 500)
+    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
 }
 
 /// Process images (delete and save)
 #[tauri::command]
-pub fn resource_process_images(
+pub async fn resource_process_images(
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     source: String,
     delete_paths: Vec<String>,
     save_images: Vec<serde_json::Value>,
-) -> ApiResponse {
-    let guard = resources_manager.lock().unwrap();
+) -> Result<ApiResponse, String> {
+    let guard = resources_manager.lock().await;
 
     if let Some(manager) = guard.as_ref() {
         let mut results = serde_json::json!({
@@ -332,8 +330,8 @@ pub fn resource_process_images(
             }
         }
 
-        return ApiResponse::ok_with_data("Processed", results);
+        return Ok(ApiResponse::ok_with_data("Processed", results));
     }
 
-    ApiResponse::error_with_status("ResourcesManager not initialized", 500)
+    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
 }

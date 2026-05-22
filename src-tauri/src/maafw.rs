@@ -14,6 +14,25 @@ use maa_framework::{set_debug_mode, sys};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Async wait for controller operation with timeout using spawn_blocking
+pub async fn wait_with_timeout_async(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
+    let ctrl_clone = controller.clone();
+    tokio::task::spawn_blocking(move || {
+        wait_with_timeout(&ctrl_clone, id, timeout_ms)
+    }).await.unwrap_or(false)
+}
+
+/// Async wait for connection with longer timeout
+#[allow(dead_code)]
+pub async fn wait_for_connection_async(controller: &Controller, id: sys::MaaId) -> bool {
+    wait_with_timeout_async(controller, id, CONNECTION_TIMEOUT_MS).await
+}
+
+/// Async wait with default timeout
+pub async fn wait_with_default_timeout_async(controller: &Controller, id: sys::MaaId) -> bool {
+    wait_with_timeout_async(controller, id, CONTROLLER_TIMEOUT_MS).await
+}
+
 /// Timeout for controller operations (screencap, connection, etc.)
 const CONTROLLER_TIMEOUT_MS: u64 = 30000;
 /// Timeout for connection operations (longer for emulators)
@@ -52,6 +71,7 @@ fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -
 }
 
 /// Wait for controller operation with default timeout
+#[allow(dead_code)]
 fn wait_with_default_timeout(controller: &Controller, id: sys::MaaId) -> bool {
     wait_with_timeout(controller, id, CONTROLLER_TIMEOUT_MS)
 }
@@ -128,36 +148,45 @@ impl MaaFrameworkWrapper {
         }
     }
 
-    /// Connect to ADB device
-    pub fn connect_adb(
+    /// Connect to ADB device (async version)
+    pub async fn connect_adb_async(
         &mut self,
         adb_path: &str,
         address: &str,
         config: serde_json::Value,
     ) -> (bool, Option<String>) {
         let config_str = serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string());
+        let adb_path_str = adb_path.to_string();
+        let address_str = address.to_string();
 
-        match Controller::new_adb(adb_path, address, &config_str, "") {
-            Ok(ctrl) => match ctrl.post_connection() {
-                Ok(id) => {
-                    if !wait_for_connection(&ctrl, id) {
-                        (false, Some(format!("Connection timeout or failed for {}", address)))
-                    } else {
-                        self.controller = Some(ctrl);
-                        (true, None)
+        let result = tokio::task::spawn_blocking(move || {
+            match Controller::new_adb(&adb_path_str, &address_str, &config_str, "") {
+                Ok(ctrl) => match ctrl.post_connection() {
+                    Ok(id) => {
+                        let success = wait_for_connection(&ctrl, id);
+                        if success {
+                            Some(ctrl)
+                        } else {
+                            None
+                        }
                     }
-                }
-                Err(e) => (false, Some(format!("Connection error: {}", e))),
-            },
-            Err(e) => (
-                false,
-                Some(format!("Failed to create ADB controller: {}", e)),
-            ),
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            }
+        }).await.unwrap_or(None);
+
+        match result {
+            Some(ctrl) => {
+                self.controller = Some(ctrl);
+                (true, None)
+            }
+            None => (false, Some(format!("Connection timeout or failed for {}", address)))
         }
     }
 
-    /// Connect to Win32 window
-    pub fn connect_win32(
+    /// Connect to Win32 window (async version)
+    pub async fn connect_win32_async(
         &mut self,
         hwnd: i64,
         screencap_method: Option<i32>,
@@ -168,24 +197,31 @@ impl MaaFrameworkWrapper {
         let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as sys::MaaWin32InputMethod;
         let keyboard = keyboard_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as sys::MaaWin32InputMethod;
 
-        match Controller::new_win32(hwnd as *mut std::ffi::c_void, screencap, mouse, keyboard) {
-            Ok(ctrl) => {
-                match ctrl.post_connection() {
-                    Ok(id) => {
-                        if !wait_for_connection(&ctrl, id) {
-                            (false, Some(format!("Connection timeout or failed for hwnd {}", hwnd)))
-                        } else {
-                            self.controller = Some(ctrl);
-                            (true, None)
+        let result = tokio::task::spawn_blocking(move || {
+            match Controller::new_win32(hwnd as *mut std::ffi::c_void, screencap, mouse, keyboard) {
+                Ok(ctrl) => {
+                    match ctrl.post_connection() {
+                        Ok(id) => {
+                            let success = wait_for_connection(&ctrl, id);
+                            if success {
+                                Some(ctrl)
+                            } else {
+                                None
+                            }
                         }
+                        Err(_) => None,
                     }
-                    Err(e) => (false, Some(format!("Connection error: {}", e))),
                 }
+                Err(_) => None,
             }
-            Err(e) => (
-                false,
-                Some(format!("Failed to create Win32 controller: {}", e)),
-            ),
+        }).await.unwrap_or(None);
+
+        match result {
+            Some(ctrl) => {
+                self.controller = Some(ctrl);
+                (true, None)
+            }
+            None => (false, Some(format!("Connection timeout or failed for hwnd {}", hwnd)))
         }
     }
 
@@ -313,37 +349,33 @@ impl MaaFrameworkWrapper {
         self.tasker.as_ref().map(|t| t.running()).unwrap_or(false)
     }
 
-    /// Take screenshot and return as base64 with image size
-    pub fn screencap(&mut self) -> Option<(String, Vec<i32>)> {
+    /// Take screenshot and return as base64 with image size (async version)
+    pub async fn screencap_async(&mut self) -> Option<(String, Vec<i32>)> {
         let controller = self.controller.as_ref()?;
+        let ctrl_clone = controller.clone();
 
-        match controller.post_screencap() {
-            Ok(id) => {
-                if !wait_with_default_timeout(controller, id) {
-                    eprintln!("Screencap timeout or failed");
-                    return None;
-                }
+        let id = ctrl_clone.post_screencap().ok()?;
+        
+        let success = wait_with_default_timeout_async(&ctrl_clone, id).await;
+        if !success {
+            eprintln!("Screencap timeout or failed");
+            return None;
+        }
 
-                match controller.cached_image() {
-                    Ok(img_buffer) => {
-                        match img_buffer.to_vec() {
-                            Some(raw_data) => {
-                                self.encode_image_as_base64(&raw_data).map(|image| {
-                                    let size = self.detect_image_size(&raw_data).unwrap_or(vec![1280, 720]);
-                                    (image, size)
-                                })
-                            }
-                            None => None,
-                        }
+        match ctrl_clone.cached_image() {
+            Ok(img_buffer) => {
+                match img_buffer.to_vec() {
+                    Some(raw_data) => {
+                        self.encode_image_as_base64(&raw_data).map(|image| {
+                            let size = self.detect_image_size(&raw_data).unwrap_or(vec![1280, 720]);
+                            (image, size)
+                        })
                     }
-                    Err(e) => {
-                        eprintln!("Failed to get cached image: {}", e);
-                        None
-                    }
+                    None => None,
                 }
             }
             Err(e) => {
-                eprintln!("Screencap error: {}", e);
+                eprintln!("Failed to get cached image: {}", e);
                 None
             }
         }
@@ -473,12 +505,13 @@ impl MaaFrameworkWrapper {
     }
 
     /// Set event broker for debug events
+    #[allow(dead_code)]
     pub fn set_event_broker(&mut self, broker: Arc<DebugEventBroker>) {
         self.event_broker = Some(broker);
     }
 
-    /// Load resource from paths
-    pub fn load_resource(&mut self, paths: &[String]) -> (bool, Option<String>) {
+    /// Load resource from paths (async version)
+    pub async fn load_resource_async(&mut self, paths: &[String]) -> (bool, Option<String>) {
         if paths.is_empty() {
             return (false, Some("No resource paths provided".to_string()));
         }
@@ -491,23 +524,33 @@ impl MaaFrameworkWrapper {
             },
         };
 
-        let mut load_success = true;
-        let mut errors = Vec::new();
+        let paths_clone = paths.to_vec();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut load_success = true;
+            let mut errors = Vec::new();
 
-        for path in paths {
-            if path.is_empty() {
-                continue;
-            }
-            match resource.post_bundle(path) {
-                Ok(job) => {
-                    job.wait();
+            for path in &paths_clone {
+                if path.is_empty() {
+                    continue;
                 }
-                Err(e) => {
-                    errors.push(format!("Failed to load '{}': {}", path, e));
-                    load_success = false;
+                match resource.post_bundle(path) {
+                    Ok(job) => {
+                        job.wait();
+                    }
+                    Err(e) => {
+                        errors.push(format!("Failed to load '{}': {}", path, e));
+                        load_success = false;
+                    }
                 }
             }
-        }
+
+            (resource, load_success, errors)
+        }).await;
+
+        let (resource, load_success, errors) = match result {
+            Ok(r) => r,
+            Err(e) => return (false, Some(format!("Resource loading task failed: {}", e))),
+        };
 
         if resource.loaded() {
             self.resource = Some(resource);

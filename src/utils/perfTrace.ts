@@ -1,5 +1,3 @@
-const PERF_TRACE_KEY = 'maainspector.perfTrace'
-
 const isPerfTraceEnabled = () => false
 
 export const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())

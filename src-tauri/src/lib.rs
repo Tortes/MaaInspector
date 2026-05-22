@@ -16,7 +16,7 @@ use commands::{
 };
 use maafw::MaaFrameworkWrapper;
 use resources::ResourcesManager;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 /// Load MaaFramework DLL from the correct location
 /// In development: MAA_SDK_PATH or project root
