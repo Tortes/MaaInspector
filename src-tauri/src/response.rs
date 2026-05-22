@@ -53,6 +53,12 @@ pub struct ResourceLoadResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list: Option<Vec<ResourceFileInfo>>,
+    /// Whether MaaFramework successfully loaded the resource
+    #[serde(default)]
+    pub maafw_loaded: bool,
+    /// MaaFramework load message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maafw_message: Option<String>,
 }
 
 /// File nodes response

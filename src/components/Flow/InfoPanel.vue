@@ -517,12 +517,8 @@ const handleResourceLoad = async () => {
       context: { feature: 'resource', action: 'load', component: 'InfoPanel' }
     })
     perfLog('InfoPanel.resourceLoad.connect', start, { profile: currentProfile.value?.name })
-    const ok = (res as any)?.r ?? (res as any)?.success ?? true
-    if (!ok) {
-      resourceCtrl.message = (res as any)?.message || '资源加载失败'
-      return
-    }
 
+    // Always update file list regardless of MaaFramework load status
     if ((res as any).list) {
       availableFiles.value = res.list
       let fileStillExists = selectedResourceFile.value ? getFileObjById(selectedResourceFile.value) : null
@@ -539,10 +535,25 @@ const handleResourceLoad = async () => {
         selectedResourceFile.value = ''
         emit('update:selected-resource-file', '')
       }
-      resourceCtrl.status = 'connected'
-      resourceCtrl.message = `已加载资源: ${availableFiles.value.length} 个文件`
-      perfLog('InfoPanel.resourceLoad.total', start, { fileCount: availableFiles.value.length })
     }
+
+    // Set status based on MaaFramework load result
+    const maafwLoaded = (res as any)?.maafw_loaded ?? false
+    const maafwMsg = (res as any)?.maafw_message
+
+    if (maafwLoaded) {
+      resourceCtrl.status = 'connected'
+      resourceCtrl.message = maafwMsg || `已加载资源: ${availableFiles.value.length} 个文件`
+    } else {
+      resourceCtrl.status = 'failed'
+      resourceCtrl.message = maafwMsg || 'MaaFramework 资源加载失败'
+      // Auto-reset failed status after 3 seconds
+      setTimeout(() => {
+        if (resourceCtrl.status === 'failed') resourceCtrl.status = 'disconnected'
+      }, 3000)
+    }
+
+    perfLog('InfoPanel.resourceLoad.total', start, { fileCount: availableFiles.value.length, maafwLoaded })
   } catch (e: any) {
     console.error("资源加载流程异常", e)
     resourceCtrl.status = 'failed'

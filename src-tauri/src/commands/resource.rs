@@ -1,3 +1,4 @@
+use crate::maafw::MaaFrameworkWrapper;
 use crate::resources::ResourcesManager;
 use crate::response::{ApiResponse, FileNodesResponse, ResourceLoadResponse};
 use std::sync::Mutex;
@@ -6,21 +7,28 @@ use tauri::State;
 /// Load resource paths
 #[tauri::command]
 pub fn resource_load(
+    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     paths: Vec<String>,
 ) -> ResourceLoadResponse {
-    // Create new manager with paths
+    // Manage file resources (always succeeds, returns file list)
     let manager = ResourcesManager::new(paths.clone());
     let results = manager.list_all_files();
-
-    // Update state
     *resources_manager.lock().unwrap() = Some(manager);
+
+    // Try loading into MaaFramework
+    let (maafw_ok, maafw_msg) = {
+        let mut fw = maafw.lock().unwrap();
+        fw.load_resource(&paths)
+    };
 
     ResourceLoadResponse {
         r: true,
         success: true,
-        message: "Loaded".to_string(),
+        message: maafw_msg.clone().unwrap_or_else(|| "Loaded".to_string()),
         list: Some(results),
+        maafw_loaded: maafw_ok,
+        maafw_message: maafw_msg,
     }
 }
 

@@ -23,17 +23,14 @@ const STATUS_POLL_INTERVAL_MS: u64 = 50;
 
 /// Wait for controller operation with timeout
 /// Returns true if operation succeeded, false if failed or timed out
-fn wait_with_timeout(controller: &Controller, id: i64, timeout_ms: u64) -> bool {
+fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
     let poll_interval = Duration::from_millis(STATUS_POLL_INTERVAL_MS);
 
     loop {
-        // Check status (non-blocking)
         let status = controller.status(id);
 
-        // Use sys constants to determine status
-        // MaaStatus_Succeeded = 3000, MaaStatus_Failed = 4000, MaaStatus_Invalid = 0
         if status.succeeded() {
             return true;
         }
@@ -42,7 +39,6 @@ fn wait_with_timeout(controller: &Controller, id: i64, timeout_ms: u64) -> bool 
             return false;
         }
 
-        // Pending or Running - check timeout
         if start.elapsed() > timeout {
             eprintln!(
                 "Controller operation timeout after {}ms",
@@ -56,12 +52,12 @@ fn wait_with_timeout(controller: &Controller, id: i64, timeout_ms: u64) -> bool 
 }
 
 /// Wait for controller operation with default timeout
-fn wait_with_default_timeout(controller: &Controller, id: i64) -> bool {
+fn wait_with_default_timeout(controller: &Controller, id: sys::MaaId) -> bool {
     wait_with_timeout(controller, id, CONTROLLER_TIMEOUT_MS)
 }
 
 /// Wait for connection operation with longer timeout
-fn wait_for_connection(controller: &Controller, id: i64) -> bool {
+fn wait_for_connection(controller: &Controller, id: sys::MaaId) -> bool {
     wait_with_timeout(controller, id, CONNECTION_TIMEOUT_MS)
 }
 
@@ -75,14 +71,11 @@ pub struct MaaFrameworkWrapper {
 
 impl MaaFrameworkWrapper {
     pub fn new() -> Self {
-        // Initialize toolkit with target directory to avoid triggering dev watcher
-        // Logs will go to target/debug/ instead of src-tauri/debug/
         let target_dir = std::env::current_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from("."))
             .join("target");
         let _ = Toolkit::init_option(&target_dir.to_string_lossy(), "{}");
 
-        // Enable debug mode for recognition details
         let _ = set_debug_mode(true);
 
         Self {
@@ -102,7 +95,7 @@ impl MaaFrameworkWrapper {
                     name: Some(d.name.clone()),
                     device_type: Some("adb".to_string()),
                     address: Some(d.address.clone()),
-                    adb_path: Some(d.adb_path.to_string_lossy().to_string()),
+                    adb_path: d.adb_path.to_str().map(|s| s.to_string()),
                     config: Some(d.config.clone()),
                     ..Default::default()
                 })
@@ -171,17 +164,12 @@ impl MaaFrameworkWrapper {
         mouse_method: Option<i32>,
         keyboard_method: Option<i32>,
     ) -> (bool, Option<String>) {
-        // Convert method options to sys types
-        // Default to GDI for screencap and SendMessage for input
-        // Note: sys::MaaWin32ScreencapMethod and sys::MaaWin32InputMethod are u64
-        let screencap = screencap_method.unwrap_or(sys::MaaWin32ScreencapMethod_GDI as i32) as u64;
-        let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as u64;
-        let keyboard =
-            keyboard_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as u64;
+        let screencap = screencap_method.unwrap_or(sys::MaaWin32ScreencapMethod_GDI as i32) as sys::MaaWin32ScreencapMethod;
+        let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as sys::MaaWin32InputMethod;
+        let keyboard = keyboard_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as sys::MaaWin32InputMethod;
 
         match Controller::new_win32(hwnd as *mut std::ffi::c_void, screencap, mouse, keyboard) {
             Ok(ctrl) => {
-                // Post connection and wait with timeout
                 match ctrl.post_connection() {
                     Ok(id) => {
                         if !wait_for_connection(&ctrl, id) {
@@ -223,29 +211,21 @@ impl MaaFrameworkWrapper {
             return Some("Controller not initialized".to_string());
         }
 
-        // Bind resource
         let resource = self.resource.as_ref().unwrap();
-        if let Err(e) = tasker.bind_resource(resource) {
-            return Some(format!("Failed to bind resource: {}", e));
-        }
-
-        // Bind controller
         let controller = self.controller.as_ref().unwrap();
-        if let Err(e) = tasker.bind_controller(controller) {
-            return Some(format!("Failed to bind controller: {}", e));
+
+        if let Err(e) = tasker.bind(resource, controller) {
+            return Some(format!("Failed to bind resource and controller: {}", e));
         }
 
         if !tasker.inited() {
             return Some("Failed to init MaaFramework tasker".to_string());
         }
 
-        // Setup event sinks for debug events
         if let Some(ref broker) = self.event_broker {
             let broker_clone = Arc::clone(broker);
 
-            // Add context sink for node events
             let _ = tasker.add_context_sink(move |msg, details| {
-                // Parse event type
                 let noti_type = if msg.ends_with(".Starting") {
                     "starting"
                 } else if msg.ends_with(".Succeeded") {
@@ -256,12 +236,10 @@ impl MaaFrameworkWrapper {
                     "unknown"
                 };
 
-                // Parse details JSON
                 let detail: serde_json::Value =
                     serde_json::from_str(details).unwrap_or(serde_json::Value::Null);
 
                 if msg.starts_with("Node.NextList") {
-                    // Node next list event
                     let task_id =
                         detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let name = detail
@@ -295,7 +273,6 @@ impl MaaFrameworkWrapper {
                     let focus = detail.get("focus").cloned();
                     broker_clone.emit_node_next_list(task_id, name, next_list, focus);
                 } else if msg.starts_with("Node.Recognition") {
-                    // Node recognition event
                     let task_id =
                         detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let reco_id =
@@ -318,17 +295,8 @@ impl MaaFrameworkWrapper {
             });
         }
 
-        // Convert pipeline_override to JSON string
-        let override_str =
-            serde_json::to_string(&pipeline_override).unwrap_or_else(|_| "{}".to_string());
-
-        // Post task
-        match tasker.post_task(entry, &override_str) {
-            Ok(job) => {
-                // Wait for completion (non-blocking for now - just post)
-                let _ = job;
-                None
-            }
+        match tasker.post_task_json(entry, &pipeline_override) {
+            Ok(_job) => None,
             Err(e) => Some(format!("Task execution error: {}", e)),
         }
     }
@@ -349,22 +317,17 @@ impl MaaFrameworkWrapper {
     pub fn screencap(&mut self) -> Option<(String, Vec<i32>)> {
         let controller = self.controller.as_ref()?;
 
-        // Post screencap
         match controller.post_screencap() {
             Ok(id) => {
-                // Use timeout wait instead of blocking wait
                 if !wait_with_default_timeout(controller, id) {
                     eprintln!("Screencap timeout or failed");
                     return None;
                 }
 
-                // Get cached image
                 match controller.cached_image() {
                     Ok(img_buffer) => {
-                        // Get raw image data (returns Option<Vec<u8>>)
                         match img_buffer.to_vec() {
                             Some(raw_data) => {
-                                // Encode as base64 and keep the actual cached image size.
                                 self.encode_image_as_base64(&raw_data).map(|image| {
                                     let size = self.detect_image_size(&raw_data).unwrap_or(vec![1280, 720]);
                                     (image, size)
@@ -392,13 +355,7 @@ impl MaaFrameworkWrapper {
             return None;
         }
 
-        // Use image crate to decode and re-encode
-        // The raw data from MaaFramework is typically in PNG or JPEG format already
-        // Let's check the header to determine format
-
-        // PNG header: 89 50 4E 47
         let is_png = raw_data.len() > 4 && raw_data[0..4] == [0x89, 0x50, 0x4E, 0x47];
-        // JPEG header: FF D8 FF
         let is_jpeg = raw_data.len() > 3 && raw_data[0..3] == [0xFF, 0xD8, 0xFF];
 
         let mime = if is_png {
@@ -406,10 +363,9 @@ impl MaaFrameworkWrapper {
         } else if is_jpeg {
             "image/jpeg"
         } else {
-            "image/png" // Default to PNG
+            "image/png"
         };
 
-        // Encode as base64
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw_data);
         Some(format!("data:{};base64,{}", mime, encoded))
     }
@@ -423,13 +379,12 @@ impl MaaFrameworkWrapper {
     pub fn get_reco_detail(&self, reco_id: i32) -> Option<RecognitionDetail> {
         let tasker = self.tasker.as_ref()?;
 
-        match tasker.get_recognition_detail(reco_id as i64) {
+        match tasker.get_recognition_detail(reco_id as sys::MaaId) {
             Ok(Some(detail)) => {
-                // Convert to our RecognitionDetail structure
                 Some(RecognitionDetail {
                     reco_id: Some(reco_id),
                     name: Some(detail.node_name.clone()),
-                    algorithm: Some(detail.algorithm.as_str().to_string()),
+                    algorithm: Some(format!("{:?}", detail.algorithm)),
                     hit: detail.hit,
                     bbox: Some(vec![
                         detail.box_rect.x,
@@ -490,13 +445,10 @@ impl MaaFrameworkWrapper {
             return None;
         }
 
-        // Try to decode with image crate
         match image::load_from_memory(raw_data) {
             Ok(img) => {
-                // Convert to RGB
                 let rgb_img = img.to_rgb8();
 
-                // Encode as PNG using ImageBuffer's write_to method
                 let mut png_data = Vec::new();
                 match rgb_img.write_to(
                     &mut std::io::Cursor::new(&mut png_data),
@@ -513,12 +465,65 @@ impl MaaFrameworkWrapper {
                 }
             }
             Err(_) => {
-                // If decode fails, just encode raw bytes as base64
-                // Assume it's already a valid image format
                 let encoded =
                     base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw_data);
                 Some(format!("data:image/png;base64,{}", encoded))
             }
+        }
+    }
+
+    /// Set event broker for debug events
+    pub fn set_event_broker(&mut self, broker: Arc<DebugEventBroker>) {
+        self.event_broker = Some(broker);
+    }
+
+    /// Load resource from paths
+    pub fn load_resource(&mut self, paths: &[String]) -> (bool, Option<String>) {
+        if paths.is_empty() {
+            return (false, Some("No resource paths provided".to_string()));
+        }
+
+        let resource = match self.resource.take() {
+            Some(existing) => existing,
+            None => match Resource::new() {
+                Ok(res) => res,
+                Err(e) => return (false, Some(format!("Failed to create resource: {}", e))),
+            },
+        };
+
+        let mut load_success = true;
+        let mut errors = Vec::new();
+
+        for path in paths {
+            if path.is_empty() {
+                continue;
+            }
+            match resource.post_bundle(path) {
+                Ok(job) => {
+                    job.wait();
+                }
+                Err(e) => {
+                    errors.push(format!("Failed to load '{}': {}", path, e));
+                    load_success = false;
+                }
+            }
+        }
+
+        if resource.loaded() {
+            self.resource = Some(resource);
+            if load_success {
+                (true, Some(format!("Loaded {} resource path(s)", paths.len())))
+            } else {
+                (true, Some(format!("Partially loaded: {}", errors.join("; "))))
+            }
+        } else {
+            self.resource = None;
+            let msg = if errors.is_empty() {
+                "Failed to load any resources".to_string()
+            } else {
+                errors.join("; ")
+            };
+            (false, Some(msg))
         }
     }
 }
