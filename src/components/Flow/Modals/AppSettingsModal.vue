@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { Settings, Save, RotateCcw } from 'lucide-vue-next'
+import { Settings, Save, RotateCcw, Terminal } from 'lucide-vue-next'
 import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '../../../utils/flowOptions'
 import type { EdgeType } from '../../../utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../../../utils/flowTypes'
@@ -82,6 +82,15 @@ const handleReset = () => {
   pipelineVersion.value = 'V1'
   restoreWorkspaceOnStart.value = true
   lowMemoryMode.value = false
+}
+
+const handleOpenDevTools = async () => {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('devtools_open')
+  } catch (e) {
+    console.error('Failed to open DevTools:', e)
+  }
 }
 </script>
 
@@ -286,17 +295,26 @@ const handleReset = () => {
               </div>
             </div>
 
-            <!-- 更多设置(预留) -->
-            <div class="space-y-3 opacity-50">
+            <!-- 开发者工具 -->
+            <div class="space-y-3">
               <div class="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <div class="w-1 h-4 bg-slate-300 rounded" />
-                <h4 class="text-sm font-bold text-slate-500">
-                  更多设置
+                <div class="w-1 h-4 bg-slate-400 rounded" />
+                <h4 class="text-sm font-bold text-slate-600">
+                  开发者工具
                 </h4>
               </div>
-              <p class="text-xs text-slate-400 text-center py-4">
-                更多功能开发中...
-              </p>
+              <button
+                class="w-full py-2.5 px-3 text-xs font-medium rounded-lg border-2 transition-all text-left bg-slate-50 text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50"
+                @click="handleOpenDevTools"
+              >
+                <div class="flex items-center gap-2">
+                  <Terminal :size="14" />
+                  <span>打开开发者工具</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">
+                  在生产环境中打开浏览器 DevTools (F12)
+                </p>
+              </button>
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ use crate::maafw::MaaFrameworkWrapper;
 use crate::response::{ApiResponse, RecoDetailResponse};
 use tokio::sync::Mutex;
 use tauri::State;
+use tauri::Manager;
 
 /// Run debug node
 #[tauri::command]
@@ -112,4 +113,13 @@ pub async fn debug_get_reco_details(
             detail: None,
         }),
     }
+}
+
+/// Open DevTools (works in production)
+#[tauri::command]
+pub async fn devtools_open(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.open_devtools();
+    }
+    Ok(())
 }
