@@ -257,6 +257,7 @@ export function useSaveManager(deps: SaveManagerDeps) {
 
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
     if (isDirtyCombined.value) { e.preventDefault(); e.returnValue = ''; return '' }
+    return undefined
   }
 
   return {

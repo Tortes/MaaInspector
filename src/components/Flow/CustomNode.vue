@@ -97,11 +97,9 @@ const isImageNode = computed(() => ['TemplateMatch', 'FeatureMatch'].includes(pr
 const nodeImages = computed<TemplateImage[]>(() => {
   const template = businessData.value.template
   const paths = Array.isArray(template) ? template : (typeof template === 'string' ? [template] : [])
-  console.log('[DEBUG] CustomNode nodeImages computed:', { nodeId: props.id, nodeType: props.data.type, template, paths, isImageNode: isImageNode.value })
   if (!paths.length) return []
 
   const result = imageManager.getImagesForDisplayWithCache(props.id, paths)
-  console.log('[DEBUG] CustomNode nodeImages result:', { nodeId: props.id, resultCount: result.length, result })
   return result
 })
 

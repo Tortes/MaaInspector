@@ -3,6 +3,21 @@ import { isPipelineV2Nodes, toPipelineV1Nodes } from '../utils/pipelineTransform
 import type { FlowBusinessData, TemplateImage } from '../utils/flowTypes'
 import type { FlowTab } from '../stores/workspace'
 
+interface ResourceFileInfo {
+  source?: string | null
+  value?: string | null
+}
+
+interface ResourceManagerRef {
+  findFileById: (id: string) => ResourceFileInfo | undefined
+  setMessage: (message: string) => void
+}
+
+type PreloadCacheEmit = {
+  (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }): void
+  (e: 'load-images', images: Record<string, TemplateImage[]>, basePath?: string): void
+}
+
 interface CachedFileData {
   nodes: Record<string, FlowBusinessData>
   images: Record<string, TemplateImage[]>
@@ -12,8 +27,8 @@ interface CachedFileData {
 interface UsePreloadCacheOptions {
   tabs: () => FlowTab[] | undefined
   selectedResourceFile: () => string
-  resourceManagerRef: () => any
-  emit: any
+  resourceManagerRef: () => ResourceManagerRef | null
+  emit: PreloadCacheEmit
 }
 
 export function usePreloadCache(options: UsePreloadCacheOptions) {
@@ -88,8 +103,8 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
     const fileObj = rm.findFileById(fileId)
     if (!fileObj || !fileObj.value) return
 
-    const src = fileObj.source
-    const fname = fileObj.value
+    const src = fileObj.source ?? ''
+    const fname = fileObj.value ?? ''
     const fileKey = `${src}|${fname}`
 
     const cached = preloadCache.get(fileKey)

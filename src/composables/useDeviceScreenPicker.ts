@@ -1,6 +1,7 @@
 import { inject, reactive, ref } from 'vue'
 import type { useImageManager } from '../composables/useImageManager'
 import type { TemplateImage } from '../utils/flowTypes'
+import { normalizeTemplateList } from '../utils/templateUtils'
 
 export type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
 
@@ -120,20 +121,14 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
     return payload
   }
 
-  const normalizeTemplatePaths = (val: unknown): string[] => {
-    if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
-    if (typeof val === 'string' && val.trim()) return [val.trim()]
-    return []
-  }
-
   const getTargetTemplatePaths = (target?: TemplateTarget | null): string[] => {
-    if (!target) return normalizeTemplatePaths(getValue('template', null))
+    if (!target) return normalizeTemplateList(getValue('template', null))
     const list = formData[target.compositeKey]
     if (!Array.isArray(list)) return []
     const item = list[target.compositeIndex]
     if (!item || typeof item !== 'object') return []
     const templateVal = (item as Record<string, unknown>).template
-    return normalizeTemplatePaths(templateVal)
+    return normalizeTemplateList(templateVal)
   }
 
   const filterImagesByPaths = (images: ImageItem[], paths: string[]): ImageItem[] => {

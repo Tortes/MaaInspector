@@ -5,10 +5,12 @@ import { Bell, X, Clock, CheckCircle, Sparkles, Bug } from 'lucide-vue-next'
 import { changelogContent } from '../../../changelog'
 
 interface AnnouncementProps {
-  visible: boolean
+  visible?: boolean
 }
 
-defineProps<AnnouncementProps>()
+withDefaults(defineProps<AnnouncementProps>(), {
+  visible: false
+})
 
 defineEmits<{
   (e: 'close'): void

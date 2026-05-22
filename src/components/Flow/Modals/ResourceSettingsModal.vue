@@ -7,9 +7,9 @@ import type { ResourceProfile } from '../../../services/api'
 type EditableProfile = ResourceProfile & { paths: string[] }
 
 interface ResourceSettingsProps {
-  visible: boolean
-  profiles: EditableProfile[]
-  currentIndex: number
+  visible?: boolean
+  profiles?: EditableProfile[]
+  currentIndex?: number
 }
 
 const props = withDefaults(defineProps<ResourceSettingsProps>(), {

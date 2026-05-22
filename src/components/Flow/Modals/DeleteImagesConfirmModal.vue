@@ -4,10 +4,10 @@ import { AlertTriangle, Trash2, Image as ImageIcon, FileWarning } from 'lucide-v
 import type { UsedImageInfo } from '../../../utils/flowTypes'
 
 const props = withDefaults(defineProps<{
-  visible: boolean
-  unusedImages: string[]
-  usedImages: UsedImageInfo[]
-  isProcessing: boolean
+  visible?: boolean
+  unusedImages?: string[]
+  usedImages?: UsedImageInfo[]
+  isProcessing?: boolean
 }>(), {
   visible: false,
   unusedImages: () => [],

@@ -135,7 +135,6 @@ const handleNodesChange = () => {
     perfMark('FlowEditor.handleNodesChange.skippedDuringBulkLoad', { tabId: props.tabId, filename: currentFilename.value })
     return
   }
-  console.log('[DEBUG] handleNodesChange - isFileLoaded:', isFileLoaded.value, 'currentFilename:', currentFilename.value)
   const start = perfNow()
   throttledSnapshot()
   perfLog('FlowEditor.handleNodesChange', start, { tabId: props.tabId, filename: currentFilename.value })
@@ -378,8 +377,7 @@ defineExpose({
       @connect="(params) => { handleConnect(params); throttledSnapshot() }"
       @edges-change="(changes) => { handleEdgesChange(changes); throttledSnapshot() }"
       @nodes-change="handleNodesChange"
-      @node-drag-stop="(e) => { console.log('[DEBUG] node-drag-stop event:', e); handleNodesChange() }"
-      @node-drag="(e) => console.log('[DEBUG] node-drag event:', e)"
+      @node-drag-stop="handleNodesChange"
       @pane-context-menu="onPaneContextMenu"
       @node-context-menu="onNodeContextMenu"
       @edge-context-menu="onEdgeContextMenu"

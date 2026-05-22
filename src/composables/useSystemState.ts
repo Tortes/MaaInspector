@@ -6,6 +6,39 @@ import type { ApiDeviceInfo, ResourceProfile } from '../services/api'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../utils/flowTypes'
 import type { EdgeType } from '../utils/flowOptions'
 
+interface DeviceManagerRef {
+  currentDevice?: ApiDeviceInfo | null
+  loadLastDevice: (device: ApiDeviceInfo) => void
+}
+
+interface ResourceFileInfo {
+  source?: string | null
+  value?: string | null
+}
+
+interface ResourceManagerRef {
+  availableFiles: Array<{ label?: string; source?: string | null; value?: string | null; filename?: string | null }>
+  findFileById: (id: string) => ResourceFileInfo | undefined
+  executeFileSwitch: (filename: string, source?: string) => Promise<void>
+  setMessage: (message: string) => void
+}
+
+interface AgentManagerRef {
+  currentAgentSocket?: string
+}
+
+type SystemStateEmit = {
+  (e: 'update-canvas-config', payload: {
+    edgeType: EdgeType
+    spacing: SpacingKey
+    layoutAlgorithm: LayoutAlgorithm
+    layoutDirection: LayoutDirection
+  }): void
+  (e: 'update-restore-workspace', value: boolean): void
+  (e: 'save-nodes', payload: { source: string; filename: string }): void
+  (e: 'update-pipeline-version', version: 'V1' | 'V2'): void
+}
+
 type EditableProfile = ResourceProfile & { paths: string[] }
 
 interface UseSystemStateOptions {
@@ -20,7 +53,7 @@ interface UseSystemStateOptions {
     selectedResourceFile?: string
     pipelineVersion?: 'V1' | 'V2'
   }
-  emit: any
+  emit: SystemStateEmit
 }
 
 export function useSystemState(options: UseSystemStateOptions) {
@@ -38,12 +71,12 @@ export function useSystemState(options: UseSystemStateOptions) {
   const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
     (profiles || []).map(p => ({
       ...p,
-      paths: Array.isArray((p as any).paths) ? [...(p as any).paths] : []
+      paths: Array.isArray((p as Record<string, unknown>).paths) ? [...(p as Record<string, unknown>).paths as string[]] : []
     }))
 
   let isInit = true
 
-  const fetchSystemState = async (deviceManagerRef: any, agentManagerRef: any) => {
+  const fetchSystemState = async (deviceManagerRef: DeviceManagerRef | null, agentManagerRef: AgentManagerRef | null) => {
     systemStatus.value = 'loading'
     isInit = true
     try {
@@ -101,7 +134,7 @@ export function useSystemState(options: UseSystemStateOptions) {
     }
   }
 
-  const saveAllConfig = async (deviceManagerRef: any, agentManagerRef: any) => {
+  const saveAllConfig = async (deviceManagerRef: DeviceManagerRef | null, agentManagerRef: AgentManagerRef | null) => {
     if (isInit) return
     if (systemStatus.value !== 'connected') return
     try {
@@ -141,13 +174,13 @@ export function useSystemState(options: UseSystemStateOptions) {
     }
   }
 
-  const setupAutoSave = (deviceManagerRef: any, agentManagerRef: any) => {
+  const setupAutoSave = (deviceManagerRef: DeviceManagerRef | null, agentManagerRef: AgentManagerRef | null) => {
     watch([selectedProfileIndex, selectedResourceFile, pipelineVersion], () => saveAllConfig(deviceManagerRef, agentManagerRef), { deep: false })
     watch(() => [options.props.edgeType, options.props.spacing, options.props.layoutAlgorithm, options.props.layoutDirection, options.props.restoreWorkspaceOnStart], () => saveAllConfig(deviceManagerRef, agentManagerRef), { deep: false })
     watch(() => agentManagerRef?.currentAgentSocket, () => saveAllConfig(deviceManagerRef, agentManagerRef))
   }
 
-  const handleSaveNodes = async (resourceManagerRef: any) => {
+  const handleSaveNodes = async (resourceManagerRef: ResourceManagerRef | null) => {
     if (!selectedResourceFile.value || isSaving.value) return
     isSaving.value = true
     try {
@@ -155,7 +188,7 @@ export function useSystemState(options: UseSystemStateOptions) {
       if (!rm) throw new Error('ResourceManager 未就绪')
       const fileObj = rm.findFileById(selectedResourceFile.value)
       if (!fileObj || !fileObj.value) throw new Error('未找到当前文件')
-      options.emit('save-nodes', { source: fileObj.source, filename: fileObj.value })
+      options.emit('save-nodes', { source: fileObj.source ?? '', filename: fileObj.value ?? '' })
     } catch (e: unknown) {
       console.error('保存失败', e)
       ElMessage.error('保存失败: ' + (e instanceof Error ? e.message : '未知错误'))
@@ -165,12 +198,12 @@ export function useSystemState(options: UseSystemStateOptions) {
     }
   }
 
-  const executeFileSwitch = async (filename: string, source: string | undefined, resourceManagerRef: any) => {
+  const executeFileSwitch = async (filename: string, source: string | undefined, resourceManagerRef: ResourceManagerRef | null) => {
     const rm = resourceManagerRef
     if (!rm) return
 
     const normSource = source ? source.replace(/\\/g, '/').toLowerCase() : ''
-    const target = (rm.availableFiles as any[]).find((f: any) => {
+    const target = rm.availableFiles.find((f) => {
       const fSource = f.source ? f.source.replace(/\\/g, '/').toLowerCase() : ''
       if (source) {
         return f.value === filename && fSource === normSource
@@ -178,9 +211,9 @@ export function useSystemState(options: UseSystemStateOptions) {
       return f.value === filename
     })
 
-    if (target) {
-      selectedResourceFile.value = makeFileId(target.source, target.value)
-      await rm.executeFileSwitch(target.value ?? '', target.source ?? undefined)
+    if (target && target.value) {
+      selectedResourceFile.value = makeFileId(target.source ?? '', target.value)
+      await rm.executeFileSwitch(target.value, target.source ?? undefined)
     } else {
       ElMessage.error(`无法切换: 未找到文件 ${filename}`)
     }

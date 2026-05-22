@@ -26,9 +26,9 @@ type EditableDevice = ApiDeviceInfo & {
 }
 
 interface DeviceSettingsProps {
-  visible: boolean
-  devices: EditableDevice[]
-  currentIndex: number
+  visible?: boolean
+  devices?: EditableDevice[]
+  currentIndex?: number
 }
 
 const props = withDefaults(defineProps<DeviceSettingsProps>(), {

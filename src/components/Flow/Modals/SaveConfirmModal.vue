@@ -2,9 +2,9 @@
 import { Loader2, Save, AlertTriangle } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
-  visible: boolean
-  filename: string
-  isSaving: boolean
+  visible?: boolean
+  filename?: string
+  isSaving?: boolean
 }>(), {
   visible: false,
   filename: 'Unknown',

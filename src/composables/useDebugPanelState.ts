@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { deviceApi, debugApi } from '../services/api'
 import { withCache } from '../services/cache'
 import type { ScreenshotResponse } from '../services/api'
+import { usePanelResize } from './usePanelResize'
 
 export interface NextChild {
   name: string
@@ -60,31 +61,21 @@ const DEFAULT_PANEL_WIDTH = 1120
 const MIN_PANEL_WIDTH = 600
 const SIDE_GAP = 24
 
-const clampPanelWidth = (value: number) => {
-  const maxWidth = typeof window === 'undefined'
-    ? DEFAULT_PANEL_WIDTH
-    : Math.max(MIN_PANEL_WIDTH, window.innerWidth - SIDE_GAP)
-  return Math.min(maxWidth, Math.max(MIN_PANEL_WIDTH, value))
-}
-
-const loadPanelWidth = () => {
-  if (typeof window === 'undefined') return DEFAULT_PANEL_WIDTH
-  const stored = Number(window.localStorage.getItem(WIDTH_STORAGE_KEY))
-  return clampPanelWidth(Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_PANEL_WIDTH)
-}
-
-const savePanelWidth = (width: number) => {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(WIDTH_STORAGE_KEY, String(Math.round(clampPanelWidth(width))))
-  } catch (_) {
-    // ignore storage failures
-  }
-}
-
 export function useDebugPanelState() {
-  const panelWidth = ref(DEFAULT_PANEL_WIDTH)
-  const isResizingWidth = ref(false)
+  const {
+    panelWidth,
+    isResizing: isResizingWidth,
+    startResize: startWidthResize,
+    stopResize: stopWidthResize,
+    loadWidth: loadPanelWidth,
+    saveWidth: savePanelWidth
+  } = usePanelResize({
+    storageKey: WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_PANEL_WIDTH,
+    minWidth: MIN_PANEL_WIDTH,
+    sideGap: SIDE_GAP
+  })
+
   const resizeStart = ref({ x: 0, width: DEFAULT_PANEL_WIDTH })
   const events = ref<DebugEventRecord[]>([])
   const isStreamRunning = ref(false)
@@ -246,32 +237,6 @@ export function useDebugPanelState() {
     if (stopStream) stopStream()
     stopStream = null
     isStreamRunning.value = false
-  }
-
-  const startWidthResize = (e: MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    isResizingWidth.value = true
-    resizeStart.value = { x: e.clientX, width: panelWidth.value }
-    document.body.style.cursor = 'ew-resize'
-    document.body.style.userSelect = 'none'
-    document.addEventListener('mousemove', onWidthResize)
-    document.addEventListener('mouseup', stopWidthResize)
-  }
-
-  const onWidthResize = (e: MouseEvent) => {
-    if (!isResizingWidth.value) return
-    panelWidth.value = clampPanelWidth(resizeStart.value.width + resizeStart.value.x - e.clientX)
-  }
-
-  const stopWidthResize = () => {
-    if (!isResizingWidth.value) return
-    isResizingWidth.value = false
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-    document.removeEventListener('mousemove', onWidthResize)
-    document.removeEventListener('mouseup', stopWidthResize)
-    savePanelWidth(panelWidth.value)
   }
 
   const handlePauseDebug = async () => {

@@ -3,8 +3,8 @@ import { ref, watch } from 'vue'
 import { FilePlus, Folder, Save, X, AlertCircle } from 'lucide-vue-next'
 
 interface CreateResourceModalProps {
-  visible: boolean
-  paths: string[]
+  visible?: boolean
+  paths?: string[]
 }
 
 const props = withDefaults(defineProps<CreateResourceModalProps>(), {

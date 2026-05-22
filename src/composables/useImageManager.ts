@@ -29,14 +29,12 @@ export function useImageManager() {
     if (!fullPath) return undefined
     if (!imageUrlCache.has(fullPath)) {
       const url = convertFileSrc(fullPath)
-      console.log('[DEBUG] getImageUrl:', { fullPath, url })
       imageUrlCache.set(fullPath, url)
     }
     return imageUrlCache.get(fullPath)
   }
 
   const setNodeImages = (nodeId: string, images: TemplateImage[]) => {
-    console.log('[DEBUG] setNodeImages:', { nodeId, imagesCount: images.length, images: images.map(img => ({ path: img.path, fullPath: img.fullPath, found: img.found })) })
     const state = ensureNodeState(nodeId)
     const enriched = images.map(img => ({
       ...img,
@@ -218,7 +216,6 @@ export function useImageManager() {
   const getImagesForDisplayWithCache = (nodeId: string, templatePaths: string[]): TemplateImage[] => {
     void version.value
     const state = nodeImageStates.value.get(nodeId)
-    console.log('[DEBUG] getImagesForDisplayWithCache:', { nodeId, templatePaths, hasState: !!state, stateKeys: state ? { imagesCount: state.images.length, tempImagesCount: state.tempImages.length } : null })
     if (!state) return []
 
     const result: TemplateImage[] = []
@@ -227,12 +224,10 @@ export function useImageManager() {
       if (result.length >= 16) break
 
       const stateImg = [...state.images, ...state.tempImages].find(img => img.path === path)
-      console.log('[DEBUG] getImagesForDisplayWithCache - path check:', { path, foundStateImg: !!stateImg, fullPath: stateImg?.fullPath, url: stateImg?.url })
       if (stateImg) {
         let url = stateImg.url
         if (!url && stateImg.fullPath) {
           url = getImageUrl(stateImg.fullPath)
-          console.log('[DEBUG] getImagesForDisplayWithCache - URL generated:', { fullPath: stateImg.fullPath, url })
           stateImg.url = url
           version.value++
         }
@@ -242,7 +237,6 @@ export function useImageManager() {
       }
     }
 
-    console.log('[DEBUG] getImagesForDisplayWithCache - result:', { resultCount: result.length, resultPaths: result.map(r => r.path) })
     return result
   }
 

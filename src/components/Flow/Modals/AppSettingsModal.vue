@@ -8,7 +8,7 @@ import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../../../util
 export type PipelineVersion = 'V1' | 'V2'
 
 interface AppSettingsProps {
-  visible: boolean
+  visible?: boolean
   defaultEdgeType?: EdgeType
   defaultSpacing?: SpacingKey
   defaultLayoutAlgorithm?: LayoutAlgorithm

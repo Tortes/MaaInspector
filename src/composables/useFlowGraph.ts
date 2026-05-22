@@ -5,6 +5,7 @@ import { useLayout, type LayoutOptions } from './useLayout'
 import { useImageManager } from './useImageManager'
 import { SPACING_OPTIONS, type EdgeType } from '../utils/flowOptions'
 import { perfLog, perfMark, perfNow } from '../utils/perfTrace'
+import { normalizeTemplateList } from '../utils/templateUtils'
 import { ElMessage } from 'element-plus'
 import type {
   FlowBusinessData,
@@ -290,7 +291,6 @@ export function useFlowGraph() {
         status: 'idle'
       }
     }
-    console.log('[DEBUG] createNodeObject:', { id, type: logicType, draggable: node.draggable, width: node.width, height: node.height, position: node.position })
     return node
   }
 
@@ -488,12 +488,6 @@ export function useFlowGraph() {
       paths = paths.filter(p => p !== path)
     }
     ;(nodeData.data as FlowBusinessData).template = paths
-  }
-
-  const normalizeTemplateList = (val: unknown): string[] => {
-    if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
-    if (typeof val === 'string' && val.trim()) return [val.trim()]
-    return []
   }
 
   const updateCompositeTemplate = (
@@ -697,17 +691,6 @@ export function useFlowGraph() {
     nodes.value = layoutedNodes
     edges.value = newEdges
 
-    console.log('[DEBUG] loadNodes - nodes assigned:', {
-      count: nodes.value.length,
-      firstNode: nodes.value[0] ? {
-        id: nodes.value[0].id,
-        type: nodes.value[0].type,
-        draggable: nodes.value[0].draggable,
-        width: nodes.value[0].width,
-        height: nodes.value[0].height,
-        position: nodes.value[0].position
-      } : null
-    })
     perfLog('useFlowGraph.loadNodes.assignRefs', assignStart, { nodeCount: nodes.value.length, edgeCount: edges.value.length })
 
     currentFilename.value = filename || ''
