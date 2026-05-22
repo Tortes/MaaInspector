@@ -15,7 +15,7 @@ dist
 dist-ssr
 *.local
 .opencode
-
+target
 
 # Tauri
 src-tauri/target
