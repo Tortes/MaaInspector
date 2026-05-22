@@ -14,8 +14,11 @@ use commands::{
     resource_get_templates, resource_load, resource_process_images, resource_save_file_nodes,
     resource_search_nodes, system_init, system_save_config, system_search_devices,
 };
+use events::DebugEventBroker;
 use maafw::MaaFrameworkWrapper;
 use resources::ResourcesManager;
+use std::sync::Arc;
+use tauri::Manager;
 use tokio::sync::Mutex;
 
 /// Load MaaFramework DLL from the correct location
@@ -88,6 +91,16 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let broker = DebugEventBroker::new_with_handle(app.handle().clone());
+            let broker_arc = Arc::new(broker);
+
+            let maafw_state = app.state::<Mutex<MaaFrameworkWrapper>>();
+            let mut maafw = maafw_state.blocking_lock();
+            maafw.set_event_broker(broker_arc);
+
+            Ok(())
+        })
         .manage(maafw)
         .manage(resources_manager)
         .manage(config_dir)

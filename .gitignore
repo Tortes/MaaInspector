@@ -61,3 +61,12 @@ get-pip.py
 
 # Claude Code
 .claude/
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Vite cache
+.vite/
+
+# Tauri generated schemas
+src-tauri/gen/

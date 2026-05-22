@@ -17,14 +17,7 @@ vi.mock('@vue-flow/core', () => ({
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     elkLayout: vi.fn().mockImplementation((nodes: unknown, _edges: unknown, _options: unknown) => {
-      // Simulate synchronous layout for testing - call callback immediately
-      return {
-        then: (callback: (nodes: unknown) => unknown) => {
-          // Call the callback immediately with the nodes
-          callback(nodes)
-          return { catch: vi.fn() }
-        }
-      }
+      return Promise.resolve(nodes)
     }),
     applyLayoutOnRefs: vi.fn(),
     applyOrderedChainLayout: vi.fn(),

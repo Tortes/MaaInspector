@@ -46,6 +46,11 @@ export interface SaveManagerDeps {
   defaultPipelineVersion?: 'V1' | 'V2'
 }
 
+/**
+ * Manages save/restore operations, snapshot building, image processing,
+ * and canvas configuration for the flow editor.
+ * @param deps - Dependencies injected from useFlowGraph and external sources
+ */
 export function useSaveManager(deps: SaveManagerDeps) {
   const {
     currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
@@ -72,6 +77,11 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const usedImages = ref<UsedImageInfo[]>([])
   const pendingSaveConfig = ref<PendingSaveConfig | null>(null)
 
+  /**
+   * Builds a complete snapshot of the current editor state including flow state,
+   * pipeline version, viewport, and selected resource file.
+   * @param viewportValue - Current viewport position and zoom level
+   */
   const buildSnapshot = (viewportValue: { x: number; y: number; zoom: number }): FlowEditorSnapshot => {
     const start = perfNow()
     const snap: FlowEditorSnapshot = {
@@ -91,6 +101,11 @@ export function useSaveManager(deps: SaveManagerDeps) {
     return snap
   }
 
+  /**
+   * Restores editor state from a saved snapshot, including flow state, pipeline version,
+   * and image data (fetching from server if not present in snapshot).
+   * @param snap - The snapshot to restore
+   */
   const restoreSnapshotState = async (snap: FlowEditorSnapshot) => {
     if (!snap?.flowState) return
     const start = perfNow()
@@ -118,6 +133,10 @@ export function useSaveManager(deps: SaveManagerDeps) {
     })
   }
 
+  /**
+   * Applies default settings for edge type, spacing, layout algorithm, direction,
+   * and pipeline version from snapshot or provided defaults.
+   */
   const applyDefaultSettings = () => {
     currentEdgeType.value = snapshot?.defaultFlowConfig?.edgeType || defaultEdgeType || 'smoothstep'
     currentSpacing.value = snapshot?.defaultFlowConfig?.spacing || defaultSpacing || 'normal'
@@ -133,6 +152,10 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const isUsedImageInfoArray = (value: unknown): value is UsedImageInfo[] =>
     Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item && 'used_by' in item)
 
+  /**
+   * Loads template images into the image manager for specified nodes.
+   * @param imageDataMap - Map of node IDs to their template image arrays
+   */
   const handleLoadImages = (imageDataMap: Record<string, unknown>, _basePath?: string) => {
     if (!imageDataMap) return
     const start = perfNow()
@@ -150,6 +173,12 @@ export function useSaveManager(deps: SaveManagerDeps) {
     })
   }
 
+  /**
+   * Saves node data to the server, optionally transforming to V2 pipeline format.
+   * @param source - Resource source identifier
+   * @param filename - Resource filename
+   * @param onSnapshotState - Callback to update snapshot state after save
+   */
   const saveNodesOnly = async (source: string, filename: string, onSnapshotState: () => void) => {
     const rawNodes = getNodesData()
     const payload = pipelineVersion.value === 'V2' ? toPipelineV2Nodes(rawNodes) : rawNodes
@@ -161,6 +190,14 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
+  /**
+   * Processes image deletions and uploads, then saves node data.
+   * @param source - Resource source identifier
+   * @param filename - Resource filename
+   * @param deletePaths - Image paths to delete
+   * @param tempImages - Temporary images to upload
+   * @param onSnapshotState - Callback to update snapshot state after save
+   */
   const processImagesAndSave = async (source: string, filename: string, deletePaths: string[], tempImages: { path: string; base64: string; nodeId?: string }[], onSnapshotState: () => void) => {
     try {
       if (deletePaths.length > 0 || tempImages.length > 0) {
@@ -174,6 +211,12 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
+  /**
+   * Orchestrates the save flow: checks for pending image changes, prompts for
+   * unused image deletion if needed, then processes images and saves nodes.
+   * @param config - Object containing source and filename
+   * @param onSnapshotState - Callback to update snapshot state after save
+   */
   const handleSaveNodes = async ({ source, filename }: { source: string; filename: string }, onSnapshotState: () => void) => {
     try {
       const { delImages, tempImages } = getImageData()
@@ -195,6 +238,10 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
+  /**
+   * Confirms deletion of unused images and proceeds with save.
+   * @param onSnapshotState - Callback to update snapshot state after save
+   */
   const handleConfirmDeleteImages = async (onSnapshotState: () => void) => {
     if (!pendingSaveConfig.value) return
     isProcessingImages.value = true
@@ -210,6 +257,10 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
+  /**
+   * Skips deletion of unused images and proceeds with save using only temp image uploads.
+   * @param onSnapshotState - Callback to update snapshot state after save
+   */
   const handleSkipDeleteImages = async (onSnapshotState: () => void) => {
     if (!pendingSaveConfig.value) return
     isProcessingImages.value = true
@@ -225,8 +276,17 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
+  /**
+   * Cancels the image deletion dialog and resets pending save config.
+   */
   const handleCancelDeleteImages = () => { showDeleteImagesModal.value = false; pendingSaveConfig.value = null }
 
+  /**
+   * Updates canvas configuration (edge type, spacing, layout algorithm, direction)
+   * with type-safe validation.
+   * @param config - Partial configuration object with new values
+   * @param onSnapshotState - Callback to update snapshot state after config change
+   */
   const handleUpdateCanvasConfig = ({
     edgeType, spacing, layoutAlgorithm, layoutDirection
   }: {
@@ -245,16 +305,30 @@ export function useSaveManager(deps: SaveManagerDeps) {
     onSnapshotState()
   }
 
+  /**
+   * Updates the pipeline version format (V1 or V2).
+   * @param val - The pipeline version to set
+   * @param onSnapshotState - Callback to update snapshot state after version change
+   */
   const handleUpdatePipelineVersion = (val: 'V1' | 'V2', onSnapshotState: () => void) => {
     pipelineVersion.value = val
     onSnapshotState()
   }
 
+  /**
+   * Updates the device connection state.
+   * @param val - Whether a device is currently connected
+   * @param onSnapshotState - Callback to update snapshot state after connection change
+   */
   const handleDeviceConnected = (val: boolean, onSnapshotState: () => void) => {
     isDeviceConnected.value = val
     onSnapshotState()
   }
 
+  /**
+   * Browser beforeunload handler that prevents navigation when there are unsaved changes.
+   * @param e - The beforeunload event
+   */
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
     if (isDirtyCombined.value) { e.preventDefault(); e.returnValue = ''; return '' }
     return undefined

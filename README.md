@@ -50,9 +50,9 @@
 
 | 组件               | 说明                                      |
 | ---------------- | --------------------------------------- |
-| **Node.js**      | 前端开发环境                                  |
+| **Node.js**      | 前端开发环境 (推荐 v18+)                        |
+| **pnpm**         | 包管理器                                    |
 | **Rust / Cargo** | Tauri 构建环境（⚠️ 必须安装）                     |
-| **Python 3**     | 后端服务环境                                  |
 | **Tauri CLI**    | 构建 Tauri 所需 (`cargo install tauri-cli`) |
 
 ### 安装 Rust / Cargo（Tauri 必须）
@@ -88,30 +88,24 @@ git clone https://github.com/your-username/MaaInspector.git
 cd MaaInspector
 ```
 
-### **2) 安装前端依赖**
+### **2) 安装依赖**
 
-```bash
-npm install
+```powershell
+pnpm install
 ```
 
-### **3) 安装后端依赖**
-
-```bash
-pip install -r backend/requirements.txt
-```
-
-### **4) 启动开发环境**
+### **3) 启动开发环境**
 
 > ⚠️ 需确保 Rust / Cargo 已安装，否则 Tauri 无法运行。
 
-```bash
-npm run tauri dev
+```powershell
+pnpm tauri:dev
 ```
 
-### **5) 构建安装包**
+### **4) 构建安装包**
 
-```bash
-npm run tauri build
+```powershell
+pnpm tauri:build
 ```
 
 ---
@@ -120,18 +114,49 @@ npm run tauri build
 
 ```
 .
-├── backend/            # Python Flask 后端
-│   ├── app.py
-│   └── requirements.txt
-├── src/                # Vue 3 前端源码
-│   ├── components/
-│   ├── App.vue
-│   └── main.ts
+├── src/                # Vue 3 + TypeScript 前端源码
+│   ├── components/     # Vue 组件
+│   ├── services/       # 业务服务层
+│   ├── utils/          # 工具函数
+│   ├── __tests__/      # Vitest 测试文件
+│   ├── App.vue         # 根组件
+│   └── main.ts         # 入口文件
 ├── src-tauri/          # Tauri Rust 核心
 │   ├── Cargo.toml
 │   └── src/
 │       └── main.rs
+├── public/             # 静态资源
 ├── package.json        # 前端依赖与脚本
 └── README.md
 ```
+
+---
+
+## 测试
+
+项目使用 [Vitest](https://vitest.dev/) 作为测试框架，测试文件位于 `src/__tests__/`。
+
+```powershell
+# 运行一次测试
+pnpm test
+
+# 监听模式（开发时自动重跑）
+pnpm test:watch
+```
+
+测试匹配 `src/**/*.{test,spec}.{js,ts}` 文件，运行环境为 `jsdom`。
+
+---
+
+## 贡献指南
+
+欢迎贡献代码、报告问题或提出建议！
+
+1. **Fork** 本仓库并创建你的特性分支
+2. 遵循现有代码风格（2 空格缩进、`PascalCase` 组件名、`camelCase` 函数/变量）
+3. 为新功能或修复添加相应的测试
+4. 提交信息使用约定式前缀：`feat:`、`fix:`、`test:`、`chore:` 等
+5. 提交 **Pull Request** 并描述变更内容与验证步骤
+
+详细规范请参阅 [AGENTS.md](AGENTS.md)。
 

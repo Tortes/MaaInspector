@@ -1,11 +1,9 @@
-// src/composables/useFlowGraph.ts
-import { ref, markRaw, computed } from 'vue'
-import { useVueFlow, MarkerType } from '@vue-flow/core'
+import { ref, markRaw } from 'vue'
+import { useVueFlow } from '@vue-flow/core'
 import { useLayout, type LayoutOptions } from './useLayout'
 import { useImageManager } from './useImageManager'
 import { SPACING_OPTIONS, type EdgeType } from '../utils/flowOptions'
-import { perfLog, perfMark, perfNow } from '../utils/perfTrace'
-import { normalizeTemplateList } from '../utils/templateUtils'
+import { perfLog, perfNow } from '../utils/perfTrace'
 import { ElMessage } from 'element-plus'
 import type {
   FlowBusinessData,
@@ -20,20 +18,37 @@ import type {
   NodeUpdatePayload,
   SpacingKey,
   LayoutAlgorithm,
-  LayoutDirection,
-  TemplateImage
+  LayoutDirection
 } from '../utils/flowTypes'
 import CustomNode from '../components/Flow/CustomNode.vue'
+import {
+  PORT_MAPPING,
+  getEdgeStyle,
+  updateNodeDataConnection,
+  onValidateConnection,
+  normalizeLinksAcrossNodes,
+  isAnchorNode,
+  parseLinkFlags,
+  buildLinkId
+} from './flowGraph/useConnectionManager'
+import {
+  getNodesData,
+  setNodeStatus as setNodeStatusImpl,
+  selectNodeById as selectNodeByIdImpl,
+  createNodeObject
+} from './flowGraph/useNodeStateManager'
+import {
+  layoutTaskChain as layoutTaskChainImpl,
+  layoutChainFromNode as layoutChainFromNodeImpl
+} from './flowGraph/useFlowLayout'
+import { useFlowStateExport } from './flowGraph/useFlowStateExport'
+import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useTemplateManager'
 
-type EdgeStyleResult = Pick<FlowEdge, 'style' | 'animated' | 'type' | 'markerEnd' | 'data'>
-
-interface PortMapping {
-  field: 'next' | 'on_error' | 'timeout_next'
-  type: 'array'
-  color: string
-}
-
-export function useFlowGraph() {
+  /**
+   * Creates and manages the flow graph state, providing node/edge manipulation,
+   * layout, connection handling, and state export/restore capabilities.
+   */
+  export function useFlowGraph() {
   const nodes = ref<FlowNode[]>([])
   const edges = ref<FlowEdge[]>([])
   const currentEdgeType = ref<EdgeType>('smoothstep')
@@ -47,13 +62,8 @@ export function useFlowGraph() {
   const selectedNodeId = ref<string | null>(null)
 
   const nodeTypes = { custom: markRaw(CustomNode) }
-  
-  const imageManager = useImageManager()
 
-  const PORT_MAPPING: Record<string, PortMapping> = {
-    'source-a': { field: 'next', type: 'array', color: '#3b82f6' },
-    'source-c': { field: 'on_error', type: 'array', color: '#f43f5e' }
-  }
+  const imageManager = useImageManager()
 
   const { addEdges, removeEdges, findNode, fitView } = useVueFlow()
   const {
@@ -62,283 +72,50 @@ export function useFlowGraph() {
     applyOrderedChainLayout
   } = useLayout()
 
-  const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
-    if (!node) return null
-    if (!node.data) node.data = { id: node.id, type: 'Unknown', data: {} }
-    if (!node.data.data) node.data.data = {}
-    return node.data
-  }
+  const {
+    isDirty,
+    exportState,
+    restoreState,
+    markDataChanged,
+    clearDirty
+  } = useFlowStateExport(
+    nodes,
+    edges,
+    currentEdgeType,
+    currentSpacing,
+    currentAlgorithm,
+    currentDirection,
+    currentFilename,
+    currentSource,
+    originalDataSnapshot,
+    dataSnapshot,
+    selectedNodeId,
+    imageManager,
+    () => getNodesData(nodes.value)
+  )
 
-  const getNodesData = (): Record<string, FlowBusinessData> => {
-    const start = perfNow()
-    const result: Record<string, FlowBusinessData> = {}
-    nodes.value.forEach(node => {
-      if (node.data?._isMissing) return
-      if (node.data?.type === 'Unknown') return
-
-      const nodeData = { ...(node.data?.data || {}) } as FlowBusinessData
-      // 仅锚点节点类型不导出，普通节点的 anchor 属性需正常导出
-      if (node.data?.type === 'Anchor') return
-
-      delete (nodeData as Record<string, unknown>).id
-      delete (nodeData as Record<string, unknown>).interrupt
-      result[node.id] = nodeData
-    })
-    perfLog('useFlowGraph.getNodesData', start, { nodeCount: nodes.value.length, outputCount: Object.keys(result).length })
-    return result
-  }
-
-  const isDirty = computed(() => {
-    if (!originalDataSnapshot.value) return false
-    return dataSnapshot.value !== originalDataSnapshot.value
-  })
-
-  const recalcDataSnapshot = () => {
-    const start = perfNow()
-    dataSnapshot.value = JSON.stringify(getNodesData())
-    perfLog('useFlowGraph.recalcDataSnapshot', start, { length: dataSnapshot.value.length })
-    return dataSnapshot.value
-  }
-
-  const exportState = () => {
-    const start = perfNow()
-    const state = {
-      nodes: JSON.parse(JSON.stringify(nodes.value)) as FlowNode[],
-      edges: JSON.parse(JSON.stringify(edges.value)) as FlowEdge[],
-      currentEdgeType: currentEdgeType.value,
-      currentSpacing: currentSpacing.value,
-      currentAlgorithm: currentAlgorithm.value,
-      currentDirection: currentDirection.value,
-      currentFilename: currentFilename.value,
-      currentSource: currentSource.value,
-      originalDataSnapshot: originalDataSnapshot.value,
-      dataSnapshot: dataSnapshot.value,
-      selectedNodeId: selectedNodeId.value,
-      imageState: imageManager.exportState()
-    }
-    perfLog('useFlowGraph.exportState', start, {
-      filename: currentFilename.value,
-      nodeCount: state.nodes.length,
-      edgeCount: state.edges.length
-    })
-    return state
-  }
-
-  const restoreState = (snapshot?: ReturnType<typeof exportState>) => {
-    if (!snapshot) return
-    const start = perfNow()
-    nodes.value = structuredClone(snapshot.nodes || []) as FlowNode[]
-    edges.value = structuredClone(snapshot.edges || []) as FlowEdge[]
-    currentEdgeType.value = snapshot.currentEdgeType || 'smoothstep'
-    currentSpacing.value = snapshot.currentSpacing || 'normal'
-    currentAlgorithm.value = snapshot.currentAlgorithm || 'layered'
-    currentDirection.value = snapshot.currentDirection || 'TB'
-    currentFilename.value = snapshot.currentFilename || ''
-    currentSource.value = snapshot.currentSource || ''
-    originalDataSnapshot.value = snapshot.originalDataSnapshot || ''
-    dataSnapshot.value = snapshot.dataSnapshot || ''
-    selectedNodeId.value = snapshot.selectedNodeId || null
-    imageManager.restoreState(snapshot.imageState)
-
-
-    perfLog('useFlowGraph.restoreState', start, {
-      filename: currentFilename.value,
-      nodeCount: nodes.value.length,
-      edgeCount: edges.value.length
-    })
-  }
-
-  const markDataChanged = () => {
-    recalcDataSnapshot()
-  }
-
-  const clearDirty = () => {
-    recalcDataSnapshot()
-    originalDataSnapshot.value = dataSnapshot.value
-  }
-
+  /**
+   * Updates the visual status of a node (e.g., running, success, error).
+   * @param nodeId - The ID of the node to update
+   * @param status - The new status to apply
+   */
   const setNodeStatus = (nodeId: string, status: NodeStatus) => {
-    if (!nodeId || status === undefined) return false
-    const nextStatus: string | undefined = status ?? undefined
-    const index = nodes.value.findIndex((n) => {
-      const dataId = (n.data?.data as FlowBusinessData | undefined)?.id
-      return n.id === nodeId || dataId === nodeId
-    })
-    if (index < 0) return false
-    const node = nodes.value[index]
-    const meta = ensureNodeMeta(node)
-    if (!meta || meta.status === nextStatus) return false
-    nodes.value[index] = { ...node, data: { ...meta, status: nextStatus } }
-
-    return true
+    return setNodeStatusImpl(nodes.value, nodeId, status)
   }
 
+  /**
+   * Selects a node by its ID, updating the selectedNodeId ref.
+   * @param nodeId - The ID of the node to select, or null/undefined to deselect
+   */
   const selectNodeById = (nodeId?: string | null) => {
-    const nextId = nodeId || null
-    if (selectedNodeId.value === nextId) return false
-    let changed = false
-
-    if (selectedNodeId.value) {
-      const prevId = selectedNodeId.value
-      nodes.value = nodes.value.map(n => n.id === prevId ? { ...n, selected: false } : n)
-      changed = true
-    }
-
-    if (nextId) {
-      nodes.value = nodes.value.map(n => n.id === nextId ? { ...n, selected: true } : n)
-      changed = true
-    }
-
-    selectedNodeId.value = nextId
-    return changed
+    return selectNodeByIdImpl(nodes, selectedNodeId, nodeId)
   }
 
-  const getEdgeStyle = (handleId: string, isJumpBack = false): EdgeStyleResult => {
-    const config = PORT_MAPPING[handleId] || { color: '#94a3b8' }
-    const strokeColor = isJumpBack ? '#a855f7' : config.color
-
-    return {
-      style: {
-        stroke: strokeColor,
-        strokeWidth: 2,
-        strokeDasharray: '5 5'
-      },
-      animated: true,
-      type: currentEdgeType.value,
-      markerEnd: MarkerType.ArrowClosed,
-      data: { isJumpBack }
-    }
-  }
-
-  const stripPrefix = (val: string) => val.replace(/\[(Anchor|JumpBack)\]/g, '')
-  const buildLinkId = (targetId: string, isAnchor: boolean, isJumpBack: boolean) => {
-    let id = targetId
-    // 统一顺序：Anchor 在前，JumpBack 在后；但解析允许任意顺序
-    if (isAnchor) id = `[Anchor]${id}`
-    if (isJumpBack) id = `[JumpBack]${id}`
-    return id
-  }
-  const parseLinkFlags = (val?: string) => ({
-    anchor: !!val && val.includes('[Anchor]'),
-    jumpBack: !!val && val.includes('[JumpBack]'),
-    id: val ? stripPrefix(val) : ''
-  })
-  const isAnchorNode = (node?: FlowNode | null) =>
-    !!(node?.data?.type === 'Anchor' || (node?.data?.data as FlowBusinessData | undefined)?.anchor)
-
-  const normalizeLinksAcrossNodes = (targetNodes: FlowNode[]) => {
-    const anchorIds = new Set(targetNodes.filter(n => isAnchorNode(n)).map(n => n.id))
-    const normalizeItem = (item: unknown) => {
-      if (typeof item !== 'string') return item
-      const flags = parseLinkFlags(item)
-      const targetId = flags.id || item
-      const isAnchorTarget = anchorIds.has(targetId) || flags.anchor
-      return buildLinkId(targetId, isAnchorTarget, flags.jumpBack)
-    }
-    const normalizeField = (val: unknown) => {
-      if (Array.isArray(val)) return val.map(normalizeItem).filter(Boolean)
-      if (typeof val === 'string') return normalizeItem(val)
-      return val
-    }
-
-    targetNodes.forEach(n => {
-      const meta = ensureNodeMeta(n)
-      if (!meta?.data) return
-      const data = meta.data as FlowBusinessData
-      ;(['next', 'on_error', 'timeout_next'] as const).forEach(field => {
-        const rawVal = (data as Record<string, unknown>)[field]
-        const normalized = normalizeField(rawVal)
-        if (normalized === undefined || normalized === null || (Array.isArray(normalized) && normalized.length === 0)) {
-          delete (data as Record<string, unknown>)[field]
-        } else {
-          (data as Record<string, unknown>)[field] = normalized as any
-        }
-      })
-    })
-  }
-
-  const onValidateConnection = (connection: FlowConnection) => {
-    if (connection.source === connection.target) return false
-    if (connection.sourceHandle === 'in') return false
-    return connection.targetHandle === 'in'
-  }
-
-  const createNodeObject = (id: string, rawContent: FlowBusinessData, isMissing = false, originalId?: string): FlowNode => {
-    const sanitizedContent = { ...rawContent }
-    delete (sanitizedContent as Record<string, unknown>).interrupt
-
-    let logicType = sanitizedContent.recognition || 'DirectHit'
-    if (isMissing) logicType = 'Unknown'
-    const isUnknown = logicType === 'Unknown'
-
-    const node = {
-      id,
-      type: 'custom',
-      position: { x: 0, y: 0 },
-      draggable: true,
-      selectable: true,
-      focusable: true,
-      width: 280,
-      height: 150,
-      data: {
-        id,
-        type: logicType,
-        data: isUnknown
-          ? { id, ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}) }
-          : { ...sanitizedContent, id, recognition: logicType },
-        _isMissing: isMissing,
-        _originalId: originalId,
-        status: 'idle'
-      }
-    }
-    return node
-  }
-
-  const updateNodeDataConnection = (
-    sourceNode: FlowNode,
-    field: PortMapping['field'],
-    targetId: string,
-    isArrayType: boolean,
-    isAdd: boolean,
-    isJumpBack = false,
-    isAnchorTarget = false
-  ) => {
-    const sourceMeta = ensureNodeMeta(sourceNode)
-    if (!sourceMeta || !sourceMeta.data) return
-    const data = sourceMeta.data as FlowBusinessData
-    // For duplicate missing nodes, use the original ID (without suffix) for storage
-    const targetNode = findNode(targetId)
-    const actualTargetId = (targetNode?.data?._isMissing && targetNode?.data?._originalId) ? targetNode.data._originalId : targetId
-    const storedId = buildLinkId(actualTargetId, isAnchorTarget, isJumpBack)
-
-    if (isArrayType) {
-      if (!Array.isArray(data[field])) data[field] = []
-
-      const existingIndex = (data[field] as unknown[]).findIndex(id =>
-        typeof id === 'string' && stripPrefix(id) === targetId
-      )
-
-      if (isAdd) {
-        if (existingIndex === -1) {
-          (data[field] as unknown[]).push(storedId)
-        } else {
-          (data[field] as unknown[])[existingIndex] = storedId
-        }
-      } else if (existingIndex > -1) {
-        (data[field] as unknown[]).splice(existingIndex, 1)
-      }
-    } else {
-      if (isAdd) {
-        data[field] = storedId
-      } else {
-        const currentVal = (data as Record<string, unknown>)[field] as string | undefined
-        if (typeof currentVal === 'string' && stripPrefix(currentVal) === targetId) {
-          delete (data as Record<string, unknown>)[field]
-        }
-      }
-    }
-  }
-
+  /**
+   * Handles new or existing connection events between nodes.
+   * Toggles edge creation/removal and updates source node data accordingly.
+   * @param params - Connection parameters containing source, target, and handle info
+   */
   const handleConnect = (params: FlowConnection) => {
     const existingEdge = edges.value.find(e =>
       e.source === params.source && e.target === params.target && e.sourceHandle === params.sourceHandle
@@ -352,19 +129,23 @@ export function useFlowGraph() {
     if (existingEdge) {
       removeEdges([existingEdge.id])
       if (sourceNode && portConfig) {
-        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', false, false, isAnchorTarget)
+        updateNodeDataConnection(findNode, sourceNode, portConfig.field, params.target, portConfig.type === 'array', false, false, isAnchorTarget)
         changed = true
       }
     } else {
-      addEdges({ ...params, ...getEdgeStyle(params.sourceHandle || '', false), label: portConfig?.field })
+      addEdges({ ...params, ...getEdgeStyle(params.sourceHandle || '', false, currentEdgeType.value), label: portConfig?.field })
       if (sourceNode && portConfig) {
-        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', true, false, isAnchorTarget)
+        updateNodeDataConnection(findNode, sourceNode, portConfig.field, params.target, portConfig.type === 'array', true, false, isAnchorTarget)
         changed = true
       }
     }
     if (changed) markDataChanged()
   }
 
+  /**
+   * Processes edge removal changes, cleaning up connection data from source nodes.
+   * @param changes - Array of edge change events to process
+   */
   const handleEdgesChange = (changes: FlowEdgeChange[]) => {
     let changed = false
     changes.forEach(change => {
@@ -376,7 +157,7 @@ export function useFlowGraph() {
           if (sourceNode && portConfig) {
             const targetNode = findNode(edge.target)
             const isAnchorTarget = isAnchorNode(targetNode)
-            updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', false, false, isAnchorTarget)
+            updateNodeDataConnection(findNode, sourceNode, portConfig.field, edge.target, portConfig.type === 'array', false, false, isAnchorTarget)
             changed = true
           }
         }
@@ -385,6 +166,11 @@ export function useFlowGraph() {
     if (changed) markDataChanged()
   }
 
+  /**
+   * Toggles the jump-back flag on an edge, updating its visual style and label.
+   * @param edgeId - The ID of the edge to modify
+   * @param isJumpBack - Whether the edge should be marked as a jump-back connection
+   */
   const setEdgeJumpBack = (edgeId: string, isJumpBack: boolean) => {
     const edge = edges.value.find(e => e.id === edgeId)
     if (!edge) return
@@ -397,18 +183,21 @@ export function useFlowGraph() {
     edge.data = { ...edge.data, isJumpBack }
     edge.label = isJumpBack ? 'JumpBack' : (portConfig?.field || '')
 
-    const newStyle = getEdgeStyle(edge.sourceHandle || '', isJumpBack)
+    const newStyle = getEdgeStyle(edge.sourceHandle || '', isJumpBack, currentEdgeType.value)
     edge.style = newStyle.style
     edge.animated = newStyle.animated
 
-
-
-      if (sourceNode && portConfig) {
-        updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack, isAnchorTarget)
-        markDataChanged()
-      }
+    if (sourceNode && portConfig) {
+      updateNodeDataConnection(findNode, sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack, isAnchorTarget)
+      markDataChanged()
     }
+  }
 
+  /**
+   * Handles node update events including ID changes, type changes, and data updates.
+   * Propagates ID changes to connected edges and cross-node link references.
+   * @param payload - Object containing oldId, newId, newType, and newData
+   */
   const handleNodeUpdate = ({ oldId, newId, newType, newData }: NodeUpdatePayload) => {
     const node = findNode(oldId)
     if (!node) return
@@ -416,8 +205,7 @@ export function useFlowGraph() {
     if (!nodeMeta) return
 
     if (newData && (newData as Record<string, unknown>)._action) {
-      handleSpecialAction(node, newData)
-
+      handleSpecialActionImpl(node, newData, imageManager)
       markDataChanged()
       return
     }
@@ -436,16 +224,13 @@ export function useFlowGraph() {
         return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
       })
 
-
       const replaceLinkVal = (val: unknown) => {
         if (typeof val !== 'string') return val
         const flags = parseLinkFlags(val)
         const targetId = flags.id || val
-        // For duplicate missing nodes, also check if the stored ID matches the original ID
         const oldNode = findNode(oldId)
         const originalId = oldNode?.data?._originalId
         if (targetId !== oldId && targetId !== originalId) return val
-        // Use the new ID directly (without suffix) for storage
         return buildLinkId(newId, flags.anchor, flags.jumpBack)
       }
       const replaceField = (d: Record<string, unknown>, field: string) => {
@@ -461,7 +246,7 @@ export function useFlowGraph() {
       nodes.value.forEach(n => {
         if (!n.data?.data) return
         const d = n.data.data as Record<string, unknown>
-        ;['next', 'on_error', 'timeout_next'].forEach(f => replaceField(d, f))
+        ;(['next', 'on_error', 'timeout_next'] as const).forEach(f => replaceField(d, f))
       })
     }
 
@@ -474,141 +259,23 @@ export function useFlowGraph() {
     markDataChanged()
   }
 
-  const modifyTemplatePath = (nodeData: FlowNodeMeta, path: string, mode: 'add' | 'remove' = 'add') => {
-    if (!nodeData.data) nodeData.data = {}
-    const tpl = (nodeData.data as FlowBusinessData).template
-
-    let paths: Array<string> = []
-    if (Array.isArray(tpl)) paths = [...tpl] as string[]
-    else if (typeof tpl === 'string' && tpl) paths = [tpl]
-
-    if (mode === 'add') {
-      if (!paths.includes(path)) paths.push(path)
-    } else if (mode === 'remove') {
-      paths = paths.filter(p => p !== path)
-    }
-    ;(nodeData.data as FlowBusinessData).template = paths
-  }
-
-  const updateCompositeTemplate = (
-    meta: FlowNodeMeta,
-    target: { compositeKey: 'all_of' | 'any_of'; compositeIndex: number },
-    updater: (current: string[]) => string[]
-  ) => {
-    if (!meta.data) meta.data = {}
-    const data = meta.data as Record<string, unknown>
-
-    const applyUpdate = (list: unknown, assign: (nextList: unknown[]) => void) => {
-      if (!Array.isArray(list) || target.compositeIndex < 0 || target.compositeIndex >= list.length) return
-      const item = list[target.compositeIndex]
-      if (!item || typeof item !== 'object') return
-      const itemObj = { ...(item as Record<string, unknown>) }
-      const current = normalizeTemplateList(itemObj.template)
-      const next = updater(current)
-      if (!next.length) delete itemObj.template
-      else if (next.length === 1) itemObj.template = next[0]
-      else itemObj.template = next
-      const nextList = [...list]
-      nextList[target.compositeIndex] = itemObj
-      assign(nextList)
-    }
-
-    applyUpdate(data[target.compositeKey], (nextList) => {
-      data[target.compositeKey] = nextList
-    })
-
-    const recognition = data.recognition
-    if (recognition && typeof recognition === 'object' && !Array.isArray(recognition)) {
-      const param = (recognition as Record<string, unknown>).param
-      if (param && typeof param === 'object' && !Array.isArray(param)) {
-        applyUpdate((param as Record<string, unknown>)[target.compositeKey], (nextList) => {
-          ;(param as Record<string, unknown>)[target.compositeKey] = nextList
-        })
-      }
-    }
-  }
-
-  const handleSpecialAction = (node: FlowNode, actionData: FlowBusinessData) => {
-    const meta = ensureNodeMeta(node)
-    if (!meta) return
-    const action = (actionData as Record<string, unknown>)._action as string | undefined
-    const templateTarget = (actionData as Record<string, unknown>).templateTarget as
-      | { compositeKey: 'all_of' | 'any_of'; compositeIndex: number }
-      | undefined
-
-    if (action === 'delete_images' || (action === 'save_screenshot' && Array.isArray((actionData as Record<string, unknown>).deletePaths))) {
-      const deletePaths = (actionData as Record<string, unknown>).deletePaths as string[] || []
-      if (!deletePaths.length) return
-      
-      deletePaths.forEach(path => imageManager.deleteImage(node.id, path))
-      
-      if (templateTarget) {
-        deletePaths.forEach(path => {
-          updateCompositeTemplate(meta, templateTarget, current => current.filter(p => p !== path))
-        })
-      } else {
-        deletePaths.forEach(path => modifyTemplatePath(meta, path, 'remove'))
-      }
-    }
-
-    if (action === 'add_temp_image') {
-      const { imagePath, imageBase64 } = actionData as Record<string, string>
-      if (!imagePath || !imageBase64) return
-      
-      imageManager.addTempImage(node.id, imagePath, undefined, imageBase64)
-      
-      if (templateTarget) {
-        updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])
-      } else {
-        modifyTemplatePath(meta, imagePath, 'add')
-      }
-    }
-
-    if (action === 'restore_image') {
-      const { imagePath } = actionData as Record<string, string>
-      imageManager.restoreImage(node.id, imagePath)
-      
-      if (templateTarget) {
-        updateCompositeTemplate(meta, templateTarget, current => current.includes(imagePath) ? current : [...current, imagePath])
-      } else {
-        modifyTemplatePath(meta, imagePath, 'add')
-      }
-    }
-
-    if (action === 'save_image_changes') {
-      const { validPaths, images, tempImages } = actionData as Record<string, unknown> & {
-        validPaths?: string[]
-        images?: TemplateImage[]
-        tempImages?: TemplateImage[]
-      }
-      
-      imageManager.setNodeImageChanges(node.id, images || [], tempImages || [])
-      
-      if (!meta.data) meta.data = {}
-      if (templateTarget) {
-        updateCompositeTemplate(meta, templateTarget, () => (validPaths && validPaths.length ? [...validPaths] : []))
-      } else {
-        ;(meta.data as FlowBusinessData).template = validPaths && validPaths.length ? [...validPaths] : []
-      }
-    }
-  }
-
+  /**
+   * Loads nodes and edges from raw pipeline data, auto-creates missing/anchor nodes,
+   * applies initial layout, and resets the dirty state.
+   * @param payload - Object containing filename, source, and nodes data
+   */
   const loadNodes = async ({ filename, source, nodes: rawNodesData }: LoadNodesPayload) => {
     const totalStart = perfNow()
-    perfMark('useFlowGraph.loadNodes.start', { filename, source, rawNodeCount: Object.keys(rawNodesData).length })
     const newNodes: FlowNode[] = []
     const newEdges: FlowEdge[] = []
     const createdNodeIds = new Set<string>()
     const missingNodeCount = new Map<string, number>()
 
-    const createNodesStart = perfNow()
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
       newNodes.push(createNodeObject(nodeId, nodeContent))
       createdNodeIds.add(nodeId)
     }
-    perfLog('useFlowGraph.loadNodes.createNodes', createNodesStart, { nodeCount: newNodes.length })
 
-    const createEdgesStart = perfNow()
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
       const linkFields: Array<{ key: 'next' | 'on_error' | 'timeout_next'; handle: keyof typeof PORT_MAPPING }> = [
         { key: 'next', handle: 'source-a' },
@@ -628,7 +295,6 @@ export function useFlowGraph() {
             const isJumpBack = flags.jumpBack
             const isAnchorTarget = flags.anchor
 
-            // Only reuse existing node if it's a real (non-missing) node
             const isRealNode = rawNodesData[targetId] !== undefined
 
             if (!isRealNode) {
@@ -657,91 +323,90 @@ export function useFlowGraph() {
               sourceHandle: handle,
               targetHandle: 'in',
               label: isJumpBack ? 'JumpBack' : key,
-              ...getEdgeStyle(handle, isJumpBack)
+              ...getEdgeStyle(handle, isJumpBack, currentEdgeType.value)
             })
           })
         }
       })
     }
-    perfLog('useFlowGraph.loadNodes.createEdges', createEdgesStart, {
-      nodeCount: newNodes.length,
-      edgeCount: newEdges.length,
-      missingNodeCount: missingNodeCount.size
-    })
 
-    const normalizeStart = perfNow()
     normalizeLinksAcrossNodes(newNodes)
-    perfLog('useFlowGraph.loadNodes.normalizeLinks', normalizeStart, { nodeCount: newNodes.length })
 
     const layoutOptions: LayoutOptions = {
       algorithm: currentAlgorithm.value,
       direction: currentDirection.value,
       spacing: currentSpacing.value
     }
-    const layoutStart = perfNow()
-    const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
-    perfLog('useFlowGraph.loadNodes.elkLayout', layoutStart, {
-      nodeCount: layoutedNodes.length,
-      edgeCount: newEdges.length,
-      algorithm: layoutOptions.algorithm,
-      direction: layoutOptions.direction,
-      spacing: layoutOptions.spacing
-    })
-    const assignStart = perfNow()
-    nodes.value = layoutedNodes
+    nodes.value = newNodes
     edges.value = newEdges
 
-    perfLog('useFlowGraph.loadNodes.assignRefs', assignStart, { nodeCount: nodes.value.length, edgeCount: edges.value.length })
+    const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
+    nodes.value = layoutedNodes
 
     currentFilename.value = filename || ''
     currentSource.value = source || ''
 
-    const snapshotStart = perfNow()
-    const snapshot = JSON.stringify(getNodesData())
+    const snapshot = JSON.stringify(getNodesData(nodes.value))
     dataSnapshot.value = snapshot
     originalDataSnapshot.value = snapshot
     selectedNodeId.value = null
-    perfLog('useFlowGraph.loadNodes.dataSnapshot', snapshotStart, { length: snapshot.length })
     setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
     perfLog('useFlowGraph.loadNodes.total', totalStart, { filename, nodeCount: nodes.value.length, edgeCount: edges.value.length })
   }
 
+  /**
+   * Applies a chain layout starting from a root node, arranging connected nodes
+   * in a sequential flow and fitting the viewport.
+   * @param rootId - The ID of the root node to start layout from
+   */
   const layoutTaskChain = async (rootId: string) => {
-    const layoutOptions: LayoutOptions = {
-      algorithm: currentAlgorithm.value,
-      direction: currentDirection.value,
-      spacing: currentSpacing.value
-    }
-    const result = await applyOrderedChainLayout(nodes, edges, rootId, layoutOptions)
-    if (!result) return
-
-    const { chainIds } = result
-    setTimeout(() => fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 }), 50)
+    return layoutTaskChainImpl(
+      nodes,
+      edges,
+      rootId,
+      applyOrderedChainLayout,
+      currentAlgorithm.value,
+      currentDirection.value,
+      currentSpacing.value,
+      fitView
+    )
   }
 
+  /**
+   * Returns image data pending upload (deleted and temporary images).
+   */
   const getImageData = (): ImageDataPayload => {
     return imageManager.getImageData()
   }
 
+  /**
+   * Clears temporary image data that has been successfully uploaded.
+   */
   const clearTempImageData = () => {
     imageManager.clearTempImageData()
   }
 
+  /**
+   * Applies a chain layout starting from a specific node, with optional spacing and algorithm overrides.
+   * @param startId - The ID of the node to start layout from
+   * @param spacingKey - Spacing preset to use (defaults to current spacing)
+   * @param algorithm - Layout algorithm to use (defaults to current algorithm)
+   */
   const layoutChainFromNode = async (
     startId: string,
     spacingKey: SpacingKey = currentSpacing.value,
     algorithm: LayoutAlgorithm = currentAlgorithm.value
   ) => {
-    const layoutOptions: LayoutOptions = {
+    return layoutChainFromNodeImpl(
+      startId,
+      nodes,
+      edges,
+      applyOrderedChainLayout,
+      currentDirection.value,
+      spacingKey,
       algorithm,
-      direction: currentDirection.value,
-      spacing: spacingKey
-    }
-    const result = await applyOrderedChainLayout(nodes, edges, startId, layoutOptions)
-    if (!result) return
-
-    const { chainIds } = result
-    setTimeout(() => fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 }), 50)
+      fitView
+    )
   }
 
   return {
@@ -762,7 +427,7 @@ export function useFlowGraph() {
     handleEdgesChange,
     handleNodeUpdate,
     loadNodes,
-    getNodesData,
+    getNodesData: () => getNodesData(nodes.value),
     getImageData,
     clearTempImageData,
     setEdgeJumpBack,
@@ -786,4 +451,16 @@ export function useFlowGraph() {
     exportState,
     restoreState
   }
+}
+
+/**
+ * Ensures a node has valid data and data.data properties, initializing them if missing.
+ * @param node - The node to validate/initialize
+ * @returns The node's data meta object, or null if node is invalid
+ */
+const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
+  if (!node) return null
+  if (!node.data) node.data = { id: node.id, type: 'Unknown', data: {} }
+  if (!node.data.data) node.data.data = {}
+  return node.data
 }

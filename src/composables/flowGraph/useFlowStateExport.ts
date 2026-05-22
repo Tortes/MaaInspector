@@ -1,0 +1,115 @@
+import { computed } from 'vue'
+import { perfLog, perfNow } from '../../utils/perfTrace'
+import type { Ref } from 'vue'
+import type { FlowNode, FlowEdge, FlowBusinessData } from '../../utils/flowTypes'
+import type { EdgeType } from '../../utils/flowOptions'
+import type { SpacingKey, LayoutAlgorithm } from '../../utils/flowTypes'
+import type { useImageManager } from '../useImageManager'
+
+export interface FlowGraphExportState {
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  currentEdgeType: EdgeType
+  currentSpacing: SpacingKey
+  currentAlgorithm: LayoutAlgorithm
+  currentDirection: 'TB' | 'LR' | 'RL' | 'BT'
+  currentFilename: string
+  currentSource: string
+  originalDataSnapshot: string
+  dataSnapshot: string
+  selectedNodeId: string | null
+  imageState: ReturnType<ReturnType<typeof useImageManager>['exportState']>
+}
+
+export const useFlowStateExport = (
+  nodes: Ref<FlowNode[]>,
+  edges: Ref<FlowEdge[]>,
+  currentEdgeType: Ref<EdgeType>,
+  currentSpacing: Ref<SpacingKey>,
+  currentAlgorithm: Ref<LayoutAlgorithm>,
+  currentDirection: Ref<'TB' | 'LR' | 'RL' | 'BT'>,
+  currentFilename: Ref<string>,
+  currentSource: Ref<string>,
+  originalDataSnapshot: Ref<string>,
+  dataSnapshot: Ref<string>,
+  selectedNodeId: Ref<string | null>,
+  imageManager: ReturnType<typeof useImageManager>,
+  getNodesData: () => Record<string, FlowBusinessData>
+) => {
+  const isDirty = computed(() => {
+    if (!originalDataSnapshot.value) return false
+    return dataSnapshot.value !== originalDataSnapshot.value
+  })
+
+  const recalcDataSnapshot = () => {
+    const start = perfNow()
+    dataSnapshot.value = JSON.stringify(getNodesData())
+    perfLog('useFlowGraph.recalcDataSnapshot', start, { length: dataSnapshot.value.length })
+    return dataSnapshot.value
+  }
+
+  const exportState = (): FlowGraphExportState => {
+    const start = perfNow()
+    const state: FlowGraphExportState = {
+      nodes: JSON.parse(JSON.stringify(nodes.value)) as FlowNode[],
+      edges: JSON.parse(JSON.stringify(edges.value)) as FlowEdge[],
+      currentEdgeType: currentEdgeType.value,
+      currentSpacing: currentSpacing.value,
+      currentAlgorithm: currentAlgorithm.value,
+      currentDirection: currentDirection.value,
+      currentFilename: currentFilename.value,
+      currentSource: currentSource.value,
+      originalDataSnapshot: originalDataSnapshot.value,
+      dataSnapshot: dataSnapshot.value,
+      selectedNodeId: selectedNodeId.value,
+      imageState: imageManager.exportState()
+    }
+    perfLog('useFlowGraph.exportState', start, {
+      filename: currentFilename.value,
+      nodeCount: state.nodes.length,
+      edgeCount: state.edges.length
+    })
+    return state
+  }
+
+  const restoreState = (snapshot?: FlowGraphExportState) => {
+    if (!snapshot) return
+    const start = perfNow()
+    nodes.value = structuredClone(snapshot.nodes || []) as FlowNode[]
+    edges.value = structuredClone(snapshot.edges || []) as FlowEdge[]
+    currentEdgeType.value = snapshot.currentEdgeType || 'smoothstep'
+    currentSpacing.value = snapshot.currentSpacing || 'normal'
+    currentAlgorithm.value = snapshot.currentAlgorithm || 'layered'
+    currentDirection.value = snapshot.currentDirection || 'TB'
+    currentFilename.value = snapshot.currentFilename || ''
+    currentSource.value = snapshot.currentSource || ''
+    originalDataSnapshot.value = snapshot.originalDataSnapshot || ''
+    dataSnapshot.value = snapshot.dataSnapshot || ''
+    selectedNodeId.value = snapshot.selectedNodeId || null
+    imageManager.restoreState(snapshot.imageState)
+
+    perfLog('useFlowGraph.restoreState', start, {
+      filename: currentFilename.value,
+      nodeCount: nodes.value.length,
+      edgeCount: edges.value.length
+    })
+  }
+
+  const markDataChanged = () => {
+    recalcDataSnapshot()
+  }
+
+  const clearDirty = () => {
+    recalcDataSnapshot()
+    originalDataSnapshot.value = dataSnapshot.value
+  }
+
+  return {
+    isDirty,
+    recalcDataSnapshot,
+    exportState,
+    restoreState,
+    markDataChanged,
+    clearDirty
+  }
+}

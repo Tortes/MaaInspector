@@ -1,10 +1,11 @@
 import pluginVue from 'eslint-plugin-vue'
 import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
+import eslintConfigPrettier from 'eslint-config-prettier'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/MAA-win-x86_64-v5.10.0/**']
+    ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/MAA-win-x86_64-v*/**']
   },
   ...pluginVue.configs['flat/recommended'],
   {
@@ -52,5 +53,6 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off'
     }
-  }
+  },
+  eslintConfigPrettier,
 ]

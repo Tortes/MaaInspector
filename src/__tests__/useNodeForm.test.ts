@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { useNodeForm } from '../utils/useNodeForm'
+import { useNodeForm } from '../composables/useNodeForm'
 import {
   DEFAULTS,
   NODE_CONFIG_MAP,

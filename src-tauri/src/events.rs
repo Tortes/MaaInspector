@@ -15,6 +15,12 @@ impl DebugEventBroker {
         Self { app_handle: None }
     }
 
+    pub fn new_with_handle(app_handle: AppHandle) -> Self {
+        Self {
+            app_handle: Some(app_handle),
+        }
+    }
+
     pub fn emit_node_next_list(
         &self,
         task_id: i32,
