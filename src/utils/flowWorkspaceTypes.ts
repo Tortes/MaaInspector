@@ -28,6 +28,7 @@ export interface FlowAppSettings {
   layoutDirection: LayoutDirection
   pipelineVersion: 'V1' | 'V2'
   restoreWorkspaceOnStart: boolean
+  lowMemoryMode: boolean
 }
 
 export interface FlowWorkspaceState {

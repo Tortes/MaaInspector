@@ -48,7 +48,8 @@ const DEFAULT_APP_SETTINGS: FlowAppSettings = {
   layoutAlgorithm: 'layered',
   layoutDirection: 'TB',
   pipelineVersion: 'V1',
-  restoreWorkspaceOnStart: true
+  restoreWorkspaceOnStart: true,
+  lowMemoryMode: false
 }
 
 const createEmptySnapshot = (settings: FlowAppSettings): FlowEditorSnapshot => ({
@@ -118,15 +119,25 @@ const initialState = restoreInitialState()
 const tabs = ref<FlowTab[]>(initialState.tabs)
 const activeTabId = ref(initialState.activeTabId)
 const appSettings = ref<FlowAppSettings>(initialState.appSettings)
-const editorRef = ref<FlowEditorExpose | null>(null)
+const editorRefs = ref<Map<string, FlowEditorExpose>>(new Map())
 const infoPanelRef = ref<InfoPanelExpose | null>(null)
 const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
 const activeTab = computed(() => tabs.value.find(tab => tab.id === activeTabId.value) || tabs.value[0])
 const activeSnapshot = computed(() => activeTab.value.snapshot)
+const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
+const useLowMemoryMode = computed(() => appSettings.value.lowMemoryMode)
 
 const makeTabTitle = (tab: FlowTab, index: number) => tab.snapshot.flowState?.currentFilename || tab.title || `流程 ${index + 1}`
+
+const snapshotCurrentEditor = () => {
+  if (useLowMemoryMode.value) {
+    const editor = editorRefs.value.get(activeTabId.value)
+    if (!editor) return
+    updateTabSnapshot(activeTabId.value, editor.getSnapshot())
+  }
+}
 
 const selectTab = (tabId: string) => {
   if (tabId === activeTabId.value) return
@@ -136,7 +147,6 @@ const selectTab = (tabId: string) => {
 }
 
 const addTab = () => {
-  snapshotCurrentEditor()
   const nextIndex = tabs.value.length + 1
   const nextTab = {
     id: `flow-${Date.now()}-${nextIndex}`,
@@ -154,6 +164,7 @@ const closeTab = (tabId: string) => {
   if (index < 0) return
   const wasActive = activeTabId.value === tabId
   tabs.value.splice(index, 1)
+  editorRefs.value.delete(tabId)
   if (wasActive) activeTabId.value = tabs.value[Math.max(0, index - 1)]?.id || tabs.value[0].id
   schedulePersistWorkspaceState()
 }
@@ -179,13 +190,6 @@ const updateActiveSnapshot = (snapshot: FlowEditorSnapshot, tabId?: string) => {
   updateTabSnapshot(tabId || activeTabId.value, snapshot)
 }
 
-const snapshotCurrentEditor = () => {
-  if (!editorRef.value) return
-  const start = perfNow()
-  updateTabSnapshot(activeTabId.value, editorRef.value.getSnapshot())
-  perfLog('FlowWorkspace.snapshotCurrentEditor', start, { tabId: activeTabId.value })
-}
-
 const handleRequestSwitchFile = async (payload: { filename: string; source: string }) => {
   await infoPanelRef.value?.executeFileSwitch?.(payload.filename, payload.source)
 }
@@ -209,17 +213,19 @@ const handleLoadNodes = async (payload: { filename: string; source: string; node
     nodeCount: Object.keys(payload.nodes).length
   })
   const targetTabId = activeTabId.value
-  await editorRef.value?.handleLoadNodesWrapper(payload)
+  const targetEditor = editorRefs.value.get(targetTabId)
+  if (!targetEditor) return
+  await targetEditor.handleLoadNodesWrapper(payload)
   if (targetTabId !== activeTabId.value) return
-  const snapshot = editorRef.value?.getSnapshot()
+  const snapshot = targetEditor.getSnapshot()
   if (snapshot) updateTabSnapshot(targetTabId, snapshot)
   perfLog('FlowWorkspace.handleLoadNodes.total', start, { targetTabId, filename: payload.filename })
 }
 
 const handleLoadImages = (payload: Record<string, unknown>, basePath?: string) => {
   const start = perfNow()
-  console.log('[DEBUG FlowWorkspace] handleLoadImages payload keys:', Object.keys(payload || {}), 'basePath:', basePath, 'editorRef exists:', !!editorRef.value)
-  editorRef.value?.handleLoadImages(payload, basePath)
+  console.log('[DEBUG FlowWorkspace] handleLoadImages payload keys:', Object.keys(payload || {}), 'basePath:', basePath, 'activeEditorRef exists:', !!activeEditorRef.value)
+  activeEditorRef.value?.handleLoadImages(payload, basePath)
   perfLog('FlowWorkspace.handleLoadImages', start, { imageEntryCount: Object.keys(payload || {}).length })
 }
 
@@ -262,7 +268,7 @@ const handleUpdateCanvasConfig = (payload: {
       }
     })
   }
-  editorRef.value?.handleUpdateCanvasConfig(payload)
+  activeEditorRef.value?.handleUpdateCanvasConfig(payload)
 }
 
 const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {
@@ -281,7 +287,7 @@ const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {
       pipelineVersion: val
     })
   }
-  editorRef.value?.handleUpdatePipelineVersion(val)
+  activeEditorRef.value?.handleUpdatePipelineVersion(val)
 }
 
 const handleUpdateRestoreWorkspace = (value: boolean) => {
@@ -294,6 +300,14 @@ const handleUpdateRestoreWorkspace = (value: boolean) => {
   } else {
     clearWorkspaceState()
   }
+}
+
+const handleUpdateLowMemory = (value: boolean) => {
+  appSettings.value = {
+    ...appSettings.value,
+    lowMemoryMode: value
+  }
+  schedulePersistWorkspaceState()
 }
 
 const getWorkspaceState = (): FlowWorkspaceState => ({
@@ -323,7 +337,12 @@ onBeforeUnmount(() => {
     clearTimeout(persistTimer)
     persistTimer = null
   }
-  snapshotCurrentEditor()
+  // Snapshot all editor instances before unmounting
+  editorRefs.value.forEach((editor, tabId) => {
+    if (editor) {
+      updateTabSnapshot(tabId, editor.getSnapshot())
+    }
+  })
   persistWorkspaceState()
 })
 </script>
@@ -369,9 +388,11 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="relative flex-1 min-h-0">
+      <!-- 低消耗模式: 单实例 + key 强制重建 -->
       <FlowEditor
+        v-if="useLowMemoryMode"
         :key="activeTab.id"
-        ref="editorRef"
+        :ref="(el: any) => { if (el) editorRefs.set(activeTabId, el as FlowEditorExpose); else editorRefs.delete(activeTabId) }"
         :tab-id="activeTab.id"
         :snapshot="activeTab.snapshot"
         :default-edge-type="appSettings.edgeType"
@@ -385,6 +406,28 @@ onBeforeUnmount(() => {
         @open-debug-panel="openDebugPanel"
         @close-debug-panel="closeDebugPanel"
       />
+      
+      <!-- 快速模式: 多实例 + v-show 切换 -->
+      <div v-else class="absolute inset-0">
+        <FlowEditor
+          v-for="tab in tabs"
+          :key="tab.id"
+          :ref="(el: any) => { if (el) editorRefs.set(tab.id, el as FlowEditorExpose); else editorRefs.delete(tab.id) }"
+          v-show="tab.id === activeTabId"
+          :tab-id="tab.id"
+          :snapshot="tab.snapshot"
+          :default-edge-type="appSettings.edgeType"
+          :default-spacing="appSettings.spacing"
+          :default-layout-algorithm="appSettings.layoutAlgorithm"
+          :default-layout-direction="appSettings.layoutDirection"
+          :default-pipeline-version="appSettings.pipelineVersion"
+          :debug-panel-visible="debugPanel.visible"
+          @snapshot-change="updateActiveSnapshot"
+          @request-switch-file="handleRequestSwitchFile"
+          @open-debug-panel="openDebugPanel"
+          @close-debug-panel="closeDebugPanel"
+        />
+      </div>
 
       <div class="absolute top-3 right-3 z-50 pointer-events-none">
         <InfoPanel
@@ -404,11 +447,12 @@ onBeforeUnmount(() => {
           @update:selected-resource-file="updateActiveSelectedResourceFile"
           @load-nodes="handleLoadNodes"
           @load-images="handleLoadImages"
-          @save-nodes="(payload) => editorRef?.handleSaveNodes(payload)"
-          @device-connected="(val) => editorRef?.handleDeviceConnected(val)"
+          @save-nodes="(payload) => activeEditorRef?.handleSaveNodes(payload)"
+          @device-connected="(val) => activeEditorRef?.handleDeviceConnected(val)"
           @update-canvas-config="handleUpdateCanvasConfig"
           @update-pipeline-version="handleUpdatePipelineVersion"
           @update-restore-workspace="handleUpdateRestoreWorkspace"
+          @update-low-memory="handleUpdateLowMemory"
           @open-debug-panel="openDebugPanel"
         />
       </div>
@@ -420,9 +464,9 @@ onBeforeUnmount(() => {
         :current-source="activeTab.snapshot.flowState?.currentSource || ''"
         :initial-node-id="debugPanel.nodeId"
         @close="closeDebugPanel"
-        @locate-node="(nodeId) => editorRef?.handleLocateNode(nodeId)"
-        @debug-node="(nodeId) => editorRef?.handleDebugNodeFromPanel(nodeId)"
-        @update-node-status="(payload) => editorRef?.handleUpdateNodeStatus(payload)"
+        @locate-node="(nodeId) => activeEditorRef?.handleLocateNode(nodeId)"
+        @debug-node="(nodeId) => activeEditorRef?.handleDebugNodeFromPanel(nodeId)"
+        @update-node-status="(payload) => activeEditorRef?.handleUpdateNodeStatus(payload)"
       />
     </div>
   </div>

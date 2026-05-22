@@ -177,6 +177,7 @@ const applyDefaultSettings = () => {
 
 const hasRestoredSnapshot = ref(false)
 const hasAppliedInitialViewport = ref(false)
+const isInitialized = ref(false)
 const isSameViewport = (next?: { x: number; y: number; zoom: number }) => {
   if (!next) return false
   const threshold = 0.001
@@ -186,6 +187,7 @@ const isSameViewport = (next?: { x: number; y: number; zoom: number }) => {
 }
 
 onInit(async () => {
+  isInitialized.value = true
   if (props.snapshot?.flowState) {
     await restoreSnapshotState()
     hasRestoredSnapshot.value = true
@@ -229,10 +231,46 @@ const handleMoveEnd = () => {
   perfLog('FlowEditor.moveEndSnapshot', start, { tabId: props.tabId, zoom: viewport.value.zoom })
 }
 
+// Watch for external snapshot changes (e.g., when workspace restores state)
+let isRestoringExternalSnapshot = false
+watch(() => props.snapshot, async (newSnapshot, oldSnapshot) => {
+  // Skip initial setup and self-triggered changes
+  if (!isInitialized.value) return
+  if (!newSnapshot?.flowState) return
+  if (oldSnapshot === newSnapshot) return
+  
+  // Check if this is an external snapshot restore (not from this editor's own snapshotState)
+  const isNewFileLoaded = newSnapshot.flowState.currentFilename && 
+    newSnapshot.flowState.currentFilename !== currentFilename.value
+  const isExternalUpdate = isNewFileLoaded || 
+    (newSnapshot.flowState.dataSnapshot !== oldSnapshot?.flowState?.dataSnapshot)
+  
+  if (!isExternalUpdate) return
+  
+  // Restore the external snapshot
+  isRestoringExternalSnapshot = true
+  isRestoringViewport.value = true
+  await restoreSnapshotState()
+  hasRestoredSnapshot.value = true
+  
+  if (newSnapshot.viewport) {
+    await nextTick()
+    await setViewport({ 
+      x: newSnapshot.viewport.x, 
+      y: newSnapshot.viewport.y, 
+      zoom: newSnapshot.viewport.zoom 
+    }, { duration: 0 })
+  }
+  
+  isRestoringViewport.value = false
+  isRestoringExternalSnapshot = false
+}, { deep: true })
+
 watch(() => props.snapshot?.viewport, async (nextViewport) => {
   if (!nextViewport) return
   if (!hasRestoredSnapshot.value) return
   if (!hasAppliedInitialViewport.value) return
+  if (isRestoringExternalSnapshot) return // Skip if already handled above
   if (isSameViewport(nextViewport)) return
   isRestoringViewport.value = true
   await nextTick()

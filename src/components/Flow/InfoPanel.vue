@@ -33,6 +33,7 @@ const props = defineProps<{
   layoutDirection?: LayoutDirection
   pipelineVersion?: 'V1' | 'V2'
   restoreWorkspaceOnStart?: boolean
+  lowMemoryMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +46,7 @@ const emit = defineEmits<{
   'update-canvas-config': [payload: { edgeType?: EdgeType; spacing?: SpacingKey; layoutAlgorithm?: LayoutAlgorithm; layoutDirection?: LayoutDirection }]
   'update-pipeline-version': [payload: 'V1' | 'V2']
   'update-restore-workspace': [payload: boolean]
+  'update-low-memory': [payload: boolean]
   'open-debug-panel': []
 }>()
 
@@ -744,6 +746,7 @@ const handleAppSettingsSave = (payload: {
   layoutDirection: LayoutDirection
   pipelineVersion: 'V1' | 'V2'
   restoreWorkspaceOnStart: boolean
+  lowMemoryMode: boolean
 }) => {
   pipelineVersion.value = payload.pipelineVersion
   emit('update-canvas-config', {
@@ -753,6 +756,7 @@ const handleAppSettingsSave = (payload: {
     layoutDirection: payload.layoutDirection
   })
   emit('update-restore-workspace', payload.restoreWorkspaceOnStart)
+  emit('update-low-memory', payload.lowMemoryMode)
   showAppSettings.value = false
   saveAllConfig()
 }
@@ -1121,6 +1125,7 @@ const handleAnnouncementClose = () => {
                        :defaultLayoutDirection="props.layoutDirection"
                        :defaultPipelineVersion="pipelineVersion"
                        :defaultRestoreWorkspaceOnStart="props.restoreWorkspaceOnStart"
+                       :defaultLowMemoryMode="props.lowMemoryMode"
                        @close="showAppSettings = false"
                        @save="handleAppSettingsSave"/>
     <AnnouncementModal :visible="showAnnouncement" @close="handleAnnouncementClose"/>

@@ -15,6 +15,7 @@ interface AppSettingsProps {
   defaultLayoutDirection?: LayoutDirection
   defaultPipelineVersion?: PipelineVersion
   defaultRestoreWorkspaceOnStart?: boolean
+  defaultLowMemoryMode?: boolean
 }
 
 const props = withDefaults(defineProps<AppSettingsProps>(), {
@@ -24,7 +25,8 @@ const props = withDefaults(defineProps<AppSettingsProps>(), {
   defaultLayoutAlgorithm: 'layered',
   defaultLayoutDirection: 'TB',
   defaultPipelineVersion: 'V1',
-  defaultRestoreWorkspaceOnStart: true
+  defaultRestoreWorkspaceOnStart: true,
+  defaultLowMemoryMode: false
 })
 
 const emit = defineEmits<{
@@ -36,6 +38,7 @@ const emit = defineEmits<{
     layoutDirection: LayoutDirection
     pipelineVersion: PipelineVersion
     restoreWorkspaceOnStart: boolean
+    lowMemoryMode: boolean
   }): void
 }>()
 
@@ -45,6 +48,7 @@ const layoutAlgorithm = ref<LayoutAlgorithm>(props.defaultLayoutAlgorithm)
 const layoutDirection = ref<LayoutDirection>(props.defaultLayoutDirection)
 const pipelineVersion = ref<PipelineVersion>(props.defaultPipelineVersion)
 const restoreWorkspaceOnStart = ref<boolean>(props.defaultRestoreWorkspaceOnStart)
+const lowMemoryMode = ref<boolean>(props.defaultLowMemoryMode)
 
 watch(() => props.visible, (val: boolean) => {
   if (val) {
@@ -54,6 +58,7 @@ watch(() => props.visible, (val: boolean) => {
     layoutDirection.value = props.defaultLayoutDirection
     pipelineVersion.value = props.defaultPipelineVersion
     restoreWorkspaceOnStart.value = props.defaultRestoreWorkspaceOnStart
+    lowMemoryMode.value = props.defaultLowMemoryMode
   }
 })
 
@@ -64,7 +69,8 @@ const handleSave = () => {
     layoutAlgorithm: layoutAlgorithm.value,
     layoutDirection: layoutDirection.value,
     pipelineVersion: pipelineVersion.value,
-    restoreWorkspaceOnStart: restoreWorkspaceOnStart.value
+    restoreWorkspaceOnStart: restoreWorkspaceOnStart.value,
+    lowMemoryMode: lowMemoryMode.value
   })
 }
 
@@ -75,6 +81,7 @@ const handleReset = () => {
   layoutDirection.value = 'TB'
   pipelineVersion.value = 'V1'
   restoreWorkspaceOnStart.value = true
+  lowMemoryMode.value = false
 }
 </script>
 
@@ -237,6 +244,28 @@ const handleReset = () => {
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'">
                   {{ restoreWorkspaceOnStart ? '已开启：启动时恢复标签页与快照' : '已关闭：仅恢复应用默认设置' }}
+                </button>
+              </div>
+
+              <!-- 低消耗模式 -->
+              <div class="space-y-2">
+                <label class="text-[11px] font-bold text-slate-500 uppercase block">标签页切换模式</label>
+                <button
+                  @click="lowMemoryMode = !lowMemoryMode"
+                  class="w-full py-2.5 px-3 text-xs font-medium rounded-lg border-2 transition-all text-left"
+                  :class="lowMemoryMode
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-indigo-50 text-indigo-700 border-indigo-200'">
+                  <div class="flex flex-col gap-1">
+                    <span class="font-semibold">
+                      {{ lowMemoryMode ? '低消耗模式' : '快速切换模式' }}
+                    </span>
+                    <span class="text-[10px] opacity-75">
+                      {{ lowMemoryMode
+                        ? '切换时重建编辑器实例,占用内存更少但速度较慢'
+                        : '切换时保留所有编辑器实例,速度更快但占用更多内存' }}
+                    </span>
+                  </div>
                 </button>
               </div>
             </div>
