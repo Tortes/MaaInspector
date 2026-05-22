@@ -224,7 +224,7 @@ const handleLoadNodes = async (payload: { filename: string; source: string; node
 
 const handleLoadImages = (payload: Record<string, unknown>, basePath?: string) => {
   const start = perfNow()
-  console.log('[DEBUG FlowWorkspace] handleLoadImages payload keys:', Object.keys(payload || {}), 'basePath:', basePath, 'activeEditorRef exists:', !!activeEditorRef.value)
+
   activeEditorRef.value?.handleLoadImages(payload, basePath)
   perfLog('FlowWorkspace.handleLoadImages', start, { imageEntryCount: Object.keys(payload || {}).length })
 }

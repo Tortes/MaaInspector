@@ -148,14 +148,14 @@ const restoreSnapshotState = async () => {
   const source = props.snapshot.flowState.currentSource
   const filename = props.snapshot.flowState.currentFilename
   if (!hasImageState && source && filename) {
-    console.log('[DEBUG restoreSnapshotState] imageState empty, reloading images for', source, filename)
+
     try {
       const imgRes = await resourceApi.getTemplateImages(source, filename)
       if (imgRes.results) {
         handleLoadImages(imgRes.results as Record<string, unknown>)
       }
     } catch (e) {
-      console.warn('[DEBUG restoreSnapshotState] failed to reload images', e)
+
     }
   }
 
@@ -542,13 +542,13 @@ const handleLoadImages = (imageDataMap: Record<string, unknown>, _basePath?: str
   isBulkLoading.value = true
   try {
     const entries = Object.entries(imageDataMap)
-    console.log('[DEBUG handleLoadImages] entries count:', entries.length)
+
     for (const [nodeId, images] of entries) {
       if (isTemplateImageArray(images)) {
-        console.log('[DEBUG handleLoadImages] setting nodeId:', nodeId, 'images count:', images.length, 'first:', images[0])
+
         imageManager.setNodeImages(nodeId, images)
       } else {
-        console.log('[DEBUG handleLoadImages] NOT TemplateImageArray for nodeId:', nodeId, 'value:', images)
+
       }
     }
   } finally {

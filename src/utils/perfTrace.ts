@@ -1,10 +1,6 @@
 const PERF_TRACE_KEY = 'maainspector.perfTrace'
 
-const isPerfTraceEnabled = () => {
-  if (typeof window === 'undefined') return true
-  const value = window.localStorage.getItem(PERF_TRACE_KEY)
-  return value !== 'off'
-}
+const isPerfTraceEnabled = () => false
 
 export const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
