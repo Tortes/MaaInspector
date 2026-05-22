@@ -1,89 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import {
-  X, Bug, PlayCircle, PauseCircle, MapPin, Loader2, Search as SearchIcon,
-  Terminal, Activity, CheckCircle2, XCircle
+  X, Bug, PlayCircle, PauseCircle, Activity, Terminal
 } from 'lucide-vue-next'
-import { deviceApi, debugApi } from '../../services/api.ts'
-import { withCache } from '../../services/cache.ts'
-import { createThrottledHandler } from '../../utils/throttle'
+import { debugApi } from '../../services/api.ts'
 import type { FlowNode } from '../../utils/flowTypes'
-import type { ScreenshotResponse } from '../../services/api.ts'
-
-// ... (原有类型定义保持不变) ...
-const STATUS = {
-  UNKNOWN: 'unknown',
-  STARTING: 'starting',
-  SUCCEEDED: 'succeeded',
-  FAILED: 'failed'
-} as const
-type StatusKey = (typeof STATUS)[keyof typeof STATUS]
-type NodeStatus = 'success' | 'error' | 'running' | 'ignored' | null
-
-interface NextChild {
-  name: string
-  status: StatusKey
-  reco_id?: string | null
-  jump_back?: boolean
-  anchor?: boolean
-  [key: string]: unknown
-}
-
-interface DebugEventRecord {
-  recordId: string
-  taskId: string | number
-  name: string
-  nextList: NextChild[]
-  timestamp: number
-}
-
-interface RecognitionPayload {
-  type?: string
-  status?: StatusKey
-  task_id?: string | number
-  name?: string
-  reco_id?: string
-  timestamp?: number
-  [key: string]: unknown
-}
-
-interface NextListPayload {
-  type?: string
-  task_id?: string | number
-  name?: string
-  next_list?: NextChild[]
-  timestamp?: number
-  [key: string]: unknown
-}
-
-type SsePayload = RecognitionPayload | NextListPayload
-
-const WIDTH_STORAGE_KEY = 'maainspector.debugPanel.width.v1'
-const DEFAULT_PANEL_WIDTH = 1120
-const MIN_PANEL_WIDTH = 600
-const SIDE_GAP = 24
-
-const clampPanelWidth = (value: number) => {
-  const maxWidth = typeof window === 'undefined'
-    ? DEFAULT_PANEL_WIDTH
-    : Math.max(MIN_PANEL_WIDTH, window.innerWidth - SIDE_GAP)
-  return Math.min(maxWidth, Math.max(MIN_PANEL_WIDTH, value))
-}
-
-const loadPanelWidth = () => {
-  if (typeof window === 'undefined') return DEFAULT_PANEL_WIDTH
-  const stored = Number(window.localStorage.getItem(WIDTH_STORAGE_KEY))
-  return clampPanelWidth(Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_PANEL_WIDTH)
-}
-
-const savePanelWidth = (width: number) => {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(WIDTH_STORAGE_KEY, String(Math.round(clampPanelWidth(width))))
-  } catch (_) {
-    // ignore storage failures
-  }
-}
+import DebugNodeSelector from './DebugPanel/DebugNodeSelector.vue'
+import DebugEventTimeline from './DebugPanel/DebugEventTimeline.vue'
+import DebugDetailPanel from './DebugPanel/DebugDetailPanel.vue'
+import ImagePreviewOverlay from './DebugPanel/ImagePreviewOverlay.vue'
+import { useDebugPanelState } from '../../composables/useDebugPanelState'
+import type { NextChild, DebugEventRecord, NodeStatusPayload } from '../../composables/useDebugPanelState'
 
 const props = defineProps<{
   visible?: boolean
@@ -93,50 +20,35 @@ const props = defineProps<{
   initialNodeId?: string
 }>()
 
-const panelWidth = ref(DEFAULT_PANEL_WIDTH)
-const isResizingWidth = ref(false)
-const resizeStart = ref({ x: 0, width: DEFAULT_PANEL_WIDTH })
-
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'locate-node', id: string): void
   (e: 'debug-node', id: string): void
-  (e: 'update-node-status', payload: { nodeId: string; status: NodeStatus }): void
+  (e: 'update-node-status', payload: { nodeId: string; status: 'success' | 'error' | 'running' | 'ignored' | null }): void
 }>()
 
-const startWidthResize = (e: MouseEvent) => {
-  e.preventDefault()
-  e.stopPropagation()
-  isResizingWidth.value = true
-  resizeStart.value = { x: e.clientX, width: panelWidth.value }
-  document.body.style.cursor = 'ew-resize'
-  document.body.style.userSelect = 'none'
-  document.addEventListener('mousemove', onWidthResize)
-  document.addEventListener('mouseup', stopWidthResize)
-}
+const {
+  STATUS,
+  panelWidth,
+  events,
+  isStreamRunning,
+  previewUrl,
+  loadPanelWidth,
+  startWidthResize,
+  stopWidthResize,
+  startPreviewAutoRefresh,
+  stopPreviewAutoRefresh,
+  startRealtimeStream,
+  stopRealtimeStream,
+  handlePauseDebug,
+  copyText,
+  clearEvents
+} = useDebugPanelState()
 
-const onWidthResize = (e: MouseEvent) => {
-  if (!isResizingWidth.value) return
-  panelWidth.value = clampPanelWidth(resizeStart.value.width + resizeStart.value.x - e.clientX)
-}
-
-const stopWidthResize = () => {
-  if (!isResizingWidth.value) return
-  isResizingWidth.value = false
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
-  document.removeEventListener('mousemove', onWidthResize)
-  document.removeEventListener('mouseup', stopWidthResize)
-  savePanelWidth(panelWidth.value)
-}
-
-// ... (原有业务状态保持不变) ...
 const searchValue = ref('')
 const selectedNodeId = ref('')
-const isOptionOpen = ref(false)
-const previewUrl = ref('')
-const events = ref<DebugEventRecord[]>([])
-const isStreamRunning = ref(false)
+const previewActiveThumbIdx = ref<number | null>(null)
+const fullImagePreview = ref<{ visible: boolean; src: string }>({ visible: false, src: '' })
 const selectedDetail = ref<{
   record: DebugEventRecord
   child: NextChild
@@ -150,229 +62,18 @@ const selectedDetail = ref<{
     box?: Record<string, unknown> | null
   }
 } | null>(null)
-const activeThumbIdx = ref<number | null>(null)
-const fullImagePreview = ref<{ visible: boolean; src: string }>({ visible: false, src: '' })
 
-let stopStream: (() => void) | null = null
-let previewTimer: ReturnType<typeof setInterval> | null = null
-let isFetchingPreview = false // Prevent concurrent screenshot requests
-
-// ... (computed 保持不变) ...
 const nodeOptions = computed(() => (props.nodes || []).map(node => ({
   id: node.id,
   label: node.data?.data?.id || node.id
 })))
 
-const filteredNodeOptions = computed(() => {
-  const keyword = searchValue.value.trim().toLowerCase()
-  if (!keyword) return nodeOptions.value
-  return nodeOptions.value.filter(opt =>
-      opt.id.toLowerCase().includes(keyword) || opt.label.toLowerCase().includes(keyword))
-})
-
-const sortedEvents = computed(() => [...events.value].sort((a, b) => b.timestamp - a.timestamp))
-const actionButtonText = computed(() => '开始调试')
 const showPreviewPanel = computed(() => !selectedDetail.value)
+const actionButtonText = computed(() => '开始调试')
 
-const createRecordId = (taskId?: string | number) => `${taskId || 'task'}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
-const mapStatusToNode = (status: StatusKey): NodeStatus => {
-  if (status === STATUS.SUCCEEDED) return 'success'
-  if (status === STATUS.FAILED) return 'error'
-  if (status === STATUS.STARTING) return 'running'
-  return null
-}
-
-// ... (原有业务逻辑 fetchPreview, upsertNextList 等保持不变) ...
-
-const fetchPreview = async () => {
-  if (isFetchingPreview) return // Prevent request pile-up
-  isFetchingPreview = true
-  try {
-    const res = await withCache(
-      'device-preview',
-      () => deviceApi.getScreenshot({
-        context: { feature: 'device', action: 'screenshot', component: 'NodeDebugPanel' }
-      }),
-      1000 // 1秒缓存
-    )
-    previewUrl.value = (res as ScreenshotResponse)?.image || (res as Record<string, unknown>)?.data as string || ''
-  } catch (e) {
-    console.warn('[DebugPanel] 获取设备预览失败，使用占位图', e)
-    previewUrl.value = ''
-  } finally {
-    isFetchingPreview = false
-  }
-}
-
-const startPreviewAutoRefresh = () => {
-  stopPreviewAutoRefresh()
-  fetchPreview()
-  previewTimer = setInterval(fetchPreview, 1000)
-}
-
-const stopPreviewAutoRefresh = () => {
-  if (previewTimer) clearInterval(previewTimer)
-  previewTimer = null
-}
-
-const upsertNextList = (payload: NextListPayload) => {
-  if (!payload) return
-  const nextList = Array.isArray(payload.next_list) ? payload.next_list : []
-  const taskId = payload.task_id || Date.now()
-  const record = {
-    recordId: createRecordId(taskId),
-    taskId,
-    name: payload.name || searchValue.value || selectedNodeId.value || '未知节点',
-    nextList: nextList.map(child => {
-      const childName = child?.name || 'Unknown'
-      return {
-        ...child,
-        name: childName,
-        status: STATUS.UNKNOWN,
-        reco_id: child.reco_id ?? null
-      }
-    }),
-    timestamp: payload.timestamp || Date.now()
-  }
-
-  events.value = [record, ...events.value].slice(0, 200)
-
-  if (nextList.length && props.nodes) {
-    const targetNames = new Set(nextList.map(child => child.name).filter(Boolean))
-    props.nodes.forEach(node => {
-      const nodeName = node.data?.data?.id || node.id
-      if (targetNames.has(nodeName)) {
-        emit('update-node-status', { nodeId: nodeName, status: 'ignored' })
-      }
-    })
-  }
-}
-
-interface DetailChild {
-  name?: string
-  status?: StatusKey
-  jump_back?: boolean
-  debug_image?: string
-  image?: string
-  screenshot?: string
-  draw_images?: string[]
-  detailList?: Array<{ label: string; text: string; raw: unknown }>
-  details?: Array<{ label: string; text: string; raw: unknown }>
-  [key: string]: unknown
-}
-
-const normalizeDetailFields = (child: DetailChild | null | undefined) => {
-  if (!child) return []
-  if (Array.isArray(child.detailList)) return child.detailList
-  if (Array.isArray(child.details)) return child.details
-  const skipKeys = [
-    'name', 'status', 'jump_back', 'debug_image', 'image', 'screenshot',
-    'draw_images', 'raw_image', 'raw_detail', 'all_results', 'filtered_results', 'best_result'
-  ]
-  return Object.entries(child)
-      .filter(([k]) => !skipKeys.includes(k))
-      .map(([label, value]) => {
-        let text = ''
-        if (typeof value === 'object') {
-          try {
-            text = JSON.stringify(value, null, 2)
-          } catch (_) {
-            text = String(value ?? '')
-          }
-        } else {
-          text = String(value ?? '')
-        }
-        return { label, text, raw: value }
-      })
-}
-
-const applyRecognition = (payload: RecognitionPayload) => {
-  if (!payload) return
-  const status = payload.status || STATUS.UNKNOWN
-  const targetName = payload.name || '未知节点'
-  let matched = false
-  let updatedRecord = null
-  const updatedEvents = [...events.value]
-
-  for (let i = 0; i < updatedEvents.length; i++) {
-    const evt = updatedEvents[i]
-    if (evt.taskId !== payload.task_id) continue
-    matched = true
-    const nextList = [...evt.nextList]
-    let idx = nextList.findIndex(c => c.name === targetName)
-    if (idx === -1) {
-      nextList.push({
-        name: targetName,
-        jump_back: false,
-        anchor: false,
-        status: STATUS.UNKNOWN
-      })
-      idx = nextList.length - 1
-    }
-    nextList[idx] = {
-      ...nextList[idx],
-      status,
-      reco_id: payload.reco_id
-    }
-    updatedEvents[i] = { ...evt, nextList }
-    updatedRecord = updatedEvents[i]
-    break
-  }
-
-  if (!matched) {
-    const taskId = payload.task_id || Date.now()
-    updatedRecord = {
-      recordId: createRecordId(taskId),
-      taskId,
-      name: targetName,
-      nextList: [{
-        name: targetName,
-        jump_back: false,
-        anchor: false,
-        status,
-        reco_id: payload.reco_id
-      }],
-      timestamp: payload.timestamp || Date.now()
-    }
-    updatedEvents.unshift(updatedRecord)
-  }
-
-  events.value = updatedEvents.slice(0, 200)
-
-  const mapped = mapStatusToNode(status)
-  if (mapped) emit('update-node-status', { nodeId: targetName, status: mapped })
-}
-
-// SSE 事件处理（带节流）
-const processSsePayload = (payload: SsePayload) => {
-  if (!payload || !payload.type) return
-  if (payload.type === 'node_next_list') {
-    upsertNextList(payload)
-  }
-  if (payload.type === 'node_recognition') {
-    applyRecognition(payload)
-  }
-}
-
-// 创建节流处理器（50ms 节流，批处理大小 10）
-const throttledSseHandler = createThrottledHandler(processSsePayload, {
-  throttleMs: 50,
-  batchSize: 10,
-  enableBatch: true
-})
-
-const handleSsePayload = throttledSseHandler.handler
-
-const startRealtimeStream = () => {
-  if (isStreamRunning.value) return
-  stopStream = debugApi.subscribeNodeStream((data: unknown) => handleSsePayload(data as SsePayload))
-  isStreamRunning.value = true
-}
-
-const stopRealtimeStream = () => {
-  if (stopStream) stopStream()
-  stopStream = null
-  isStreamRunning.value = false
+const handleOptionSelect = (opt: { id: string }) => {
+  searchValue.value = opt.id
+  selectedNodeId.value = opt.id
 }
 
 const handleDebugNow = () => {
@@ -388,15 +89,21 @@ const handleLocate = (id: string) => {
 
 const handleStartStream = () => {
   if (!isStreamRunning.value) {
-    startRealtimeStream()
+    startRealtimeStream(
+      (payload: NodeStatusPayload) => emit('update-node-status', payload),
+      props.nodes
+    )
   }
 }
 
 const handleResetStream = () => {
-  events.value = []
+  clearEvents()
   selectedDetail.value = null
   if (isStreamRunning.value) {
-    startRealtimeStream()
+    startRealtimeStream(
+      (payload: NodeStatusPayload) => emit('update-node-status', payload),
+      props.nodes
+    )
   }
 }
 
@@ -405,14 +112,17 @@ const handleActionButton = async () => {
   handleDebugNow()
 }
 
-const handlePauseDebug = async () => {
-  try {
-      await debugApi.stop({
-        context: { feature: 'debug', action: 'stop', component: 'NodeDebugPanel' }
-      })
-  } catch (e) {
-    console.warn('[DebugPanel] 暂停调试失败', e)
-  }
+interface DetailChild {
+  name?: string
+  status?: string
+  jump_back?: boolean
+  debug_image?: string
+  image?: string
+  screenshot?: string
+  draw_images?: string[]
+  detailList?: Array<{ label: string; text: string; raw: unknown }>
+  details?: Array<{ label: string; text: string; raw: unknown }>
+  [key: string]: unknown
 }
 
 interface RecoDetail {
@@ -429,6 +139,31 @@ interface RecoDetail {
   [key: string]: unknown
 }
 
+const normalizeDetailFields = (child: DetailChild | null | undefined) => {
+  if (!child) return []
+  if (Array.isArray(child.detailList)) return child.detailList
+  if (Array.isArray(child.details)) return child.details
+  const skipKeys = [
+    'name', 'status', 'jump_back', 'debug_image', 'image', 'screenshot',
+    'draw_images', 'raw_image', 'raw_detail', 'all_results', 'filtered_results', 'best_result'
+  ]
+  return Object.entries(child)
+    .filter(([k]) => !skipKeys.includes(k))
+    .map(([label, value]) => {
+      let text = ''
+      if (typeof value === 'object') {
+        try {
+          text = JSON.stringify(value, null, 2)
+        } catch (_) {
+          text = String(value ?? '')
+        }
+      } else {
+        text = String(value ?? '')
+      }
+      return { label, text, raw: value }
+    })
+}
+
 const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
   if (child.status !== STATUS.SUCCEEDED && child.status !== STATUS.FAILED) return
   let mainImage =
@@ -443,9 +178,7 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
 
   if (child.reco_id !== undefined && child.reco_id !== null) {
     try {
-        const res = await debugApi.getRecoDetails(child.reco_id, {
-          context: { feature: 'debug', action: 'get_reco_details', component: 'NodeDebugPanel' }
-        })
+      const res = await debugApi.getRecoDetails(child.reco_id)
       const detail = (res as Record<string, unknown>)?.detail as RecoDetail | undefined
       if (detail) {
         const rawImage = typeof detail.raw_image === 'string' ? detail.raw_image : ''
@@ -527,19 +260,19 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
     results,
     meta
   }
-  activeThumbIdx.value = null
+  previewActiveThumbIdx.value = null
 }
 
 const handleDetailClose = () => {
   selectedDetail.value = null
-  activeThumbIdx.value = null
+  previewActiveThumbIdx.value = null
   closeImagePreview()
 }
 
 const handleThumbClick = (img: string, idx: number) => {
   if (!selectedDetail.value) return
   selectedDetail.value = { ...selectedDetail.value, mainImage: img }
-  activeThumbIdx.value = idx
+  previewActiveThumbIdx.value = idx
 }
 
 const openImagePreview = (src: string) => {
@@ -551,43 +284,16 @@ const closeImagePreview = () => {
   fullImagePreview.value = { visible: false, src: '' }
 }
 
-const copyText = async (text: string) => {
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch (e) {
-    console.warn('[DebugPanel] 复制失败', e)
-  }
-}
-
-const handleOptionSelect = (opt: { id: string }) => {
-  searchValue.value = opt.id
-  selectedNodeId.value = opt.id
-  isOptionOpen.value = false
-}
-
-const toggleOptionList = () => {
-  isOptionOpen.value = !isOptionOpen.value
-}
-
-const closeOptionList = () => {
-  setTimeout(() => {
-    isOptionOpen.value = false
-  }, 120)
-}
-
-const formatTime = (ts: number | string) => {
-  const d = new Date(ts)
-  return d.toLocaleTimeString()
-}
-
 watch(() => props.visible, (val) => {
   if (val) {
     panelWidth.value = loadPanelWidth()
     selectedNodeId.value = props.initialNodeId || ''
     searchValue.value = props.initialNodeId || ''
     startPreviewAutoRefresh()
-    startRealtimeStream()
+    startRealtimeStream(
+      (payload: NodeStatusPayload) => emit('update-node-status', payload),
+      props.nodes
+    )
   } else {
     stopPreviewAutoRefresh()
   }
@@ -602,7 +308,6 @@ watch(() => props.initialNodeId, (val) => {
 
 onUnmounted(() => {
   stopWidthResize()
-  throttledSseHandler.clear() // 清理节流队列
   stopRealtimeStream()
   stopPreviewAutoRefresh()
 })
@@ -690,45 +395,13 @@ onUnmounted(() => {
         <div class="flex-1 flex flex-col min-h-0 w-0">
           <div class="p-4 border-b border-slate-100 bg-white flex flex-col gap-3 shrink-0">
             <div class="flex gap-3 items-center">
-              <div class="relative flex-1">
-                <SearchIcon
-                  :size="14"
-                  class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  v-model="searchValue"
-                  type="text"
-                  :placeholder="selectedNodeId ? '' : '输入或选择节点 ID...'"
-                  class="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all font-mono"
-                  @focus="isOptionOpen = true"
-                  @blur="closeOptionList"
-                  @keyup.enter="handleDebugNow"
-                >
-                <button
-                  class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-xs border border-slate-200 text-slate-500 hover:bg-white"
-                  type="button"
-                  @mousedown.prevent
-                  @click="toggleOptionList"
-                >
-                  列表
-                </button>
-                <div
-                  v-if="isOptionOpen && filteredNodeOptions.length"
-                  class="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-sm custom-scrollbar"
-                >
-                  <button
-                    v-for="opt in filteredNodeOptions"
-                    :key="opt.id"
-                    type="button"
-                    class="w-full text-left px-3 py-2 hover:bg-amber-50 text-sm text-slate-700 flex justify-between items-center"
-                    @mousedown.prevent
-                    @click="handleOptionSelect(opt)"
-                  >
-                    <span class="font-mono">{{ opt.label }}</span>
-                    <span class="text-[11px] text-slate-400">{{ opt.id }}</span>
-                  </button>
-                </div>
-              </div>
+              <DebugNodeSelector
+                v-model="searchValue"
+                :options="nodeOptions"
+                placeholder="输入或选择节点 ID..."
+                @select="handleOptionSelect"
+                @submit="handleDebugNow"
+              />
               <div class="flex items-center gap-2">
                 <button
                   class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
@@ -775,345 +448,34 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-3 custom-scrollbar min-h-0">
-            <div
-              v-if="sortedEvents.length === 0"
-              class="h-full w-full flex items-center justify-center text-slate-400 text-sm"
-            >
-              等待调试结果流入...
-            </div>
-
-            <div
-              v-for="item in sortedEvents"
-              :key="item.recordId || `${item.taskId}-${item.timestamp}`"
-              class="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-2"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="px-2 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-semibold border border-amber-100">
-                    任务 #{{ item.taskId }}
-                  </span>
-                  <span class="text-sm font-mono text-slate-700">主节点：{{ item.name }}</span>
-                  <span class="text-[11px] text-slate-400">时间 {{ formatTime(item.timestamp) }}</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button
-                    class="px-2 py-1 text-[12px] rounded bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 flex items-center gap-1"
-                    @click="handleLocate(item.name)"
-                  >
-                    <MapPin :size="14" /> 定位节点
-                  </button>
-                </div>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="(child, idx) in item.nextList"
-                  :key="child.name + idx"
-                  class="px-2 py-1 rounded-full text-[12px] font-mono border transition-colors flex items-center gap-2"
-                  :class="[
-                    child.jump_back ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100',
-                    child.status === STATUS.UNKNOWN
-                      ? 'opacity-60'
-                      : child.status === STATUS.STARTING
-                        ? 'ring-1 ring-amber-200'
-                        : child.status === STATUS.SUCCEEDED
-                          ? (child.jump_back ? 'ring-1 ring-purple-200' : 'ring-1 ring-blue-200')
-                          : 'ring-1 ring-rose-200'
-                  ]"
-                  @click="handleChildClick(child, item)"
-                >
-                  <span>{{ child.name }}</span>
-                  <span class="text-[11px] flex items-center gap-1">
-                    <Activity
-                      v-if="child.status === STATUS.UNKNOWN"
-                      :size="14"
-                      class="text-slate-400"
-                    />
-                    <Loader2
-                      v-else-if="child.status === STATUS.STARTING"
-                      :size="12"
-                      class="animate-spin text-amber-600"
-                    />
-                    <CheckCircle2
-                      v-else-if="child.status === STATUS.SUCCEEDED"
-                      :size="14"
-                      class="text-emerald-600"
-                    />
-                    <XCircle
-                      v-else
-                      :size="14"
-                      class="text-rose-600"
-                    />
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <DebugEventTimeline
+            :events="events"
+            :status-constants="STATUS"
+            @locate-node="handleLocate"
+            @child-click="handleChildClick"
+          />
         </div>
 
         <transition name="detail-slide">
-          <div
+          <DebugDetailPanel
             v-if="selectedDetail"
-            class="w-[320px] border-l border-slate-200 bg-white flex flex-col min-h-0 shrink-0"
-          >
-            <div class="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
-              <div class="flex flex-col">
-                <span class="text-sm font-semibold text-slate-700">{{ selectedDetail.child.name }}</span>
-                <span class="text-[11px] text-slate-500">任务 #{{ selectedDetail.record.taskId }}</span>
-                <div
-                  v-if="selectedDetail.meta"
-                  class="flex items-center gap-2 pt-1"
-                >
-                  <span
-                    v-if="selectedDetail.meta.algorithm"
-                    class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100 text-[11px]"
-                  >
-                    算法 {{ selectedDetail.meta.algorithm }}
-                  </span>
-                  <span
-                    v-if="selectedDetail.meta.hit !== undefined"
-                    class="px-2 py-0.5 rounded text-[11px] border"
-                    :class="selectedDetail.meta.hit ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'"
-                  >
-                    {{ selectedDetail.meta.hit ? '命中' : '未命中' }}
-                  </span>
-                </div>
-              </div>
-              <button
-                class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
-                @click="handleDetailClose"
-              >
-                返回
-              </button>
-            </div>
-
-            <div class="flex-1 overflow-y-auto custom-scrollbar">
-              <div class="p-3 space-y-3">
-                <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
-                  <Activity
-                    :size="14"
-                    class="text-amber-500"
-                  /> 调试快照
-                  <span
-                    v-if="selectedDetail.meta?.box"
-                    class="text-[11px] text-slate-400"
-                  >
-                    Box: {{ JSON.stringify(selectedDetail.meta.box) }}
-                  </span>
-                </div>
-                <div
-                  class="relative w-full aspect-[4/5] bg-slate-50 border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center"
-                  :class="selectedDetail.mainImage ? 'cursor-zoom-in' : ''"
-                  @click="selectedDetail.mainImage && openImagePreview(selectedDetail.mainImage)"
-                >
-                  <img
-                    v-if="selectedDetail.mainImage"
-                    :src="selectedDetail.mainImage"
-                    alt="debug detail"
-                    class="w-full h-full object-contain"
-                  >
-                  <div
-                    v-else
-                    class="text-xs text-slate-400 flex flex-col items-center gap-1"
-                  >
-                    <Bug
-                      :size="18"
-                      class="text-amber-500"
-                    />
-                    <span>暂无调试截图</span>
-                  </div>
-                </div>
-                <div
-                  v-if="selectedDetail.drawImages && selectedDetail.drawImages.length"
-                  class="grid grid-cols-3 gap-2"
-                >
-                  <div
-                    v-for="(img, idx) in selectedDetail.drawImages"
-                    :key="idx"
-                    class="relative overflow-hidden rounded border bg-slate-50 h-20 flex items-center justify-center cursor-pointer transition"
-                    :class="activeThumbIdx === idx ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200 hover:border-amber-200'"
-                    @click="handleThumbClick(img, idx)"
-                  >
-                    <img
-                      :src="img"
-                      class="w-full h-full object-contain"
-                      :alt="`draw-${idx}`"
-                    >
-                  </div>
-                </div>
-
-                <div class="text-xs text-slate-500 font-semibold flex items-center gap-2 pt-2">
-                  <Terminal
-                    :size="14"
-                    class="text-amber-500"
-                  /> 调试结果
-                </div>
-                <div
-                  class="grid gap-2"
-                  style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));"
-                >
-                  <div
-                    v-for="(field, idx) in selectedDetail.fields"
-                    :key="idx"
-                    class="p-2 rounded border border-slate-200 bg-white shadow-sm group relative"
-                  >
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="text-[11px] text-slate-500 truncate">
-                        {{ field.label }}
-                      </div>
-                      <button
-                        class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
-                        @click.stop="copyText(field.text || '')"
-                      >
-                        复制
-                      </button>
-                    </div>
-                    <div
-                      v-if="field.raw && typeof field.raw === 'object'"
-                      class="space-y-1 text-[12px] text-slate-700"
-                    >
-                      <div
-                        v-for="(val, key) in field.raw"
-                        :key="String(key)"
-                        class="flex items-start gap-2"
-                      >
-                        <span class="text-slate-500">{{ key }}:</span>
-                        <span class="font-mono break-all whitespace-pre-wrap text-slate-800">
-                          {{ typeof val === 'object' ? JSON.stringify(val) : String(val) }}
-                        </span>
-                        <button
-                          class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
-                          @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
-                        >
-                          复制
-                        </button>
-                      </div>
-                    </div>
-                    <div
-                      v-else
-                      class="text-sm text-slate-700 break-words whitespace-pre-wrap flex items-start gap-2"
-                    >
-                      <span class="font-mono break-all">{{ field.text || '—' }}</span>
-                      <button
-                        class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
-                        @click.stop="copyText(field.text || '')"
-                      >
-                        复制
-                      </button>
-                    </div>
-                  </div>
-                  <div
-                    v-if="!selectedDetail.fields || selectedDetail.fields.length === 0"
-                    class="text-xs text-slate-400"
-                  >
-                    暂无可显示的调试结果。
-                  </div>
-                </div>
-
-                <div
-                  v-if="selectedDetail.results && selectedDetail.results.length"
-                  class="pt-3 space-y-3"
-                >
-                  <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
-                    <Activity
-                      :size="14"
-                      class="text-amber-500"
-                    /> 识别结果列表
-                  </div>
-                  <div
-                    class="grid gap-2"
-                    style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
-                  >
-                    <div
-                      v-for="(res, idx) in selectedDetail.results"
-                      :key="idx"
-                      class="p-3 rounded border border-slate-200 bg-white shadow-sm group"
-                    >
-                      <div class="flex items-center justify-between gap-2 mb-2">
-                        <div class="flex items-center gap-2 overflow-hidden">
-                          <span class="text-[12px] font-semibold text-slate-700 truncate">{{ res.label }}</span>
-                          <div class="flex items-center gap-1">
-                            <span
-                              v-for="flag in res.flags || []"
-                              :key="flag"
-                              class="px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap"
-                              :class="flag === 'best'
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-sky-50 text-sky-700 border-sky-200'"
-                            >
-                              {{ flag }}
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
-                          @click.stop="copyText(res.text || '')"
-                        >
-                          复制
-                        </button>
-                      </div>
-                      <div
-                        v-if="res.raw && typeof res.raw === 'object'"
-                        class="space-y-1 text-[12px] text-slate-700"
-                      >
-                        <div
-                          v-for="(val, key) in res.raw"
-                          :key="String(key)"
-                          class="flex items-start gap-2"
-                        >
-                          <span class="text-slate-500">{{ key }}:</span>
-                          <span class="font-mono break-all whitespace-pre-wrap text-slate-800">
-                            {{ typeof val === 'object' ? JSON.stringify(val) : String(val) }}
-                          </span>
-                          <button
-                            class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
-                            @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
-                          >
-                            复制
-                          </button>
-                        </div>
-                      </div>
-                      <pre
-                        v-else
-                        class="text-[12px] text-slate-800 font-mono whitespace-pre-wrap break-words bg-slate-50 border border-slate-200 rounded p-2 flex items-start gap-2"
-                      >
-                        <span>{{ res.text || '—' }}</span>
-                        <button
-                            class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
-                            @click.stop="copyText(res.text || '')"
-                        >复制</button>
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+            v-model:active-thumb-idx="previewActiveThumbIdx"
+            :detail="selectedDetail"
+            @close="handleDetailClose"
+            @thumb-click="handleThumbClick"
+            @image-preview="openImagePreview"
+            @copy="copyText"
+          />
         </transition>
       </div>
     </div>
   </transition>
 
-  <div
-    v-if="fullImagePreview.visible"
-    class="fixed inset-0 z-[140] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
-    @click="closeImagePreview"
-  >
-    <div class="relative max-w-[90vw] max-h-[90vh]">
-      <button
-        class="absolute -top-10 right-0 px-3 py-1 rounded bg-white/90 text-slate-700 text-sm shadow hover:bg-white"
-        @click.stop="closeImagePreview"
-      >
-        关闭
-      </button>
-      <img
-        :src="fullImagePreview.src"
-        alt="full-preview"
-        class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-        @click.stop
-      >
-    </div>
-  </div>
+  <ImagePreviewOverlay
+    :visible="fullImagePreview.visible"
+    :src="fullImagePreview.src"
+    @close="closeImagePreview"
+  />
 </template>
 
 <style scoped>

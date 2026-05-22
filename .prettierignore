@@ -1,0 +1,5 @@
+dist/
+node_modules/
+src-tauri/target/
+src-tauri/MAA-win-x86_64-*
+*.lock

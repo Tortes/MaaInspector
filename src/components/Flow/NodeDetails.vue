@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, inject, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { FileJson, GitBranch, Info, MessageSquare, Play, Settings, X, Zap } from 'lucide-vue-next'
 import DeviceScreen from './DeviceScreen.vue'
 import BasicPropsTab from './NodeDetailsPanels/BasicPropsTab.vue'
@@ -10,24 +10,8 @@ import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
 import { useNodeForm, recognitionTypes, actionTypes, type UseNodeFormEmit } from '../../utils/nodeLogic'
-import type { useImageManager } from '../../composables/useImageManager'
-import type { FlowBusinessData, FlowNodeMeta, TemplateImage } from '../../utils/flowTypes'
-
-type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
-type TemplateTarget = { compositeKey: 'all_of' | 'any_of'; compositeIndex: number }
-type TemplateTargetPayload = { compositeKey?: 'all_of' | 'any_of'; compositeIndex?: number }
-
-interface DevicePickResult {
-  type?: string
-  validPaths?: string[]
-  images?: ImageItem[]
-  tempImages?: ImageItem[]
-  deletedImages?: ImageItem[]
-  imagePath?: string
-  imageBase64?: string
-  closeModal?: boolean
-  [key: string]: unknown
-}
+import { useDeviceScreenPicker, type PickerPayload } from '../../composables/useDeviceScreenPicker'
+import type { FlowBusinessData, FlowNodeMeta } from '../../utils/flowTypes'
 
 const props = defineProps<{
   visible: boolean
@@ -39,13 +23,6 @@ const props = defineProps<{
   currentFilename?: string
   pipelineVersion?: 'V1' | 'V2'
 }>()
-type PickerPayload = {
-  field: string
-  referenceField?: string | null
-  referenceLabel?: string | null
-  referenceRect?: number[] | null
-  onConfirm?: (val: DevicePickResult | number[]) => void
-}
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -62,7 +39,23 @@ const {
   focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
 } = formMethods
 
-const imageManager = inject<ReturnType<typeof useImageManager>>('imageManager')!
+const deviceScreenPicker = useDeviceScreenPicker({
+  nodeId: props.nodeId,
+  currentFilename: props.currentFilename,
+  formData: formData.value as Record<string, unknown>,
+  getValue,
+  setValue,
+  onUpdateData: (payload) => emit('update-data', payload as FlowBusinessData & { _action?: string } & Record<string, unknown>)
+})
+
+const {
+  showDeviceScreen,
+  deviceScreenConfig,
+  openDevicePicker,
+  openImageManager,
+  handleDevicePick,
+  handleImageDelete
+} = deviceScreenPicker
 
 // UI 状态
 const activeTab = ref('basic')
@@ -93,49 +86,6 @@ const closeAllDropdowns = () => {
   (Object.keys(dropdownStates) as Array<keyof typeof dropdownStates>).forEach(k => dropdownStates[k] = false)
 }
 watch(activeTab, closeAllDropdowns)
-
-// Device Screen 状态
-const showDeviceScreen = ref(false)
-type ImageItem = TemplateImage & { _source?: string }
-
-const deviceScreenConfig = reactive<{
-  targetField: string
-  referenceField: string | null
-  referenceRect: number[] | null
-  initialRect: number[] | null
-  referenceLabel: string
-  title: string
-  mode: DevicePickerMode
-  imageList: ImageItem[]
-  tempImageList: ImageItem[]
-  deletedImageList: ImageItem[]
-  filename: string
-  nodeId: string
-  onConfirm?: ((val: DevicePickResult | number[]) => void) | null
-  templateTarget?: TemplateTarget | null
-}>({
-  targetField: '',
-  referenceField: '',
-  referenceRect: null,
-  initialRect: null,
-  referenceLabel: '',
-  title: '区域选择',
-  mode: 'coordinate',
-  imageList: [],
-  tempImageList: [],
-  deletedImageList: [],
-  filename: '',
-  nodeId: '',
-  onConfirm: null,
-  templateTarget: null
-})
-
-const toImageItems = (val: unknown): ImageItem[] => {
-  if (!Array.isArray(val)) return []
-  return val
-    .map(item => (item && typeof item === 'object' ? item as ImageItem : null))
-    .filter((item): item is ImageItem => !!item && typeof item.path === 'string')
-}
 
 const currentRecognition = computed<string>(() =>
   typeof formData.value.recognition === 'string' ? formData.value.recognition : 'DirectHit'
@@ -172,188 +122,6 @@ const handleFocusUpdate = (payload: { key: string; value: string }) => {
 const jumpToSettings = (type: string) => {
   activeTab.value = type
   nextTick(closeAllDropdowns)
-}
-
-const parseRect = (val: unknown) => {
-  if (Array.isArray(val) && val.length === 4) return val as number[]
-  if (typeof val === 'string') {
-    try {
-      const arr = JSON.parse(val)
-      if (Array.isArray(arr) && arr.length === 4) return arr as number[]
-    } catch (e) {
-      const parts = val.split(',').map(Number)
-      if (parts.length === 4 && !parts.some(isNaN)) return parts as number[]
-    }
-  }
-  return null
-}
-
-const normalizePickerPayload = (payload: string | PickerPayload, refField?: string | null, refLabel?: string | null): PickerPayload => {
-  if (typeof payload === 'string') return { field: payload, referenceField: refField, referenceLabel: refLabel || null }
-  return payload
-}
-
-const openDevicePicker = (fieldParam: string | PickerPayload, referenceField: string | null = null, refLabel: string | null = null) => {
-  const payload = normalizePickerPayload(fieldParam, referenceField, refLabel)
-  const {
-    field,
-    referenceField: refField = null,
-    referenceLabel: refLabelFinal = null,
-    referenceRect: refRectOverride = null,
-    onConfirm
-  } = payload
-
-  // 模式：expected -> ocr；template -> image_manager；其它 -> coordinate
-  const finalMode: DevicePickerMode =
-    field === 'expected'
-      ? 'ocr'
-      : field === 'template'
-        ? 'image_manager'
-        : 'coordinate'
-
-  const currentRect = parseRect(getValue(field))
-  const roiRect = parseRect(getValue('roi'))
-
-  // 仅当显式提供 referenceField、偏移场景、或图片管理 / OCR 时展示参考框
-  let refRect = refRectOverride
-    ?? (refField ? parseRect(getValue(refField)) : (finalMode === 'image_manager' || finalMode === 'ocr' ? roiRect : null))
-
-  // 偏移字段若缺少参考，回退到 ROI（保持与旧逻辑一致，确保 target_offset/roi_offset 有参考）
-  if (field.includes('offset') && !refRect && roiRect) {
-    refRect = roiRect
-  }
-
-  deviceScreenConfig.initialRect = (() => {
-    if (field.includes('offset') && refRect && currentRect) {
-      return [
-        refRect[0] + currentRect[0],
-        refRect[1] + currentRect[1],
-        refRect[2] + currentRect[2],
-        refRect[3] + currentRect[3]
-      ]
-    }
-    if (currentRect) return currentRect
-    if (refRect && finalMode !== 'image_manager') return refRect
-    return null
-  })()
-
-  deviceScreenConfig.targetField = field
-  deviceScreenConfig.referenceField = refField
-  deviceScreenConfig.referenceRect = refRect
-  deviceScreenConfig.mode = finalMode
-  deviceScreenConfig.referenceLabel = refLabelFinal || refField || '参考区域'
-  deviceScreenConfig.title =
-    finalMode === 'ocr'
-      ? 'OCR 区域识别'
-      : finalMode === 'image_manager'
-        ? '模板图片管理'
-        : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
-  deviceScreenConfig.imageList = []
-  deviceScreenConfig.onConfirm = onConfirm || null
-  showDeviceScreen.value = true
-}
-
-const normalizeTemplatePaths = (val: unknown): string[] => {
-  if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
-  if (typeof val === 'string' && val.trim()) return [val.trim()]
-  return []
-}
-
-const getTargetTemplatePaths = (target?: TemplateTarget | null): string[] => {
-  if (!target) return normalizeTemplatePaths(getValue('template', null))
-  const list = (formData.value as Record<string, unknown>)[target.compositeKey]
-  if (!Array.isArray(list)) return []
-  const item = list[target.compositeIndex]
-  if (!item || typeof item !== 'object') return []
-  const templateVal = (item as Record<string, unknown>).template
-  return normalizeTemplatePaths(templateVal)
-}
-
-const filterImagesByPaths = (images: ImageItem[], paths: string[]) => {
-  if (!paths.length) return images
-  const pathSet = new Set(paths)
-  return images.filter(img => img.path && pathSet.has(img.path))
-}
-
-const normalizeTemplateTarget = (payload?: TemplateTargetPayload): TemplateTarget | null => {
-  if (!payload) return null
-  if (!payload.compositeKey) return null
-  if (payload.compositeIndex === undefined || payload.compositeIndex === null) return null
-  return { compositeKey: payload.compositeKey, compositeIndex: payload.compositeIndex }
-}
-
-const openImageManager = (payload?: TemplateTargetPayload) => {
-  const templateTarget = normalizeTemplateTarget(payload)
-  const targetPaths = getTargetTemplatePaths(templateTarget)
-  const nodeId = props.nodeId || ''
-  
-  const images = toImageItems(imageManager.getNodeSavedImages(nodeId))
-  const tempImages = toImageItems(imageManager.getNodeTempImages(nodeId))
-  const deletedImages = toImageItems(imageManager.getNodeDeletedImages(nodeId))
-
-  deviceScreenConfig.mode = 'image_manager'
-  deviceScreenConfig.title = '模板图片管理'
-  deviceScreenConfig.targetField = 'template'
-  deviceScreenConfig.referenceRect = parseRect(getValue('roi'))
-  deviceScreenConfig.initialRect = deviceScreenConfig.referenceRect
-  deviceScreenConfig.referenceLabel = 'roi'
-  deviceScreenConfig.imageList = filterImagesByPaths(images, targetPaths)
-  deviceScreenConfig.tempImageList = filterImagesByPaths(tempImages, targetPaths)
-  deviceScreenConfig.deletedImageList = filterImagesByPaths(deletedImages, targetPaths)
-  deviceScreenConfig.filename = props.currentFilename || ''
-  deviceScreenConfig.nodeId = nodeId
-  deviceScreenConfig.templateTarget = templateTarget
-  showDeviceScreen.value = true
-}
-
-const handleDevicePick = (result: unknown) => {
-  if (deviceScreenConfig.onConfirm) {
-    deviceScreenConfig.onConfirm(result as DevicePickResult | number[])
-    showDeviceScreen.value = false
-    return
-  }
-  if (deviceScreenConfig.mode === 'image_manager' && typeof result === 'object' && result !== null && 'type' in result) {
-    const imgResult = result as DevicePickResult
-    if (imgResult.type === 'save_image_changes') {
-      emit('update-data', {
-        _action: 'save_image_changes',
-        validPaths: imgResult.validPaths,
-        images: imgResult.images,
-        tempImages: imgResult.tempImages,
-        deletedImages: imgResult.deletedImages,
-        templateTarget: deviceScreenConfig.templateTarget
-      })
-    } else if (imgResult.type === 'add_temp_image') {
-      emit('update-data', {
-        _action: 'add_temp_image',
-        imagePath: imgResult.imagePath,
-        imageBase64: imgResult.imageBase64,
-        templateTarget: deviceScreenConfig.templateTarget
-      })
-    } else if (imgResult.type === 'restore_image') {
-      emit('update-data', {
-        _action: 'restore_image',
-        imagePath: imgResult.imagePath,
-        templateTarget: deviceScreenConfig.templateTarget
-      })
-    }
-    if (imgResult.closeModal !== false) {
-      showDeviceScreen.value = false
-    }
-  } else if (Array.isArray(result)) {
-    const coords = result as number[]
-    const field = deviceScreenConfig.targetField
-    const refRect = deviceScreenConfig.referenceRect
-    if (deviceScreenConfig.mode !== 'ocr' && field.includes('offset') && refRect) {
-      setValue(field, [coords[0] - refRect[0], coords[1] - refRect[1], coords[2] - refRect[2], coords[3] - refRect[3]])
-    } else {
-      setValue(field, coords)
-    }
-  }
-}
-
-const handleImageDelete = (imageName: string) => {
-  emit('update-data', { _action: 'delete_image', name: imageName })
 }
 
 const handleAddLink = ({ key, value }: { key: string; value: { value?: string } }) => {

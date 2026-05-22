@@ -25,11 +25,6 @@ export interface UsedImageInfo {
   used_by: string[]
 }
 
-export interface ImageCacheEntry {
-  path: string
-  base64: string
-}
-
 export interface FlowBusinessData {
   id?: string
   recognition?: string
@@ -78,47 +73,15 @@ export interface ImageDataPayload {
   tempImages: { path: string; base64: string; nodeId: string }[]
 }
 
-export interface DeviceRect {
+interface DeviceRect {
   x: number
   y: number
   width: number
   height: number
 }
 
-export interface DeviceInfo {
-  name: string
-  adbPath?: string
-  address?: string
-  index?: number
-}
-
 export interface PickerResult {
   mode: 'device' | 'rect' | 'both'
   value?: string | DeviceRect
-}
-
-export interface DevicePickResult {
-  device?: DeviceInfo
-  rect?: DeviceRect
-  method?: {
-    screencap?: number
-    mouse?: number
-    keyboard?: number
-  }
-}
-
-export interface DetailChild {
-  name?: string
-  box?: number[]
-  focused?: boolean
-  reco?: unknown
-}
-
-export interface RecoDetail {
-  id?: number
-  name?: string
-  children?: DetailChild[]
-  status?: string
-  timestamp?: number
 }
 

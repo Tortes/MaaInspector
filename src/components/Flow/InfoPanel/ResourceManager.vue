@@ -1,28 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, watch, h } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Database, HardDrive, Settings, RefreshCw, FilePlus, Loader2,
-  CheckCircle2, XCircle, Circle
+  Database, HardDrive, Settings, RefreshCw, FilePlus,
 } from 'lucide-vue-next'
 import { resourceApi } from '../../../services/api'
 import { makeFileId, parseFileId, getFileObjById } from '../../../utils/fileId'
 import Dropdown from '../Common/Dropdown.vue'
+import StatusIndicator from '../Common/StatusIndicator.vue'
 import type { DropdownOption } from '../Common/Dropdown.vue'
 import type { ResourceProfile, ResourceFileInfo } from '../../../services/api'
-
-// 状态指示器组件
-const StatusIndicator = {
-  props: { status: String, size: { type: Number, default: 16 } },
-  setup(props: { status?: string; size: number }) {
-    return () => {
-      if (props.status === 'connected') return h(CheckCircle2, { size: props.size, class: 'text-emerald-500 fill-emerald-50' })
-      if (props.status === 'connecting') return h(Loader2, { size: props.size, class: 'text-blue-500 animate-spin' })
-      if (props.status === 'failed') return h(XCircle, { size: props.size, class: 'text-red-500' })
-      return h(Circle, { size: props.size, class: 'text-slate-300' })
-    }
-  }
-}
 
 type EditableProfile = ResourceProfile & { paths: string[] }
 
@@ -107,9 +94,7 @@ const handleResourceLoad = async () => {
     internalStatus.value = 'connecting'
     internalMessage.value = '加载中...'
 
-    const res = await resourceApi.load(currentProfile.value, {
-      context: { feature: 'resource', action: 'load', component: 'ResourceManager' }
-    })
+    const res = await resourceApi.load(currentProfile.value)
 
     const ok = (res as any)?.r ?? (res as any)?.success ?? true
     if (!ok) {

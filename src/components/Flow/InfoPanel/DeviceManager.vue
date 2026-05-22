@@ -1,26 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, h } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import {
-  Smartphone, Power, Search, Loader2, CheckCircle2, XCircle, Circle
+  Smartphone, Power, Search, Loader2
 } from 'lucide-vue-next'
 import { deviceApi, systemApi } from '../../../services/api'
 import { ElMessage } from 'element-plus'
 import Dropdown from '../Common/Dropdown.vue'
+import StatusIndicator from '../Common/StatusIndicator.vue'
 import type { DropdownOption } from '../Common/Dropdown.vue'
-import type { DeviceInfo } from '../../../services/api'
-
-// 状态指示器组件
-const StatusIndicator = {
-  props: { status: String, size: { type: Number, default: 16 } },
-  setup(props: { status?: string; size: number }) {
-    return () => {
-      if (props.status === 'connected') return h(CheckCircle2, { size: props.size, class: 'text-emerald-500 fill-emerald-50' })
-      if (props.status === 'connecting' || props.status === 'disconnecting') return h(Loader2, { size: props.size, class: 'text-blue-500 animate-spin' })
-      if (props.status === 'failed') return h(XCircle, { size: props.size, class: 'text-red-500' })
-      return h(Circle, { size: props.size, class: 'text-slate-300' })
-    }
-  }
-}
+import type { ApiDeviceInfo } from '../../../services/api'
 
 defineProps<{
   isConnected: boolean
@@ -34,7 +22,7 @@ const emit = defineEmits<{
 const deviceType = ref<'win32' | 'adb'>('adb')
 
 // 设备搜索相关
-const searchedDevices = ref<DeviceInfo[]>([])
+const searchedDevices = ref<ApiDeviceInfo[]>([])
 const selectedDeviceIndex = ref<number>(-1)
 const isSearchingDevices = ref(false)
 
@@ -75,7 +63,7 @@ const deviceScreenshot = ref<string>('')
 let screenshotTimer: ReturnType<typeof setInterval> | null = null
 
 // 当前设备
-const currentDevice = computed<DeviceInfo | null>(() => {
+const currentDevice = computed<ApiDeviceInfo | null>(() => {
   if (selectedDeviceIndex.value >= 0 && selectedDeviceIndex.value < searchedDevices.value.length) {
     return searchedDevices.value[selectedDeviceIndex.value]
   }
@@ -118,9 +106,7 @@ const deviceButtonLabel = computed(() => status.value === 'connected' ? '重新�
 const fetchDeviceScreenshot = async () => {
   if (status.value !== 'connected') return
   try {
-    const res = await deviceApi.getScreenshot({
-      context: { feature: 'device', action: 'screenshot', component: 'DeviceManager' }
-    })
+    const res = await deviceApi.getScreenshot()
     if (res.success && res.image) {
       deviceScreenshot.value = res.image
     }
@@ -151,10 +137,8 @@ const handleSearchDevices = async () => {
 
   try {
     const searchType = deviceType.value === 'win32' ? 'win32control' : 'adb'
-    const res = await systemApi.searchDevices(searchType, {
-      context: { feature: 'system', action: 'search_devices', component: 'DeviceManager' }
-    })
-    const devices = (res.data?.devices ?? res.devices ?? []) as DeviceInfo[]
+    const res = await systemApi.searchDevices(searchType)
+    const devices = (res.data?.devices ?? res.devices ?? []) as ApiDeviceInfo[]
 
     searchedDevices.value = devices
     if (devices.length > 0) {
@@ -195,16 +179,12 @@ const handleDeviceConnect = async () => {
         screencap_method: win32ScreencapMethod.value,
         mouse_method: win32MouseMethod.value,
         keyboard_method: win32KeyboardMethod.value,
-      }, {
-        context: { feature: 'device', action: 'connect_win32', component: 'DeviceManager' }
       })
     } else {
       res = await deviceApi.connectAdb({
         adb_path: device.adb_path as string,
         address: device.address as string,
         config: device.config || {},
-      }, {
-        context: { feature: 'device', action: 'connect_adb', component: 'DeviceManager' }
       })
     }
 
@@ -238,7 +218,7 @@ const handleDeviceConnect = async () => {
 }
 
 // 暴露方法供父组件调用
-const loadLastDevice = (lastDevice: DeviceInfo) => {
+const loadLastDevice = (lastDevice: ApiDeviceInfo) => {
   const deviceTypeValue = lastDevice.type === 'win32' ? 'win32' : 'adb'
   deviceType.value = deviceTypeValue
   searchedDevices.value = [lastDevice]

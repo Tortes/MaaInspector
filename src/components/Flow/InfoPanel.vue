@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import {computed, ref, onMounted, onUnmounted, defineComponent, h, watch} from 'vue'
+import {computed, ref, onMounted, onUnmounted} from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Bot, Settings, RefreshCw, CheckCircle2, XCircle, Loader2,
-  Minimize2, Maximize2, Circle,
+  Bot, Settings, RefreshCw, Loader2,
+  Minimize2, Maximize2,
   Save, Bell, Settings as SettingsIcon, Bug
 } from 'lucide-vue-next'
-import {resourceApi, systemApi} from '../../services/api.ts'
-import { perfLog, perfMark, perfNow } from '../../utils/perfTrace'
-import { isPipelineV2Nodes, toPipelineV1Nodes } from '../../utils/pipelineTransform'
-import { makeFileId, parseFileId } from '../../utils/fileId'
-import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
+import {resourceApi} from '../../services/api.ts'
+import type { ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, TemplateImage, SpacingKey } from '../../utils/flowTypes'
 import type { EdgeType } from '../../utils/flowOptions'
 import type { FlowTab } from '../../stores/workspace'
+import { usePreloadCache } from '../../composables/usePreloadCache'
+import { useSystemState } from '../../composables/useSystemState'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
 import AppSettingsModal from './Modals/AppSettingsModal.vue'
@@ -22,6 +21,7 @@ import DeviceManager from './InfoPanel/DeviceManager.vue'
 import ResourceManager from './InfoPanel/ResourceManager.vue'
 import AgentManager from './InfoPanel/AgentManager.vue'
 import Dropdown from './Common/Dropdown.vue'
+import StatusIndicator from './Common/StatusIndicator.vue'
 
 // --- Props & Emits ---
 const props = defineProps<{
@@ -61,97 +61,22 @@ const emit = defineEmits<{
   'open-debug-panel': []
 }>()
 
-// --- 预加载数据缓存 ---
-const preloadCache = new Map<string, { nodes: Record<string, FlowBusinessData>; images: Record<string, TemplateImage[]>; fileVersion?: 'V1' | 'V2' }>()
+// --- Composables ---
+const systemState = useSystemState({
+  initialSelectedResourceFile: props.selectedResourceFile || '',
+  initialPipelineVersion: props.pipelineVersion || 'V1',
+  props,
+  emit
+})
 
-const preloadAllTabFiles = async () => {
-  console.log('[预加载] preloadAllTabFiles 被调用')
-  console.log('[预加载] props.tabs:', props.tabs)
-  console.log('[预加载] props.tabs.length:', props.tabs?.length)
-  
-  if (!props.tabs || props.tabs.length === 0) {
-    console.log('[预加载] 跳过: 没有标签页')
-    return
-  }
-  
-  const rm = resourceManagerRef.value
-  if (!rm) {
-    console.log('[预加载] 跳过: ResourceManager 未就绪')
-    return
-  }
-  
-  const filesToPreload = new Set<string>()
-  // selectedResourceFile 已经是 source|filename 格式
-  const currentFileKey = selectedResourceFile.value
-  console.log('[预加载] 当前文件 key:', currentFileKey)
-  
-  for (const tab of props.tabs) {
-    const snapshot = tab.snapshot
-    console.log('[预加载] 检查标签页:', tab.id, 'filename:', snapshot.flowState?.currentFilename, 'source:', snapshot.flowState?.currentSource)
-    if (snapshot.flowState?.currentFilename && snapshot.flowState?.currentSource) {
-      const fileKey = `${snapshot.flowState.currentSource}|${snapshot.flowState.currentFilename}`
-      console.log('[预加载] 文件 key:', fileKey, '是否缓存:', preloadCache.has(fileKey), '是否当前文件:', fileKey === currentFileKey)
-      if (fileKey !== currentFileKey && !preloadCache.has(fileKey)) {
-        filesToPreload.add(fileKey)
-        console.log('[预加载] 添加到预加载队列:', fileKey)
-      }
-    }
-  }
-  
-  console.log('[预加载] 待预加载文件数量:', filesToPreload.size)
-  if (filesToPreload.size === 0) {
-    console.log('[预加载] 跳过: 没有需要预加载的文件')
-    return
-  }
-  
-  const preloadPromises = Array.from(filesToPreload).map(async (fileKey) => {
-    const [source, filename] = fileKey.split('|')
-    if (!source || !filename) return
-    
-    console.log('[预加载] 开始预加载:', filename, 'source:', source)
-    try {
-      const [nodesRes, imagesRes] = await Promise.all([
-        resourceApi.getFileNodes<Record<string, FlowBusinessData>>(source, filename),
-        resourceApi.getTemplateImages(source, filename)
-      ])
-      
-      console.log('[预加载] 预加载成功:', filename, '节点数:', Object.keys(nodesRes.nodes || {}).length)
-      const nodes = nodesRes.nodes || {}
-      const fileVersion = isPipelineV2Nodes(nodes) ? 'V2' : 'V1'
-      const normalizedNodes = fileVersion === 'V2' ? toPipelineV1Nodes(nodes) : nodes
-      
-      preloadCache.set(fileKey, {
-        nodes: normalizedNodes,
-        images: imagesRes.results as Record<string, TemplateImage[]> || {},
-        fileVersion
-      })
-      console.log('[预加载] 缓存已设置:', fileKey, '缓存大小:', preloadCache.size)
-    } catch (e) {
-      console.warn(`[预加载] 预加载文件失败: ${filename}`, e)
-    }
-  })
-  
-  await Promise.allSettled(preloadPromises)
-  console.log('[预加载] 所有预加载完成, 缓存大小:', preloadCache.size)
-}
-
-// --- 内部组件 ---
-const StatusIndicator = defineComponent({
-  props: {status: String, size: {type: Number, default: 16}},
-  setup(props) {
-    return () => {
-      if (props.status === 'connected') return h(CheckCircle2, {
-        size: props.size,
-        class: 'text-emerald-500 fill-emerald-50'
-      })
-      if (props.status === 'connecting' || props.status === 'disconnecting') return h(Loader2, {
-        size: props.size,
-        class: 'text-blue-500 animate-spin'
-      })
-      if (props.status === 'failed') return h(XCircle, {size: props.size, class: 'text-red-500'})
-      return h(Circle, {size: props.size, class: 'text-slate-300'})
-    }
-  }
+const {
+  triggerLoadFromCache,
+  handleFileSelected: handleFileSelectedFromCache
+} = usePreloadCache({
+  tabs: () => props.tabs,
+  selectedResourceFile: () => systemState.selectedResourceFile.value,
+  resourceManagerRef: () => resourceManagerRef.value,
+  emit
 })
 
 // --- 视图状态 ---
@@ -162,29 +87,6 @@ const showCreateFileModal = ref(false)
 const showAppSettings = ref(false)
 const showAnnouncement = ref(false)
 const hasUnreadAnnouncement = ref(true)
-
-// --- 全局状态 ---
-const pipelineVersion = ref<'V1' | 'V2'>(props.pipelineVersion || 'V1')
-const systemStatus = ref<'connected' | 'loading' | 'error' | 'disconnected'>('disconnected')
-const isSaving = ref(false)
-
-// --- 资源配置状态 (InfoPanel 拥有) ---
-type EditableProfile = ResourceProfile & { paths: string[] }
-const resourceProfiles = ref<EditableProfile[]>([])
-const selectedProfileIndex = ref(0)
-const selectedResourceFile = ref(props.selectedResourceFile || '')
-
-watch(() => props.selectedResourceFile, (v) => { if (v) selectedResourceFile.value = v }, { immediate: true })
-
-const currentProfile = computed<EditableProfile>(() =>
-  resourceProfiles.value[selectedProfileIndex.value] || { name: 'None', paths: [] } as EditableProfile
-)
-
-const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
-  (profiles || []).map(p => ({
-    ...p,
-    paths: Array.isArray((p as any).paths) ? [...(p as any).paths] : []
-  }))
 
 // --- 子组件 refs ---
 const deviceManagerRef = ref<InstanceType<typeof DeviceManager> | null>(null)
@@ -222,149 +124,32 @@ const syncChildState = () => {
   }
 }
 
-// --- 保存节点 ---
+// --- 包装 composable 方法 ---
 const handleSaveNodes = async () => {
-  if (!selectedResourceFile.value || isSaving.value) return
-  isSaving.value = true
-  try {
-    const rm = resourceManagerRef.value
-    if (!rm) throw new Error('ResourceManager 未就绪')
-    const fileObj = rm.findFileById(selectedResourceFile.value)
-    if (!fileObj || !fileObj.value) throw new Error('未找到当前文件')
-    emit('save-nodes', {source: fileObj.source, filename: fileObj.value})
-  } catch (e: unknown) {
-    console.error('保存失败', e)
-    ElMessage.error('保存失败: ' + (e instanceof Error ? e.message : '未知错误'))
-    throw e
-  } finally {
-    isSaving.value = false
-  }
+  await systemState.handleSaveNodes(resourceManagerRef.value)
 }
 
 const executeFileSwitch = async (filename: string, source?: string) => {
-  const start = perfNow()
-  perfMark('InfoPanel.executeFileSwitch.start', { filename, source })
-  const rm = resourceManagerRef.value
-  if (!rm) return
-
-  const normSource = source ? source.replace(/\\/g, '/').toLowerCase() : ''
-  const target = (rm.availableFiles as ResourceFileInfo[]).find((f: ResourceFileInfo) => {
-    const fSource = f.source ? f.source.replace(/\\/g, '/').toLowerCase() : ''
-    if (source) {
-      return f.value === filename && fSource === normSource
-    }
-    return f.value === filename
-  })
-
-  if (target) {
-    selectedResourceFile.value = makeFileId(target.source, target.value)
-    await rm.executeFileSwitch(target.value ?? '', target.source ?? undefined)
-    perfLog('InfoPanel.executeFileSwitch.total', start, { filename, source })
-  } else {
-    ElMessage.error(`无法切换: 未找到文件 ${filename}`)
-  }
+  await systemState.executeFileSwitch(filename, source, resourceManagerRef.value)
 }
 
-const triggerLoadFromCache = (config: { filename: string; source: string; tabId: string }) => {
-  const fileKey = `${config.source}|${config.filename}`
-  const cached = preloadCache.get(fileKey)
-  
-  if (!cached) {
-    console.log('[缓存加载] 未命中缓存:', fileKey)
-    return
-  }
-  
-  console.log('[缓存加载] 从缓存加载到标签页:', config.tabId, '文件:', config.filename, '节点数:', Object.keys(cached.nodes).length)
-  emit('load-nodes', { filename: config.filename, source: config.source, nodes: cached.nodes, fileVersion: cached.fileVersion })
-  emit('load-images', cached.images)
-  preloadCache.delete(fileKey)
+const triggerLoadFromCacheWrapper = (config: { filename: string; source: string; tabId: string }) => {
+  triggerLoadFromCache(config)
 }
 
-defineExpose({executeFileSwitch, handleSaveNodes, triggerLoadFromCache})
+const handleFileSelected = (payload: { filename: string; source: string }) => {
+  handleFileSelectedFromCache(payload)
+}
+
+defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: triggerLoadFromCacheWrapper })
 
 // --- 子组件事件处理 ---
 const handleDeviceConnected = (status: boolean) => {
   emit('device-connected', status)
 }
 
-const handleFileSelected = (payload: { filename: string; source: string }) => {
-  console.log('[文件选择] handleFileSelected 被调用:', payload)
-  
-  const rm = resourceManagerRef.value
-  if (!rm) {
-    console.log('[文件选择] 跳过: ResourceManager 未就绪')
-    return
-  }
-  const fileId = makeFileId(payload.source, payload.filename)
-  const fileObj = rm.findFileById(fileId)
-  if (!fileObj || !fileObj.value) {
-    console.log('[文件选择] 跳过: 找不到文件对象')
-    return
-  }
-
-  const src = fileObj.source
-  const fname = fileObj.value
-  const fileKey = `${src}|${fname}`
-  console.log('[文件选择] 文件 key:', fileKey, '缓存大小:', preloadCache.size)
-
-  // 检查预加载缓存
-  const cached = preloadCache.get(fileKey)
-  if (cached) {
-    console.log('[文件选择] 使用缓存数据:', fileKey, '节点数:', Object.keys(cached.nodes).length)
-    emit('load-nodes', { filename: fname, source: src, nodes: cached.nodes, fileVersion: cached.fileVersion })
-    emit('load-images', cached.images)
-    preloadCache.delete(fileKey)
-    rm.setMessage(`已加载: ${Object.keys(cached.nodes).length} 节点 (从缓存)`)
-    return
-  }
-
-  console.log('[文件选择] 未命中缓存, 开始正常加载')
-  const totalStart = perfNow()
-  rm.setMessage('加载节点中...')
-  resourceApi.getFileNodes<Record<string, FlowBusinessData>>(src, fname, {
-    context: { feature: 'resource', action: 'get_nodes', component: 'InfoPanel' }
-  }).then(res => {
-    const getNodesStart = perfNow()
-    perfLog('InfoPanel.getFileNodes', getNodesStart, { filename: fname, source: src })
-    const nodes = res.nodes || {}
-    const normalizeStart = perfNow()
-    const fileVersion = isPipelineV2Nodes(nodes) ? 'V2' : 'V1'
-    const normalizedNodes = fileVersion === 'V2'
-      ? toPipelineV1Nodes(nodes)
-      : nodes
-    perfLog('InfoPanel.normalizeNodes', normalizeStart, { nodeCount: Object.keys(nodes).length, fileVersion })
-
-    const emitStart = perfNow()
-    emit('load-nodes', {filename: fname, source: src, nodes: normalizedNodes, fileVersion})
-    perfLog('InfoPanel.emitLoadNodes', emitStart, { nodeCount: Object.keys(normalizedNodes).length })
-    rm.setMessage(`已加载: ${Object.keys(nodes).length} 节点`)
-
-    resourceApi.getTemplateImages(src, fname, {
-      context: { feature: 'resource', action: 'get_templates', component: 'InfoPanel' }
-    }).then(imgRes => {
-      const templateStart = perfNow()
-      perfLog('InfoPanel.getTemplateImages', templateStart, { filename: fname })
-      if (imgRes.results) {
-        const basePath = (imgRes as Record<string, unknown>).base_image_path as string | undefined
-        emit('load-images', imgRes.results as Record<string, TemplateImage[]>, basePath)
-      }
-    }).catch(imgError => {
-      console.warn("图片加载失败", imgError)
-    })
-
-    perfLog('InfoPanel.fetchAndEmitNodes.total', totalStart, { filename: fname })
-    
-    // 当前文件加载完成后，预加载其他标签页的文件
-    console.log('[文件选择] 触发预加载其他标签页文件')
-    preloadAllTabFiles()
-  }).catch(e => {
-    console.error("加载节点失败", e)
-    rm.setMessage('节点加载失败')
-  })
-}
-
 const handleConfigChanged = () => {
-  void saveAllConfig()
+  void systemState.saveAllConfig(deviceManagerRef.value, agentManagerRef.value)
 }
 
 const handleCreateFile = async ({path, filename}: { path: string; filename: string }) => {
@@ -372,9 +157,7 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
   if (!rm) return
   try {
     rm.setMessage('创建文件中...')
-    await resourceApi.createFile(path, filename, {
-      context: { feature: 'resource', action: 'create_file', component: 'InfoPanel' }
-    })
+    await resourceApi.createFile(path, filename)
     showCreateFileModal.value = false
     await rm.handleResourceLoad()
     const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
@@ -396,138 +179,32 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
 }
 
 // --- 初始化 ---
-let isInit = true
-
-const fetchSystemState = async () => {
-  systemStatus.value = 'loading'
-  isInit = true
-  try {
-    const data = await systemApi.getInitialState({
-      context: { feature: 'system', action: 'init', component: 'InfoPanel' }
-    })
-
-    if (data.resource_profiles) {
-      resourceProfiles.value = normalizeProfiles(data.resource_profiles as ResourceProfile[])
-      const state = data.current_state || {}
-      if (state.resource_profile_index !== undefined && resourceProfiles.value[state.resource_profile_index]) {
-        selectedProfileIndex.value = state.resource_profile_index
-      }
-      if (state.resource_file && state.resource_source) {
-        selectedResourceFile.value = makeFileId(state.resource_source, state.resource_file)
-      } else if (state.resource_file) {
-        selectedResourceFile.value = state.resource_file
-      }
-    }
-
-    const am = agentManagerRef.value
-    if (am) {
-      const state = data.current_state || {}
-      if (state.agent_socket_id) am.currentAgentSocket = state.agent_socket_id
-      else if (data.agent_socket_id) am.currentAgentSocket = data.agent_socket_id
-    }
-
-    if (data.current_state) {
-      const state = data.current_state
-      if (state.edge_type || state.spacing || state.layout_algorithm || state.layout_direction) {
-        emit('update-canvas-config', {
-          edgeType: (state.edge_type as EdgeType) || 'smoothstep',
-          spacing: (state.spacing as SpacingKey) || 'normal',
-          layoutAlgorithm: (state.layout_algorithm as LayoutAlgorithm) || 'layered',
-          layoutDirection: (state.layout_direction as LayoutDirection) || 'TB'
-        })
-      }
-      if (state.pipeline_version === 'V2' || state.pipeline_version === 'V1') {
-        pipelineVersion.value = state.pipeline_version
-      }
-      if (typeof state.restore_workspace_on_start === 'boolean') {
-        emit('update-restore-workspace', state.restore_workspace_on_start)
-      }
-    }
-
-    const dm = deviceManagerRef.value
-    if (dm && data.last_connected_device) {
-      dm.loadLastDevice(data.last_connected_device as DeviceInfo)
-    }
-
-    systemStatus.value = 'connected'
-  } catch (e: unknown) {
-    console.error("Init failed", e)
-    systemStatus.value = 'error'
-  } finally {
-    setTimeout(() => { isInit = false }, 500)
-  }
+const handleFetchSystemState = async () => {
+  await systemState.fetchSystemState(deviceManagerRef.value, agentManagerRef.value)
 }
 
 onMounted(() => {
-  fetchSystemState()
+  handleFetchSystemState()
   setTimeout(() => {
     syncChildState()
     syncTimer = setInterval(syncChildState, 200)
   }, 100)
+
+  systemState.setupAutoSave(deviceManagerRef.value, agentManagerRef.value)
 })
 
 onUnmounted(() => {
   if (syncTimer) { clearInterval(syncTimer); syncTimer = null }
 })
 
-// --- 配置保存 ---
-const saveAllConfig = async () => {
-  if (isInit) return
-  if (systemStatus.value !== 'connected') return
-  try {
-    const am = agentManagerRef.value
-    const dm = deviceManagerRef.value
-    const { source: currentSource, filename: currentFilename } = parseFileId(selectedResourceFile.value)
-
-    // 获取当前连接的设备信息
-    const currentDevices: DeviceInfo[] = []
-    let deviceIndex = -1
-    if (dm && dm.currentDevice) {
-      currentDevices.push(dm.currentDevice)
-      deviceIndex = 0
-    }
-
-    const payload = {
-      devices: currentDevices,
-      resource_profiles: resourceProfiles.value,
-      agent_socket_id: am?.currentAgentSocket || '',
-      current_state: {
-        device_index: deviceIndex,
-        resource_profile_index: selectedProfileIndex.value,
-        resource_file: currentFilename,
-        resource_source: currentSource,
-        agent_socket_id: am?.currentAgentSocket || '',
-        edge_type: props.edgeType,
-        spacing: props.spacing,
-        layout_algorithm: props.layoutAlgorithm,
-        layout_direction: props.layoutDirection,
-        pipeline_version: pipelineVersion.value,
-        restore_workspace_on_start: props.restoreWorkspaceOnStart ?? true
-      }
-    }
-    await systemApi.saveDeviceConfig(payload, {
-      context: { feature: 'system', action: 'save_config', component: 'InfoPanel' }
-    })
-  } catch (e) {
-    console.error("Auto save failed", e)
-  }
-}
-
-watch([selectedProfileIndex, selectedResourceFile, pipelineVersion], () => saveAllConfig(), {deep: false})
-watch(() => [props.edgeType, props.spacing, props.layoutAlgorithm, props.layoutDirection, props.restoreWorkspaceOnStart], () => saveAllConfig(), {deep: false})
-
-watch(() => agentManagerRef.value?.currentAgentSocket, () => saveAllConfig())
-
-watch(pipelineVersion, (val) => {
-  emit('update-pipeline-version', val)
-}, { immediate: true })
-
 const saveResourceSettings = (data: { profiles: ResourceProfile[]; index?: number }) => {
-  resourceProfiles.value = normalizeProfiles(data.profiles)
-  if (selectedProfileIndex.value >= resourceProfiles.value.length) selectedProfileIndex.value = 0
-  if (data.index !== undefined) selectedProfileIndex.value = data.index
+  systemState.resourceProfiles.value = systemState.normalizeProfiles(data.profiles)
+  if (systemState.selectedProfileIndex.value >= systemState.resourceProfiles.value.length) {
+    systemState.selectedProfileIndex.value = 0
+  }
+  if (data.index !== undefined) systemState.selectedProfileIndex.value = data.index
   showResourceSettings.value = false
-  saveAllConfig()
+  void systemState.saveAllConfig(deviceManagerRef.value, agentManagerRef.value)
 }
 
 const handleAppSettingsSave = (payload: {
@@ -539,7 +216,7 @@ const handleAppSettingsSave = (payload: {
   restoreWorkspaceOnStart: boolean
   lowMemoryMode: boolean
 }) => {
-  pipelineVersion.value = payload.pipelineVersion
+  systemState.pipelineVersion.value = payload.pipelineVersion
   emit('update-canvas-config', {
     edgeType: payload.edgeType,
     spacing: payload.spacing,
@@ -549,7 +226,7 @@ const handleAppSettingsSave = (payload: {
   emit('update-restore-workspace', payload.restoreWorkspaceOnStart)
   emit('update-low-memory', payload.lowMemoryMode)
   showAppSettings.value = false
-  saveAllConfig()
+  void systemState.saveAllConfig(deviceManagerRef.value, agentManagerRef.value)
 }
 
 const handleAnnouncementClose = () => {
@@ -595,19 +272,19 @@ const handleAnnouncementClose = () => {
             />
             <div class="min-w-[120px] max-w-[160px]">
               <Dropdown
-                :model-value="selectedResourceFile"
+                :model-value="systemState.selectedResourceFile.value"
                 :options="rmFileOptions"
                 :disabled="rmStatus !== 'connected' || rmAvailableFilesLen === 0"
                 placeholder="未加载资源"
                 size="xs"
                 @update:model-value="(v: PropertyKey) => {
                   const fileId = String(v)
-                  if (fileId === selectedResourceFile) return
+                  if (fileId === systemState.selectedResourceFile.value) return
                   const rm = resourceManagerRef
                   if (!rm) return
                   const fileObj = rm.findFileById(fileId)
                   if (!fileObj || !fileObj.value) return
-                  selectedResourceFile = fileId
+                  systemState.selectedResourceFile.value = fileId
                   emit('update:selected-resource-file', fileId)
                   void executeFileSwitch(fileObj.value, fileObj.source)
                 }"
@@ -631,15 +308,15 @@ const handleAnnouncementClose = () => {
         </div>
         <button
           v-if="props.isDirty"
-          :disabled="isSaving"
+          :disabled="systemState.isSaving.value"
           class="p-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white transition-colors"
           title="保存更改"
           @click="handleSaveNodes"
         >
           <component
-            :is="isSaving ? Loader2 : Save"
+            :is="systemState.isSaving.value ? Loader2 : Save"
             :size="12"
-            :class="{'animate-spin': isSaving}"
+            :class="{'animate-spin': systemState.isSaving.value}"
           />
         </button>
         <button
@@ -684,23 +361,23 @@ const handleAnnouncementClose = () => {
             <span class="font-bold text-slate-700 text-sm">系统控制台</span>
             <div
               class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors ml-1"
-              :class="{'bg-emerald-50 border-emerald-100 text-emerald-600': systemStatus === 'connected', 'bg-red-50 border-red-100 text-red-500': systemStatus === 'error', 'bg-blue-50 border-blue-100 text-blue-500': systemStatus === 'loading', 'bg-slate-100 border-slate-200 text-slate-400': systemStatus === 'disconnected'}"
+              :class="{'bg-emerald-50 border-emerald-100 text-emerald-600': systemState.systemStatus.value === 'connected', 'bg-red-50 border-red-100 text-red-500': systemState.systemStatus.value === 'error', 'bg-blue-50 border-blue-100 text-blue-500': systemState.systemStatus.value === 'loading', 'bg-slate-100 border-slate-200 text-slate-400': systemState.systemStatus.value === 'disconnected'}"
             >
               <div
                 class="w-1.5 h-1.5 rounded-full"
-                :class="{'bg-emerald-500': systemStatus === 'connected', 'bg-red-500': systemStatus === 'error', 'bg-blue-500': systemStatus === 'loading', 'bg-slate-400': systemStatus === 'disconnected'}"
+                :class="{'bg-emerald-500': systemState.systemStatus.value === 'connected', 'bg-red-500': systemState.systemStatus.value === 'error', 'bg-blue-500': systemState.systemStatus.value === 'loading', 'bg-slate-400': systemState.systemStatus.value === 'disconnected'}"
               />
               <span class="font-bold">{{
-                systemStatus === 'connected' ? 'ON' : (systemStatus === 'error' ? 'ERR' : (systemStatus === 'loading' ? '...' : 'OFF'))
+                systemState.systemStatus.value === 'connected' ? 'ON' : (systemState.systemStatus.value === 'error' ? 'ERR' : (systemState.systemStatus.value === 'loading' ? '...' : 'OFF'))
               }}</span>
             </div>
             <button
               class="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-500 transition-colors"
-              @click="fetchSystemState"
+              @click="handleFetchSystemState"
             >
               <RefreshCw
                 :size="12"
-                :class="{'animate-spin': systemStatus === 'loading'}"
+                :class="{'animate-spin': systemState.systemStatus.value === 'loading'}"
               />
             </button>
           </div>
@@ -741,20 +418,20 @@ const handleAnnouncementClose = () => {
         <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
           <DeviceManager
             ref="deviceManagerRef"
-            :is-connected="systemStatus === 'connected'"
+            :is-connected="systemState.systemStatus.value === 'connected'"
             @device-connected="handleDeviceConnected"
           />
 
           <ResourceManager
             ref="resourceManagerRef"
-            :profiles="resourceProfiles"
-            :profile-index="selectedProfileIndex"
-            :selected-file="selectedResourceFile"
+            :profiles="systemState.resourceProfiles.value"
+            :profile-index="systemState.selectedProfileIndex.value"
+            :selected-file="systemState.selectedResourceFile.value"
             :opened-file-ids="openedFileIds"
             @file-selected="handleFileSelected"
             @config-changed="handleConfigChanged"
-            @update:profile-index="(v) => { selectedProfileIndex = v }"
-            @update:selected-file="(v) => { selectedResourceFile = v }"
+            @update:profile-index="(v) => { systemState.selectedProfileIndex.value = v }"
+            @update:selected-file="(v) => { systemState.selectedResourceFile.value = v }"
             @open-settings="showResourceSettings = true"
             @open-create-file="showCreateFileModal = true"
           />
@@ -801,16 +478,16 @@ const handleAnnouncementClose = () => {
           <div class="flex items-center gap-2">
             <button
               v-if="props.isDirty"
-              :disabled="isSaving"
+              :disabled="systemState.isSaving.value"
               class="flex items-center gap-1 px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-[10px] font-bold transition-colors disabled:opacity-50"
               @click="handleSaveNodes"
             >
               <component
-                :is="isSaving ? Loader2 : Save"
+                :is="systemState.isSaving.value ? Loader2 : Save"
                 :size="10"
-                :class="{'animate-spin': isSaving}"
+                :class="{'animate-spin': systemState.isSaving.value}"
               />
-              {{ isSaving ? '保存中...' : '保存' }}
+              {{ systemState.isSaving.value ? '保存中...' : '保存' }}
             </button>
             <span class="font-mono font-bold text-slate-300">{{ zoomPercentage }}</span>
           </div>
@@ -820,14 +497,14 @@ const handleAnnouncementClose = () => {
 
     <ResourceSettingsModal
       :visible="showResourceSettings"
-      :profiles="resourceProfiles"
-      :current-index="selectedProfileIndex"
+      :profiles="systemState.resourceProfiles.value"
+      :current-index="systemState.selectedProfileIndex.value"
       @close="showResourceSettings = false"
       @save="saveResourceSettings"
     />
     <CreateResourceModal
       :visible="showCreateFileModal"
-      :paths="currentProfile.paths"
+      :paths="systemState.currentProfile.value.paths"
       @close="showCreateFileModal = false"
       @create="handleCreateFile"
     />
@@ -837,7 +514,7 @@ const handleAnnouncementClose = () => {
       :default-spacing="props.spacing"
       :default-layout-algorithm="props.layoutAlgorithm"
       :default-layout-direction="props.layoutDirection"
-      :default-pipeline-version="pipelineVersion"
+      :default-pipeline-version="systemState.pipelineVersion.value"
       :default-restore-workspace-on-start="props.restoreWorkspaceOnStart"
       :default-low-memory-mode="props.lowMemoryMode"
       @close="showAppSettings = false"

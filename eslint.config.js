@@ -4,7 +4,7 @@ import tsPlugin from '@typescript-eslint/eslint-plugin'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/MAA-win-x86_64-v5.10.0/**', '**/*.test.ts']
+    ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/MAA-win-x86_64-v5.10.0/**']
   },
   ...pluginVue.configs['flat/recommended'],
   {
@@ -22,6 +22,7 @@ export default [
     },
     rules: {
       'vue/multi-word-component-names': 'off',
+      'vue/order-in-components': 'warn',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-console': ['warn', { allow: ['warn', 'error'] }]
@@ -38,9 +39,18 @@ export default [
       '@typescript-eslint': tsPlugin
     },
     rules: {
+      '@typescript-eslint/consistent-type-imports': 'warn',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-console': ['warn', { allow: ['warn', 'error'] }]
+    }
+  },
+  {
+    files: ['**/*.test.ts', '**/*.spec.ts'],
+    rules: {
+      'no-console': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off'
     }
   }
 ]

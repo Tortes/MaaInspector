@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import type { UnlistenFn } from '@tauri-apps/api/event';
+import { listen } from '@tauri-apps/api/event';
 
 // API Response types
 export interface ApiResponse<T = unknown> {
@@ -10,7 +11,7 @@ export interface ApiResponse<T = unknown> {
   [key: string]: unknown;
 }
 
-export interface DeviceInfo {
+export interface ApiDeviceInfo {
   name?: string;
   type?: string;
   address?: string;
@@ -60,15 +61,15 @@ export interface SystemState {
 }
 
 export interface SystemInitResponse {
-  devices?: DeviceInfo[];
+  devices?: ApiDeviceInfo[];
   resource_profiles?: ResourceProfile[];
   agent_socket_id?: string;
   current_state?: SystemState;
-  last_connected_device?: DeviceInfo;
+  last_connected_device?: ApiDeviceInfo;
 }
 
 export interface DeviceConfigPayload {
-  devices: DeviceInfo[];
+  devices: ApiDeviceInfo[];
   resource_profiles: ResourceProfile[];
   agent_socket_id?: string;
   current_state: SystemState;
@@ -115,22 +116,17 @@ export interface ScreenshotResponse extends ApiResponse {
   size?: number[];
 }
 
-// Options type for API calls (context is ignored in Tauri implementation)
-export interface ApiOptions {
-  context?: { feature?: string; action?: string; component?: string };
-}
-
 // System API
 export const systemApi = {
-  getInitialState: async (_options?: ApiOptions): Promise<SystemInitResponse> => {
+  getInitialState: async (): Promise<SystemInitResponse> => {
     return invoke('system_init');
   },
 
-  saveDeviceConfig: async (fullConfig: DeviceConfigPayload, _options?: ApiOptions): Promise<ApiResponse> => {
+  saveDeviceConfig: async (fullConfig: DeviceConfigPayload): Promise<ApiResponse> => {
     return invoke('system_save_config', { configData: fullConfig });
   },
 
-  searchDevices: async (deviceType?: string, _options?: ApiOptions): Promise<ApiResponse<{ devices?: DeviceInfo[] }>> => {
+  searchDevices: async (deviceType?: string): Promise<ApiResponse<{ devices?: ApiDeviceInfo[] }>> => {
     return invoke('system_search_devices', { deviceType });
   }
 };
@@ -143,8 +139,7 @@ export const deviceApi = {
       address: string;
       config?: Record<string, unknown>;
       name?: string;
-    },
-    _options?: ApiOptions
+    }
   ): Promise<ApiResponse> => {
     return invoke('device_connect_adb', {
       adbPath: deviceData.adb_path,
@@ -163,8 +158,7 @@ export const deviceApi = {
       screencap_method?: number;
       mouse_method?: number;
       keyboard_method?: number;
-    },
-    _options?: ApiOptions
+    }
   ): Promise<ApiResponse> => {
     return invoke('device_connect_win32', {
       hwnd: deviceData.hwnd,
@@ -177,14 +171,14 @@ export const deviceApi = {
     });
   },
 
-  getScreenshot: async (_options?: ApiOptions): Promise<ScreenshotResponse> => {
+  getScreenshot: async (): Promise<ScreenshotResponse> => {
     return invoke('device_screenshot');
   }
 };
 
 // Resource API
 export const resourceApi = {
-  load: async (profile: ResourceProfile | { paths?: string[] } | string, _options?: ApiOptions): Promise<ResourceLoadResponse> => {
+  load: async (profile: ResourceProfile | { paths?: string[] } | string): Promise<ResourceLoadResponse> => {
     const paths = typeof profile === 'string'
       ? [profile]
       : Array.isArray((profile as ResourceProfile)?.paths)
@@ -196,29 +190,26 @@ export const resourceApi = {
 
   getFileNodes: async <TNodes = Record<string, unknown>>(
     source: string,
-    filename: string,
-    _options?: ApiOptions
+    filename: string
   ): Promise<FileNodesResponse<TNodes>> => {
     return invoke('resource_get_file_nodes', { source, filename });
   },
 
   getTemplateImages: async (
     source: string,
-    filename: string,
-    _options?: ApiOptions
+    filename: string
   ): Promise<TemplateImagesResponse> => {
     return invoke('resource_get_templates', { source, filename });
   },
 
-  createFile: async (path: string, filename: string, _options?: ApiOptions): Promise<ApiResponse> => {
+  createFile: async (path: string, filename: string): Promise<ApiResponse> => {
     return invoke('resource_create_file', { path, filename });
   },
 
   saveFileNodes: async <TNodes = Record<string, unknown>>(
     source: string,
     filename: string,
-    nodes: TNodes,
-    _options?: ApiOptions
+    nodes: TNodes
   ): Promise<ApiResponse> => {
     return invoke('resource_save_file_nodes', { source, filename, nodes });
   },
@@ -227,8 +218,7 @@ export const resourceApi = {
     query: string,
     useRegex: boolean,
     currentFilename: string,
-    currentSource: string,
-    _options?: ApiOptions
+    currentSource: string
   ): Promise<ApiResponse> => {
     return invoke('resource_search_nodes', {
       query,
@@ -241,8 +231,7 @@ export const resourceApi = {
   checkUnusedImages: async (
     source: string,
     currentFilename: string,
-    delImages: { path: string }[],
-    _options?: ApiOptions
+    delImages: { path: string }[]
   ): Promise<ImageCheckResponse> => {
     return invoke('resource_check_unused_images', {
       source,
@@ -254,8 +243,7 @@ export const resourceApi = {
   processImages: async (
     source: string,
     deletePaths: string[],
-    saveImages: { path: string; base64: string; nodeId?: string }[],
-    _options?: ApiOptions
+    saveImages: { path: string; base64: string; nodeId?: string }[]
   ): Promise<ApiResponse> => {
     return invoke('resource_process_images', {
       source,
@@ -267,26 +255,26 @@ export const resourceApi = {
 
 // Agent API
 export const agentApi = {
-  connect: async (socketId: string, _options?: ApiOptions): Promise<ApiResponse> => {
+  connect: async (socketId: string): Promise<ApiResponse> => {
     return invoke('agent_connect', { socketId });
   }
 };
 
 // Debug API
 export const debugApi = {
-  runNode: async (payload: Record<string, unknown>, _options?: ApiOptions): Promise<DebugRunResponse> => {
+  runNode: async (payload: Record<string, unknown>): Promise<DebugRunResponse> => {
     return invoke('debug_run_node', payload);
   },
 
-  stop: async (_options?: ApiOptions): Promise<ApiResponse> => {
+  stop: async (): Promise<ApiResponse> => {
     return invoke('debug_stop');
   },
 
-  getRecoDetails: async (recoId: string | number, _options?: ApiOptions): Promise<RecoDetailResponse> => {
+  getRecoDetails: async (recoId: string | number): Promise<RecoDetailResponse> => {
     return invoke('debug_get_reco_details', { recoId });
   },
 
-  ocrText: async (roi: number[], _options?: ApiOptions): Promise<ApiResponse<{ text?: string }>> => {
+  ocrText: async (roi: number[]): Promise<ApiResponse<{ text?: string }>> => {
     return invoke('debug_ocr_text', { roi });
   },
 

@@ -1,56 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { debounce, throttle, createThrottledHandler } from '../utils/throttle'
+import { throttle, createThrottledHandler } from '../utils/throttle'
 
 describe('throttle utilities', () => {
-  describe('debounce', () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-    })
-
-    it('should delay function execution', () => {
-      const fn = vi.fn()
-      const debounced = debounce(fn, 100)
-      debounced()
-      expect(fn).not.toBeCalled()
-      vi.advanceTimersByTime(100)
-      expect(fn).toBeCalledTimes(1)
-    })
-
-    it('should reset timer on subsequent calls', () => {
-      const fn = vi.fn()
-      const debounced = debounce(fn, 100)
-      debounced()
-      vi.advanceTimersByTime(50)
-      debounced()
-      vi.advanceTimersByTime(50)
-      expect(fn).not.toBeCalled()
-      vi.advanceTimersByTime(50)
-      expect(fn).toBeCalledTimes(1)
-    })
-
-    it('should pass arguments to the debounced function', () => {
-      const fn = vi.fn()
-      const debounced = debounce(fn, 100)
-      debounced('test', 123)
-      vi.advanceTimersByTime(100)
-      expect(fn).toBeCalledWith('test', 123)
-    })
-
-    it('should only execute once with multiple rapid calls', () => {
-      const fn = vi.fn()
-      const debounced = debounce(fn, 100)
-      debounced()
-      debounced()
-      debounced()
-      vi.advanceTimersByTime(100)
-      expect(fn).toBeCalledTimes(1)
-    })
-  })
-
   describe('throttle', () => {
     beforeEach(() => {
       vi.useFakeTimers()

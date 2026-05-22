@@ -119,8 +119,7 @@ const performRemoteSearch = async () => {
         searchQuery.value,
         useRegex.value,
         props.currentFilename || '',
-        props.currentSource || '',
-        { context: { feature: 'resource', action: 'search_nodes', component: 'NodeSearch' } }
+        props.currentSource || ''
     )
     otherFileResults.value = (res as any).results || []
   } catch (e) {

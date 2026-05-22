@@ -27,8 +27,6 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
         node: node.data.data,
         debug_mode: mode,
         context: { source: currentSource.value, filename: currentFilename.value }
-      }, {
-        context: { feature: 'debug', action: 'run_node', component: 'FlowEditor' }
       })
     } catch (error: unknown) {
       const err = error as { message?: string }

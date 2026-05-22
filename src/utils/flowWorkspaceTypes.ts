@@ -40,8 +40,3 @@ export interface FlowWorkspaceState {
   activeTabId: string
   appSettings: FlowAppSettings
 }
-
-export interface FlowInitialFile {
-  filename: string
-  source: string
-}

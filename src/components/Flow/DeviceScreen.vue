@@ -191,9 +191,7 @@ watch(() => props.visible, async (val: boolean) => {
 const fetchScreenshot = async () => {
   isLoading.value = true
   try {
-    const res = await deviceApi.getScreenshot({
-      context: { feature: 'device', action: 'screenshot', component: 'DeviceScreen' }
-    })
+    const res = await deviceApi.getScreenshot()
     const img = (res as any)?.image ?? (res as any)?.data
     const size = Array.isArray((res as any)?.size) ? (res as any).size : null
     if (img && typeof img === 'string') {
@@ -255,9 +253,7 @@ const handleOcr = async () => {
       Math.round(selection.w),
       Math.round(selection.h)
     ]
-    const res = await debugApi.ocrText(roi, {
-      context: { feature: 'debug', action: 'ocr_text', component: 'DeviceScreen' }
-    })
+    const res = await debugApi.ocrText(roi)
     const text = (res as any)?.text ?? (res as any)?.data?.text ?? ''
     if (res && (res as any).success === false) {
       throw new Error((res as any).message || 'OCR failed')

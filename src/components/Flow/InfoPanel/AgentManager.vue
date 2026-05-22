@@ -1,20 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, h } from 'vue'
-import { Bot, Loader2, CheckCircle2, XCircle, Circle } from 'lucide-vue-next'
+import { ref, computed } from 'vue'
+import { Bot, Loader2 } from 'lucide-vue-next'
 import { agentApi } from '../../../services/api'
-
-// 状态指示器组件
-const StatusIndicator = {
-  props: { status: String, size: { type: Number, default: 16 } },
-  setup(props: { status?: string; size: number }) {
-    return () => {
-      if (props.status === 'connected') return h(CheckCircle2, { size: props.size, class: 'text-emerald-500 fill-emerald-50' })
-      if (props.status === 'connecting') return h(Loader2, { size: props.size, class: 'text-blue-500 animate-spin' })
-      if (props.status === 'failed') return h(XCircle, { size: props.size, class: 'text-red-500' })
-      return h(Circle, { size: props.size, class: 'text-slate-300' })
-    }
-  }
-}
 
 // 状态
 const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
@@ -31,9 +18,7 @@ const handleAgentConnect = async () => {
   message.value = '连接中...'
 
   try {
-    const res = await agentApi.connect(currentAgentSocket.value, {
-      context: { feature: 'agent', action: 'connect', component: 'AgentManager' }
-    })
+    const res = await agentApi.connect(currentAgentSocket.value)
 
     const ok = res?.success ?? true
     const msg = res?.message || (ok ? 'Agent 已连接' : '连接失败')

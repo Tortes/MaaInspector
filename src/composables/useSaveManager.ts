@@ -153,7 +153,7 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const saveNodesOnly = async (source: string, filename: string, onSnapshotState: () => void) => {
     const rawNodes = getNodesData()
     const payload = pipelineVersion.value === 'V2' ? toPipelineV2Nodes(rawNodes) : rawNodes
-    const res = await resourceApi.saveFileNodes(source, filename, payload, { context: { feature: 'resource', action: 'save_nodes', component: 'FlowEditor' } })
+    const res = await resourceApi.saveFileNodes(source, filename, payload)
     if (res.success) {
       clearDirty()
       loadedFileVersion.value = pipelineVersion.value
@@ -164,7 +164,7 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const processImagesAndSave = async (source: string, filename: string, deletePaths: string[], tempImages: { path: string; base64: string; nodeId?: string }[], onSnapshotState: () => void) => {
     try {
       if (deletePaths.length > 0 || tempImages.length > 0) {
-        await resourceApi.processImages(source, deletePaths, tempImages, { context: { feature: 'resource', action: 'process_images', component: 'FlowEditor' } })
+        await resourceApi.processImages(source, deletePaths, tempImages)
       }
       clearTempImageData()
       await saveNodesOnly(source, filename, onSnapshotState)
@@ -180,7 +180,7 @@ export function useSaveManager(deps: SaveManagerDeps) {
       if (delImages.length > 0 || tempImages.length > 0) {
         pendingSaveConfig.value = { source, filename }
         if (delImages.length > 0) {
-          const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages, { context: { feature: 'resource', action: 'check_unused_images', component: 'FlowEditor' } })
+          const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages)
           unusedImages.value = checkRes.unused_images || []
           usedImages.value = isUsedImageInfoArray(checkRes.used_images) ? checkRes.used_images : []
           if (unusedImages.value.length > 0) { showDeleteImagesModal.value = true; return }
