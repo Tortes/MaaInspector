@@ -166,36 +166,65 @@ const applyMask = () => {
 
 <template>
   <teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" @contextmenu.prevent>
+    <div
+      v-if="visible"
+      class="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      @contextmenu.prevent
+    >
       <div class="bg-white rounded-2xl shadow-2xl w-[min(92vw,1024px)] flex flex-col gap-3 p-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 text-slate-700">
-            <Brush :size="16" class="text-emerald-500"/>
+            <Brush
+              :size="16"
+              class="text-emerald-500"
+            />
             <div class="space-y-0.5">
-              <div class="text-sm font-bold">重新编辑截图</div>
-              <div class="text-[11px] text-slate-500">左键涂绿，右键拖动，滚轮缩放。</div>
+              <div class="text-sm font-bold">
+                重新编辑截图
+              </div>
+              <div class="text-[11px] text-slate-500">
+                左键涂绿，右键拖动，滚轮缩放。
+              </div>
             </div>
           </div>
-          <button @click="emit('close')" class="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200">
-            <X :size="16"/>
+          <button
+            class="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200"
+            @click="emit('close')"
+          >
+            <X :size="16" />
           </button>
         </div>
 
         <div class="flex items-center gap-3 text-[11px] text-slate-600">
           <div class="flex items-center gap-2 font-semibold text-emerald-600">
-            <div class="w-3 h-3 rounded-full bg-emerald-400"></div>
+            <div class="w-3 h-3 rounded-full bg-emerald-400" />
             涂绿画笔
           </div>
-          <input type="range" min="6" max="72" step="2" v-model.number="brushSize" class="flex-1 accent-emerald-500">
-          <div class="w-16 text-right font-mono text-slate-700">{{ brushSize }}px</div>
+          <input
+            v-model.number="brushSize"
+            type="range"
+            min="6"
+            max="72"
+            step="2"
+            class="flex-1 accent-emerald-500"
+          >
+          <div class="w-16 text-right font-mono text-slate-700">
+            {{ brushSize }}px
+          </div>
 
-          <button @click="applyMask" class="px-3 py-1.5 text-[11px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow">
+          <button
+            class="px-3 py-1.5 text-[11px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow"
+            @click="applyMask"
+          >
             应用
           </button>
         </div>
 
         <div class="flex gap-3 items-start">
-          <div class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center rounded-xl border border-slate-800" style="width: 80vh; aspect-ratio: 16/9;">
+          <div
+            class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center rounded-xl border border-slate-800"
+            style="width: 80vh; aspect-ratio: 16/9;"
+          >
             <div
               ref="contentRef"
               class="relative transition-transform duration-75 ease-linear"
@@ -209,31 +238,39 @@ const applyMask = () => {
               <canvas
                 ref="canvasRef"
                 class="w-full h-full bg-slate-900"
-              ></canvas>
+              />
             </div>
 
             <div class="absolute top-4 right-4 flex flex-row gap-2">
-              <button @click="resetMask"
-                      class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
-                      title="重置遮罩">
-                <Undo2 :size="16"/>
+              <button
+                class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+                title="重置遮罩"
+                @click="resetMask"
+              >
+                <Undo2 :size="16" />
               </button>
-              <button @click="resetView"
-                      class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
-                      title="重置视图">
-                <RotateCcw :size="16"/>
+              <button
+                class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+                title="重置视图"
+                @click="resetView"
+              >
+                <RotateCcw :size="16" />
               </button>
             </div>
 
             <div
-                class="absolute bottom-4 right-4 px-2 py-1 bg-black/40 text-white text-[10px] rounded backdrop-blur font-mono pointer-events-none border border-white/10">
+              class="absolute bottom-4 right-4 px-2 py-1 bg-black/40 text-white text-[10px] rounded backdrop-blur font-mono pointer-events-none border border-white/10"
+            >
               {{ Math.round(viewState.scale * 100) }}%
             </div>
           </div>
 
           <div class="w-56 bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 leading-relaxed shadow-sm">
             <div class="font-semibold text-slate-700 flex items-center gap-1 mb-2">
-              <Brush :size="14" class="text-emerald-500"/> 操作提示
+              <Brush
+                :size="14"
+                class="text-emerald-500"
+              /> 操作提示
             </div>
             <ul class="space-y-1.5 list-disc list-inside">
               <li><span class="font-semibold text-slate-800">左键</span> 按住拖动进行涂绿遮罩。</li>

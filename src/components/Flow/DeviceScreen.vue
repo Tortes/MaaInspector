@@ -376,23 +376,24 @@ saveImagePath.value = generateDefaultSavePath()
 </script>
 
 <template>
-  <div v-if="visible"
-       class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-       @mousedown.self="handleBackgroundClick">
+  <div
+    v-if="visible"
+    class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+    @mousedown.self="handleBackgroundClick"
+  >
     <div
-        class="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
-        :class="props.mode === 'image_manager' ? 'max-w-[98vw]' : 'max-w-[95vw]'"
+      class="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
+      :class="props.mode === 'image_manager' ? 'max-w-[98vw]' : 'max-w-[95vw]'"
     >
-
       <DeviceScreenCanvas
         ref="canvasRef"
-        :imageUrl="imageUrl"
-        :isLoading="isLoading"
-        :referenceRect="referenceRect"
-        :referenceLabel="referenceLabel"
+        :image-url="imageUrl"
+        :is-loading="isLoading"
+        :reference-rect="referenceRect"
+        :reference-label="referenceLabel"
         :mode="mode"
-        :initialSelection="selection"
-        :imageSize="imageSize"
+        :initial-selection="selection"
+        :image-size="imageSize"
         @refresh="fetchScreenshot"
         @selection-change="handleSelectionChange"
         @preview-generated="handlePreviewGenerated"
@@ -403,23 +404,23 @@ saveImagePath.value = generateDefaultSavePath()
         :mode="mode"
         :title="title"
         :selection="selection"
-        :ocrResult="ocrResult"
-        :isOcrLoading="isOcrLoading"
-        :previewUrl="previewUrl"
-        :saveImagePath="saveImagePath"
-        :guideList="guideList"
-        :offsetInfo="offsetInfo"
-        :referenceRect="referenceRect"
-        :referenceLabel="referenceLabel"
-        :hasTemplateChanged="hasTemplateChanged"
-        :localImages="localImages"
-        :localTempImages="localTempImages"
-        :localDeletedImages="localDeletedImages"
+        :ocr-result="ocrResult"
+        :is-ocr-loading="isOcrLoading"
+        :preview-url="previewUrl"
+        :save-image-path="saveImagePath"
+        :guide-list="guideList"
+        :offset-info="offsetInfo"
+        :reference-rect="referenceRect"
+        :reference-label="referenceLabel"
+        :has-template-changed="hasTemplateChanged"
+        :local-images="localImages"
+        :local-temp-images="localTempImages"
+        :local-deleted-images="localDeletedImages"
         @close="$emit('close')"
         @confirm="handleConfirm"
         @ocr-start="handleOcr"
-        @update:ocrResult="ocrResult = $event"
-        @update:saveImagePath="saveImagePath = $event"
+        @update:ocr-result="ocrResult = $event"
+        @update:save-image-path="saveImagePath = $event"
         @save-temp-image="handleSaveTempImage"
         @apply-preview-edit="handlePreviewEdit"
         @save-image-changes="handleImageManagerSave"
@@ -430,7 +431,6 @@ saveImagePath.value = generateDefaultSavePath()
         @batch-delete="handleBatchDelete"
         @batch-restore="handleBatchRestore"
       />
-
     </div>
   </div>
 </template>

@@ -29,4 +29,22 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vue-vendor": [
+            "vue",
+            "@vue-flow/core",
+            "@vue-flow/background",
+            "@vue-flow/controls",
+            "@vue-flow/minimap",
+          ],
+          "elk-vendor": ["elkjs"],
+          "ui-vendor": ["element-plus"],
+          "icons-vendor": ["lucide-vue-next"],
+        },
+      },
+    },
+  },
 }));

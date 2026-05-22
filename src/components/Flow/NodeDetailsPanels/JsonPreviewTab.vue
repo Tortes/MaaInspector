@@ -20,17 +20,24 @@ const emit = defineEmits<{
       <textarea
         class="w-full h-full bg-transparent text-[10px] font-mono text-green-400 p-3 outline-none resize-none custom-scrollbar-dark"
         :value="jsonStr"
-        @input="emit('input', ( $event.target as HTMLTextAreaElement | null)?.value ?? '' )"
         spellcheck="false"
-      ></textarea>
+        @input="emit('input', ( $event.target as HTMLTextAreaElement | null)?.value ?? '' )"
+      />
       <div
         v-if="jsonError"
         class="absolute bottom-3 left-3 right-3 bg-red-500/90 text-white px-3 py-2 rounded-lg backdrop-blur-sm shadow-lg flex items-start gap-2 z-10"
       >
-        <AlertCircle :size="16" class="shrink-0 mt-0.5" />
-        <div class="text-[10px] font-mono break-all leading-tight">{{ jsonError }}</div>
+        <AlertCircle
+          :size="16"
+          class="shrink-0 mt-0.5"
+        />
+        <div class="text-[10px] font-mono break-all leading-tight">
+          {{ jsonError }}
+        </div>
       </div>
     </div>
-    <div class="mt-2 text-[10px] text-slate-400 text-center shrink-0">编辑后自动保存，格式错误将不会生效</div>
+    <div class="mt-2 text-[10px] text-slate-400 text-center shrink-0">
+      编辑后自动保存，格式错误将不会生效
+    </div>
   </div>
 </template>

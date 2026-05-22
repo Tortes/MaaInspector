@@ -293,29 +293,25 @@ export const debugApi = {
   subscribeNodeStream: (onData: (data: DebugStreamPayload) => void): (() => void) => {
     if (typeof onData !== 'function') return () => {};
 
-    let unlisten: UnlistenFn | null = null;
+    let unlistenFns: UnlistenFn[] = [];
+    let cancelled = false;
 
     const setupListeners = async () => {
-      const unlistenNextList = await listen<DebugStreamPayload>('debug:node_next_list', (event) => {
-        onData(event.payload);
+      const un1 = await listen<DebugStreamPayload>('debug:node_next_list', (event) => {
+        if (!cancelled) onData(event.payload);
       });
-
-      const unlistenRecognition = await listen<DebugStreamPayload>('debug:node_recognition', (event) => {
-        onData(event.payload);
+      const un2 = await listen<DebugStreamPayload>('debug:node_recognition', (event) => {
+        if (!cancelled) onData(event.payload);
       });
-
-      return () => {
-        unlistenNextList();
-        unlistenRecognition();
-      };
+      unlistenFns = [un1, un2];
+      if (cancelled) unlistenFns.forEach(fn => fn());
     };
 
-    setupListeners().then((fn) => {
-      unlisten = fn;
-    });
+    setupListeners();
 
     return () => {
-      if (unlisten) unlisten();
+      cancelled = true;
+      unlistenFns.forEach(fn => fn());
     };
   }
 };

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, h } from 'vue'
 import {
   Smartphone, Power, Search, Loader2, CheckCircle2, XCircle, Circle
 } from 'lucide-vue-next'
 import { deviceApi, systemApi } from '../../../services/api'
+import { ElMessage } from 'element-plus'
 import Dropdown from '../Common/Dropdown.vue'
 import type { DropdownOption } from '../Common/Dropdown.vue'
 import type { DeviceInfo } from '../../../services/api'
@@ -20,8 +21,6 @@ const StatusIndicator = {
     }
   }
 }
-
-import { h } from 'vue'
 
 defineProps<{
   isConnected: boolean
@@ -165,9 +164,9 @@ const handleSearchDevices = async () => {
       selectedDeviceIndex.value = -1
       message.value = '未找到设备'
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('搜索设备失败', e)
-    message.value = '搜索失败: ' + (e?.message || '未知错误')
+    message.value = '搜索失败: ' + (e instanceof Error ? e.message : '未知错误')
     searchedDevices.value = []
     selectedDeviceIndex.value = -1
   } finally {
@@ -179,7 +178,7 @@ const handleSearchDevices = async () => {
 const handleDeviceConnect = async () => {
   const device = currentDevice.value
   if (!device) {
-    alert('请先搜索并选择设备')
+    ElMessage.error('请先搜索并选择设备')
     return
   }
 
@@ -228,9 +227,9 @@ const handleDeviceConnect = async () => {
     emit('device-connected', true)
 
     startScreenshotTimer()
-  } catch (e: any) {
+  } catch (e: unknown) {
     status.value = 'failed'
-    message.value = '连接失败: ' + (e?.message || '未知错误')
+    message.value = '连接失败: ' + (e instanceof Error ? e.message : '未知错误')
     emit('device-connected', false)
     setTimeout(() => {
       if (status.value === 'failed') status.value = 'disconnected'
@@ -254,7 +253,7 @@ const loadLastDevice = (lastDevice: DeviceInfo) => {
   message.value = '已加载上次连接的设备'
 }
 
-defineExpose({ loadLastDevice, status, message, info })
+defineExpose({ loadLastDevice, status, message, info, currentDevice })
 
 // 设备切换时重置连接状态
 watch(selectedDeviceIndex, (nv, ov) => {
@@ -293,47 +292,62 @@ onUnmounted(() => {
   <section class="space-y-2">
     <div class="flex items-center justify-between text-xs mb-1">
       <div class="flex items-center gap-1.5 font-bold text-slate-700">
-        <Smartphone :size="14" class="text-indigo-500"/>
+        <Smartphone
+          :size="14"
+          class="text-indigo-500"
+        />
         设备管理
       </div>
-      <StatusIndicator :status="status"/>
+      <StatusIndicator :status="status" />
     </div>
-    <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm"
-         :class="{'!bg-indigo-50/30 !border-indigo-100': status === 'connected'}">
-      
+    <div
+      class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm"
+      :class="{'!bg-indigo-50/30 !border-indigo-100': status === 'connected'}"
+    >
       <!-- 设备类型选择 -->
       <div class="space-y-1.5">
         <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">设备类型</label>
         <div class="grid grid-cols-2 gap-2">
           <button 
-            @click="deviceType = 'adb'"
             class="py-2 px-3 text-xs font-bold rounded-lg border-2 transition-all"
             :class="deviceType === 'adb' 
               ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
-              : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'">
+              : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'"
+            @click="deviceType = 'adb'"
+          >
             ADB 设备
           </button>
           <button 
-            @click="deviceType = 'win32'"
             class="py-2 px-3 text-xs font-bold rounded-lg border-2 transition-all"
             :class="deviceType === 'win32' 
               ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
-              : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'">
+              : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'"
+            @click="deviceType = 'win32'"
+          >
             Win32 窗口
           </button>
         </div>
       </div>
 
       <!-- 搜索按钮 -->
-      <button @click="handleSearchDevices" :disabled="isSearchingDevices"
-              class="w-full btn-primary bg-indigo-500 shadow-indigo-100 flex items-center justify-center gap-2">
-        <component :is="isSearchingDevices ? Loader2 : Search" :size="14"
-                   :class="{'animate-spin': isSearchingDevices}"/>
+      <button
+        :disabled="isSearchingDevices"
+        class="w-full btn-primary bg-indigo-500 shadow-indigo-100 flex items-center justify-center gap-2"
+        @click="handleSearchDevices"
+      >
+        <component
+          :is="isSearchingDevices ? Loader2 : Search"
+          :size="14"
+          :class="{'animate-spin': isSearchingDevices}"
+        />
         {{ isSearchingDevices ? '搜索中...' : '搜索设备' }}
       </button>
 
       <!-- 设备列表 -->
-      <div v-if="searchedDevices.length > 0" class="space-y-2">
+      <div
+        v-if="searchedDevices.length > 0"
+        class="space-y-2"
+      >
         <Dropdown
           v-model="selectedDeviceIndex"
           :options="deviceOptions"
@@ -342,9 +356,11 @@ onUnmounted(() => {
         />
 
         <!-- 设备信息展示 -->
-        <div v-if="currentDevice"
-            class="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 shadow-sm"
-            :class="{'!bg-indigo-50/40 !border-indigo-100': status === 'connected'}">
+        <div
+          v-if="currentDevice"
+          class="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 shadow-sm"
+          :class="{'!bg-indigo-50/40 !border-indigo-100': status === 'connected'}"
+        >
           <div class="flex flex-col overflow-hidden">
             <span class="text-xs font-bold text-indigo-700 truncate">
               {{ currentDevice.name || currentDevice.window_name || '未命名设备' }}
@@ -358,14 +374,19 @@ onUnmounted(() => {
               </template>
             </span>
           </div>
-          <div class="px-2 py-0.5 rounded text-[10px] font-bold"
-               :class="status === 'connected' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'">
+          <div
+            class="px-2 py-0.5 rounded text-[10px] font-bold"
+            :class="status === 'connected' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'"
+          >
             {{ status === 'connected' ? '已连接' : '未连接' }}
           </div>
         </div>
 
         <!-- Win32 额外参数 -->
-        <div v-if="deviceType === 'win32'" class="space-y-2 pt-2 border-t border-slate-200">
+        <div
+          v-if="deviceType === 'win32'"
+          class="space-y-2 pt-2 border-t border-slate-200"
+        >
           <div class="space-y-1.5">
             <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">截图方法</label>
             <Dropdown
@@ -393,17 +414,24 @@ onUnmounted(() => {
         </div>
 
         <!-- 连接按钮 -->
-        <button @click="handleDeviceConnect"
-                :disabled="status === 'connecting' || !currentDevice"
-                class="w-full btn-primary bg-indigo-500 shadow-indigo-100">
-          <component :is="status === 'connecting' ? Loader2 : Power" :size="14"
-                     :class="{'animate-spin': status === 'connecting'}"/>
+        <button
+          :disabled="status === 'connecting' || !currentDevice"
+          class="w-full btn-primary bg-indigo-500 shadow-indigo-100"
+          @click="handleDeviceConnect"
+        >
+          <component
+            :is="status === 'connecting' ? Loader2 : Power"
+            :size="14"
+            :class="{'animate-spin': status === 'connecting'}"
+          />
           {{ deviceButtonLabel }}
         </button>
 
         <!-- 设备截图预览 -->
-        <div v-if="status === 'connected' && deviceScreenshot" 
-             class="mt-3 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+        <div
+          v-if="status === 'connected' && deviceScreenshot" 
+          class="mt-3 rounded-lg overflow-hidden border border-slate-200 bg-slate-100"
+        >
           <div class="text-[10px] font-bold text-slate-500 px-2 py-1 bg-slate-50 border-b border-slate-200">
             实时预览
           </div>
@@ -412,12 +440,15 @@ onUnmounted(() => {
               :src="deviceScreenshot" 
               alt="设备截图" 
               class="w-full h-full object-contain"
-            />
+            >
           </div>
         </div>
       </div>
       
-      <div v-else-if="!isSearchingDevices" class="text-xs text-slate-400 text-center py-2">
+      <div
+        v-else-if="!isSearchingDevices"
+        class="text-xs text-slate-400 text-center py-2"
+      >
         点击"搜索设备"查找可用设备
       </div>
     </div>

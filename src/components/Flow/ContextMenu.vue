@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, ref, onMounted} from 'vue'
+import {computed, ref, onMounted, type Component} from 'vue'
 import {
   Trash2, Copy, PlusCircle, RefreshCw, XCircle, ChevronRight,
   Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
@@ -24,7 +24,7 @@ type MenuItem =
       key?: string
       label: string
       action: string
-      icon?: any
+      icon?: Component
       color?: string
       submenu?: SubmenuItem[]
       submenuAction?: string
@@ -197,63 +197,88 @@ const menuItems = computed<MenuItem[]>(() => {
 
 <template>
   <div
-      ref="mainMenuRef"
-      class="fixed z-50 w-56 bg-white rounded-lg shadow-xl border border-slate-100 text-sm animate-in fade-in zoom-in-95 duration-100 origin-top-left font-sans select-none"
-      :style="{ top: `${y}px`, left: `${x}px` }"
-      @contextmenu.prevent
+    ref="mainMenuRef"
+    class="fixed z-50 w-56 bg-white rounded-lg shadow-xl border border-slate-100 text-sm animate-in fade-in zoom-in-95 duration-100 origin-top-left font-sans select-none"
+    :style="{ top: `${y}px`, left: `${x}px` }"
+    @contextmenu.prevent
   >
-    <div v-if="type === 'node'" class="px-3 py-2 bg-slate-50 border-b border-slate-100">
-      <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Node ID</div>
-      <div class="font-mono text-xs text-slate-600 truncate">#{{ (data as any)?.id ?? '-' }}</div>
+    <div
+      v-if="type === 'node'"
+      class="px-3 py-2 bg-slate-50 border-b border-slate-100"
+    >
+      <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+        Node ID
+      </div>
+      <div class="font-mono text-xs text-slate-600 truncate">
+        #{{ data?.id ?? '-' }}
+      </div>
     </div>
-    <div v-if="type === 'edge'" class="px-3 py-2 bg-slate-50 border-b border-slate-100">
-      <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Link</div>
-      <div class="font-mono text-xs text-slate-600 truncate">{{ (data as EdgeData | undefined)?.label || 'Edge' }}</div>
+    <div
+      v-if="type === 'edge'"
+      class="px-3 py-2 bg-slate-50 border-b border-slate-100"
+    >
+      <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+        Link
+      </div>
+      <div class="font-mono text-xs text-slate-600 truncate">
+        {{ (data as EdgeData | undefined)?.label || 'Edge' }}
+      </div>
     </div>
 
     <ul class="py-1 m-0 list-none">
-      <template v-for="(item, index) in menuItems" :key="index">
-        <li v-if="item.type === 'divider'" class="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent my-1.5"></li>
+      <template
+        v-for="(item, index) in menuItems"
+        :key="index"
+      >
+        <li
+          v-if="item.type === 'divider'"
+          class="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent my-1.5"
+        />
 
         <li
-            v-else-if="item.type === 'item'"
-            class="relative menu-item-with-submenu"
+          v-else-if="item.type === 'item'"
+          class="relative menu-item-with-submenu"
         >
           <div
-              class="flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100 group/main"
-              @click="handleAction(item.action)"
+            class="flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100 group/main"
+            @click="handleAction(item.action)"
           >
             <div class="flex items-center gap-2.5">
               <component 
-                v-if="item.icon" 
                 :is="item.icon" 
+                v-if="item.icon" 
                 :size="16" 
                 :class="[item.color, 'transition-transform group-hover/main:scale-110']"
               />
               <span
-                  :class="['font-medium text-[13px] transition-colors', (item.label === '删除节点' || item.label === '断开连接') ? 'text-red-500 group-hover/main:text-red-600' : 'text-slate-700 group-hover/main:text-slate-900']">{{
-                  item.label
-                }}</span>
+                :class="['font-medium text-[13px] transition-colors', (item.label === '删除节点' || item.label === '断开连接') ? 'text-red-500 group-hover/main:text-red-600' : 'text-slate-700 group-hover/main:text-slate-900']"
+              >{{
+                item.label
+              }}</span>
             </div>
-            <ChevronRight v-if="item.submenu" :size="14" class="text-slate-400 transition-transform group-hover/main:translate-x-0.5"/>
+            <ChevronRight
+              v-if="item.submenu"
+              :size="14"
+              class="text-slate-400 transition-transform group-hover/main:translate-x-0.5"
+            />
           </div>
 
           <div
-              v-if="item.submenu"
-              class="submenu-panel absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-slate-100 z-[60] overflow-hidden flex flex-col"
-              :style="{ maxHeight: mainMenuHeight > 0 ? `${mainMenuHeight}px` : 'none', width: item.key === 'add-node' ? '280px' : '14rem' }"
+            v-if="item.submenu"
+            class="submenu-panel absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-slate-100 z-[60] overflow-hidden flex flex-col"
+            :style="{ maxHeight: mainMenuHeight > 0 ? `${mainMenuHeight}px` : 'none', width: item.key === 'add-node' ? '280px' : '14rem' }"
           >
             <ul class="py-1 overflow-y-auto custom-scrollbar">
               <li
-                  v-for="sub in item.submenu"
-                  :key="sub.value as string"
-                  class="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors group/item"
-                  @click.stop="handleAction(item.submenuAction || '', sub.value as string | EdgeType | SpacingKey)"
+                v-for="sub in item.submenu"
+                :key="sub.value as string"
+                class="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors group/item"
+                @click.stop="handleAction(item.submenuAction || '', sub.value as string | EdgeType | SpacingKey)"
               >
                 <div class="flex items-center gap-2.5 min-w-0 flex-1">
                   <component 
-                    v-if="sub.icon" 
                     :is="sub.icon" 
+                    v-if="sub.icon" 
                     :size="16" 
                     :class="[sub.color || 'text-slate-500', 'flex-shrink-0']"
                   />
@@ -278,9 +303,9 @@ const menuItems = computed<MenuItem[]>(() => {
                     {{ parseLabel(sub.label).note }}
                   </span>
                   <Check
-                      v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing) || (item.key === 'layout-algorithm' && sub.value === currentAlgorithm) || (item.key === 'layout-direction' && sub.value === currentDirection)"
-                      :size="16"
-                      class="text-blue-600"
+                    v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing) || (item.key === 'layout-algorithm' && sub.value === currentAlgorithm) || (item.key === 'layout-direction' && sub.value === currentDirection)"
+                    :size="16"
+                    class="text-blue-600"
                   />
                 </div>
               </li>
@@ -339,31 +364,6 @@ const menuItems = computed<MenuItem[]>(() => {
   background: transparent;
   pointer-events: auto;
   z-index: 1;
-}
-
-/* 自定义滚动条样式 */
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(203 213 225 / 0.6) transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-  margin: 4px 0;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgb(203 213 225 / 0.6);
-  border-radius: 3px;
-  transition: background-color 0.2s;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(148 163 184 / 0.8);
 }
 
 /* 子菜单项的平滑过渡 */

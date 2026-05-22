@@ -42,13 +42,13 @@ const toggleDropdown = (key: DropdownKey) => {
       <div class="flex gap-1.5">
         <input
           :value="editingId"
-          @input="emit('update:editingId', ($event.target as HTMLInputElement | null)?.value ?? '')"
           class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 font-mono"
-        />
+          @input="emit('update:editingId', ($event.target as HTMLInputElement | null)?.value ?? '')"
+        >
         <button
           v-if="editingId !== nodeId"
-          @click="emit('confirm-id-change')"
           class="px-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors flex items-center gap-0.5"
+          @click="emit('confirm-id-change')"
         >
           <Check :size="10" />
           应用
@@ -61,13 +61,13 @@ const toggleDropdown = (key: DropdownKey) => {
       <div class="flex gap-2">
         <div class="relative flex-1">
           <button
-            @click="toggleDropdown('recognition')"
             class="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 cursor-pointer text-left"
+            @click="toggleDropdown('recognition')"
           >
             <div class="flex items-center gap-2 overflow-hidden">
               <component
-                v-if="recognitionConfig?.icon"
                 :is="recognitionConfig.icon"
+                v-if="recognitionConfig?.icon"
                 :size="14"
                 :class="recognitionConfig.color"
                 class="shrink-0"
@@ -91,24 +91,34 @@ const toggleDropdown = (key: DropdownKey) => {
             <button
               v-for="type in recognitionTypes"
               :key="type.value"
-              @click="emit('select-recognition', type.value)"
               class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
               :class="{
                 'bg-indigo-50/60 text-indigo-600': currentRecognition === type.value,
                 'text-slate-700': currentRecognition !== type.value
               }"
+              @click="emit('select-recognition', type.value)"
             >
-              <component v-if="type.icon" :is="type.icon" :size="14" :class="type.color" class="shrink-0" />
+              <component
+                :is="type.icon"
+                v-if="type.icon"
+                :size="14"
+                :class="type.color"
+                class="shrink-0"
+              />
               <span class="truncate">{{ type.label }}</span>
               <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
-              <Check v-if="currentRecognition === type.value" :size="12" class="text-indigo-600 ml-2" />
+              <Check
+                v-if="currentRecognition === type.value"
+                :size="12"
+                class="text-indigo-600 ml-2"
+              />
             </button>
           </div>
         </div>
         <button
-          @click="emit('jump-to-settings', 'recognition')"
           :disabled="currentRecognition === 'DirectHit'"
           class="px-2 rounded-lg border border-slate-200 transition-colors flex items-center justify-center bg-indigo-50 text-indigo-500 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="emit('jump-to-settings', 'recognition')"
         >
           <Settings :size="14" />
         </button>
@@ -120,11 +130,17 @@ const toggleDropdown = (key: DropdownKey) => {
       <div class="flex gap-2">
         <div class="relative flex-1">
           <button
-            @click="toggleDropdown('action')"
             class="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 cursor-pointer text-left"
+            @click="toggleDropdown('action')"
           >
             <div class="flex items-center gap-2 overflow-hidden">
-              <component v-if="actionConfig?.icon" :is="actionConfig.icon" :size="14" :class="actionConfig.color" class="shrink-0" />
+              <component
+                :is="actionConfig.icon"
+                v-if="actionConfig?.icon"
+                :size="14"
+                :class="actionConfig.color"
+                class="shrink-0"
+              />
               <span class="truncate">
                 {{ actionConfig?.label }}
                 <span class="text-slate-400 text-[10px] ml-0.5">({{ actionConfig?.value }})</span>
@@ -144,24 +160,34 @@ const toggleDropdown = (key: DropdownKey) => {
             <button
               v-for="type in actionTypes"
               :key="type.value"
-              @click="emit('select-action', type.value)"
               class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
               :class="{
                 'bg-indigo-50/60 text-indigo-600': currentAction === type.value,
                 'text-slate-700': currentAction !== type.value
               }"
+              @click="emit('select-action', type.value)"
             >
-              <component v-if="type.icon" :is="type.icon" :size="14" :class="type.color" class="shrink-0" />
+              <component
+                :is="type.icon"
+                v-if="type.icon"
+                :size="14"
+                :class="type.color"
+                class="shrink-0"
+              />
               <span class="truncate">{{ type.label }}</span>
               <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
-              <Check v-if="currentAction === type.value" :size="12" class="text-indigo-600 ml-2" />
+              <Check
+                v-if="currentAction === type.value"
+                :size="12"
+                class="text-indigo-600 ml-2"
+              />
             </button>
           </div>
         </div>
         <button
-          @click="emit('jump-to-settings', 'action')"
           :disabled="['DoNothing', 'StopTask'].includes(currentAction)"
           class="px-2 rounded-lg border border-slate-200 transition-colors flex items-center justify-center bg-indigo-50 text-indigo-500 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="emit('jump-to-settings', 'action')"
         >
           <Settings :size="14" />
         </button>
@@ -173,9 +199,9 @@ const toggleDropdown = (key: DropdownKey) => {
         <input
           type="checkbox"
           :checked="getValue('anchor', false)"
-          @change="setValue('anchor', getChecked($event))"
           class="w-3.5 h-3.5 rounded text-indigo-600"
-        />
+          @change="setValue('anchor', getChecked($event))"
+        >
         <span class="text-[11px] text-slate-600">锚点节点</span>
       </label>
     </div>

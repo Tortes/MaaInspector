@@ -254,88 +254,111 @@ defineExpose({ resetView, generatePreviewSnapshot, isDragging })
 
 <template>
   <div
-      class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center shrink-0"
-      style="width: 80vh; aspect-ratio: 16/9;"
-      ref="containerRef"
-      @wheel="handleWheel"
-      @mousedown="handleMouseDown"
-      @contextmenu.prevent
-      :class="{
+    ref="containerRef"
+    class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center shrink-0"
+    style="width: 80vh; aspect-ratio: 16/9;"
+    :class="{
       'cursor-grabbing': isPanning,
       'cursor-crosshair': !isPanning
     }"
+    @wheel="handleWheel"
+    @mousedown="handleMouseDown"
+    @contextmenu.prevent
   >
     <input
-      type="file"
       ref="fileInputRef"
+      type="file"
       accept="image/*"
       class="hidden"
       @change="handleFileChange"
-    />
+    >
 
     <div
-        ref="contentRef"
-        class="relative transition-transform duration-75 ease-linear"
-        :style="contentStyle"
+      ref="contentRef"
+      class="relative transition-transform duration-75 ease-linear"
+      :style="contentStyle"
     >
-      <div v-if="!imageUrl" class="flex items-center justify-center w-full h-full text-slate-500 flex-col gap-3">
-        <Smartphone :size="48" class="opacity-50"/>
+      <div
+        v-if="!imageUrl"
+        class="flex items-center justify-center w-full h-full text-slate-500 flex-col gap-3"
+      >
+        <Smartphone
+          :size="48"
+          class="opacity-50"
+        />
         <span class="text-xs font-mono">{{ isLoading ? '正在获取屏幕...' : '无法获取画面(设备连接状态异常)' }}</span>
       </div>
 
       <img
-          v-else
-          ref="screenImageRef"
-          :src="imageUrl"
-          draggable="false"
-          class="w-full h-full object-fill pointer-events-none select-none"
-          @dragstart.prevent
-      />
+        v-else
+        ref="screenImageRef"
+        :src="imageUrl"
+        draggable="false"
+        class="w-full h-full object-fill pointer-events-none select-none"
+        @dragstart.prevent
+      >
 
-      <div v-if="props.referenceRect"
-           class="absolute border-2 border-dashed border-blue-400 bg-blue-500/10 pointer-events-none z-10"
-           :style="referenceStyle">
+      <div
+        v-if="props.referenceRect"
+        class="absolute border-2 border-dashed border-blue-400 bg-blue-500/10 pointer-events-none z-10"
+        :style="referenceStyle"
+      >
         <div
-            class="absolute -top-6 left-0 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded font-mono shadow-sm whitespace-nowrap"
-            :style="{ transform: `scale(${1/viewState.scale})`, transformOrigin: 'bottom left' }">
+          class="absolute -top-6 left-0 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded font-mono shadow-sm whitespace-nowrap"
+          :style="{ transform: `scale(${1/viewState.scale})`, transformOrigin: 'bottom left' }"
+        >
           {{ props.referenceLabel }}
         </div>
       </div>
 
-      <div v-if="imageUrl && selection.w > 0" class="absolute border z-20 pointer-events-none"
-           :class="props.referenceRect ? 'border-red-500 bg-red-500/20' : 'border-emerald-500 bg-emerald-500/20'"
-           :style="selectionStyle">
+      <div
+        v-if="imageUrl && selection.w > 0"
+        class="absolute border z-20 pointer-events-none"
+        :class="props.referenceRect ? 'border-red-500 bg-red-500/20' : 'border-emerald-500 bg-emerald-500/20'"
+        :style="selectionStyle"
+      >
         <div
-            class="absolute -bottom-6 right-0 text-white text-[10px] px-1.5 py-0.5 rounded font-mono shadow-sm whitespace-nowrap"
-            :class="props.referenceRect ? 'bg-red-500' : 'bg-emerald-500'"
-            :style="{ transform: `scale(${1/viewState.scale})`, transformOrigin: 'top right' }">
+          class="absolute -bottom-6 right-0 text-white text-[10px] px-1.5 py-0.5 rounded font-mono shadow-sm whitespace-nowrap"
+          :class="props.referenceRect ? 'bg-red-500' : 'bg-emerald-500'"
+          :style="{ transform: `scale(${1/viewState.scale})`, transformOrigin: 'top right' }"
+        >
           {{ Math.round(selection.w) }} x {{ Math.round(selection.h) }}
         </div>
       </div>
     </div>
 
     <div class="absolute top-4 right-4 flex flex-row gap-2">
-      <button @click="emit('refresh')"
-              class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
-              title="刷新屏幕">
-        <RefreshCw :size="16" :class="{'animate-spin': isLoading}"/>
+      <button
+        class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+        title="刷新屏幕"
+        @click="emit('refresh')"
+      >
+        <RefreshCw
+          :size="16"
+          :class="{'animate-spin': isLoading}"
+        />
       </button>
 
-      <button @click="triggerFileUpload"
-              class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
-              title="上传本地图片(自动缩放至当前截图尺寸)">
-        <Upload :size="16"/>
+      <button
+        class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+        title="上传本地图片(自动缩放至当前截图尺寸)"
+        @click="triggerFileUpload"
+      >
+        <Upload :size="16" />
       </button>
 
-      <button @click="resetView"
-              class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
-              title="重置视图">
-        <RotateCcw :size="16"/>
+      <button
+        class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+        title="重置视图"
+        @click="resetView"
+      >
+        <RotateCcw :size="16" />
       </button>
     </div>
 
     <div
-        class="absolute bottom-4 right-4 px-2 py-1 bg-black/40 text-white text-[10px] rounded backdrop-blur font-mono pointer-events-none border border-white/10">
+      class="absolute bottom-4 right-4 px-2 py-1 bg-black/40 text-white text-[10px] rounded backdrop-blur font-mono pointer-events-none border border-white/10"
+    >
       {{ Math.round(viewState.scale * 100) }}%
     </div>
   </div>

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, h } from 'vue'
+import { ElMessage } from 'element-plus'
 import {
   Database, HardDrive, Settings, RefreshCw, FilePlus, Loader2,
   CheckCircle2, XCircle, Circle
 } from 'lucide-vue-next'
 import { resourceApi } from '../../../services/api'
+import { makeFileId, parseFileId, getFileObjById } from '../../../utils/fileId'
 import Dropdown from '../Common/Dropdown.vue'
 import type { DropdownOption } from '../Common/Dropdown.vue'
 import type { ResourceProfile, ResourceFileInfo } from '../../../services/api'
@@ -22,51 +24,51 @@ const StatusIndicator = {
   }
 }
 
-import { h } from 'vue'
-
 type EditableProfile = ResourceProfile & { paths: string[] }
 
-defineProps<{
+const props = defineProps<{
   currentFilename?: string
-  currentSource?: string
+  profiles?: EditableProfile[]
+  profileIndex?: number
+  selectedFile?: string
 }>()
 
-const emit = defineEmits<{
-  'load-nodes': [payload: { filename: string; source: string }]
-  'load-images': [payload: Record<string, unknown>]
-  'request-switch-file': [payload: { filename: string; source: string }]
-}>()
+const emit = defineEmits([
+  'file-selected',
+  'config-changed',
+  'update:profiles',
+  'update:profileIndex',
+  'update:selectedFile',
+  'open-settings',
+  'open-create-file'
+])
 
-// 状态
-const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
-const message = ref('资源未连接')
+// 内部状态 (当 props 未提供时使用)
+const internalStatus = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
+const internalMessage = ref('资源未连接')
+const internalProfiles = ref<EditableProfile[]>([])
+const internalProfileIndex = ref(0)
+const internalSelectedFile = ref('')
 
-// 资源配置
-const resourceProfiles = ref<EditableProfile[]>([])
-const selectedProfileIndex = ref(0)
-const selectedResourceFile = ref('')
+// 使用 props 或内部状态
+const status = computed(() => internalStatus.value)
+const message = computed(() => internalMessage.value)
+const resourceProfiles = computed<EditableProfile[]>(() => props.profiles ?? internalProfiles.value)
+const selectedProfileIndex = computed(() => props.profileIndex ?? internalProfileIndex.value)
+const selectedResourceFile = computed(() => props.selectedFile ?? internalSelectedFile.value)
+
+// 本地可变副本 (用于 API 调用结果)
+const localProfiles = ref<EditableProfile[]>([])
+const localProfileIndex = ref(0)
+const localSelectedFile = ref('')
 const availableFiles = ref<ResourceFileInfo[]>([])
 
-// 弹窗状态
-const showResourceSettings = ref(false)
-const showCreateFileModal = ref(false)
-
-// 当前配置
-const currentProfile = computed<EditableProfile>(() => 
-  resourceProfiles.value[selectedProfileIndex.value] || { name: 'None', paths: [] }
+const currentProfile = computed<EditableProfile>(() =>
+  resourceProfiles.value[selectedProfileIndex.value] || { name: 'None', paths: [] } as EditableProfile
 )
 
-// 工具函数
-const makeFileId = (source: string, filename: string | null) => `${source}|${filename ?? ''}`
-const parseFileId = (id: string) => {
-  if (!id) return { source: '', filename: '' }
-  const sepIndex = id.lastIndexOf('|')
-  if (sepIndex === -1) return { source: '', filename: id }
-  return { source: id.slice(0, sepIndex), filename: id.slice(sepIndex + 1) }
-}
-const getFileObjById = (id: string) => availableFiles.value.find((f: ResourceFileInfo) => makeFileId(f.source, f.value) === id)
+const findFileById = (id: string) => getFileObjById(id, availableFiles.value)
 
-// 下拉框选项
 const profileOptions = computed<DropdownOption[]>(() => {
   if (resourceProfiles.value.length === 0) {
     return [{ label: '无配置...', value: -1, disabled: true }]
@@ -87,7 +89,6 @@ const fileOptions = computed<DropdownOption[]>(() => {
   }))
 })
 
-// 规范化配置
 const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
   (profiles || []).map(p => ({
     ...p,
@@ -97,8 +98,8 @@ const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
 // 加载资源
 const handleResourceLoad = async () => {
   try {
-    status.value = 'connecting'
-    message.value = '加载中...'
+    internalStatus.value = 'connecting'
+    internalMessage.value = '加载中...'
 
     const res = await resourceApi.load(currentProfile.value, {
       context: { feature: 'resource', action: 'load', component: 'ResourceManager' }
@@ -106,73 +107,50 @@ const handleResourceLoad = async () => {
 
     const ok = (res as any)?.r ?? (res as any)?.success ?? true
     if (!ok) {
-      status.value = 'failed'
-      message.value = (res as any)?.message || '资源加载失败'
+      internalStatus.value = 'failed'
+      internalMessage.value = (res as any)?.message || '资源加载失败'
       return
     }
 
-    status.value = 'connected'
-    message.value = '已就绪'
+    internalStatus.value = 'connected'
+    internalMessage.value = '已就绪'
 
     if ((res as any).list) {
       availableFiles.value = (res.list || []) as ResourceFileInfo[]
-      let fileStillExists = selectedResourceFile.value ? getFileObjById(selectedResourceFile.value) : null
+      const curFile = props.selectedFile ?? localSelectedFile.value
+      let fileStillExists = curFile ? findFileById(curFile) : null
 
-      if (!fileStillExists && selectedResourceFile.value && !selectedResourceFile.value.includes('|')) {
-        const matchByName = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+      if (!fileStillExists && curFile && !curFile.includes('|')) {
+        const matchByName = availableFiles.value.find(f => f.value === curFile)
         if (matchByName) {
-          selectedResourceFile.value = makeFileId(matchByName.source, matchByName.value)
+          const newId = makeFileId(matchByName.source, matchByName.value)
+          localSelectedFile.value = newId
+          emit('update:selectedFile', newId)
           fileStillExists = matchByName
         }
       }
 
-      if (!selectedResourceFile.value || !fileStillExists) {
+      if (!curFile || !fileStillExists) {
         if (availableFiles.value.length > 0) {
           const firstFile = availableFiles.value[0]
           if (firstFile.value) {
-            await executeFileSwitch(firstFile.value, firstFile.source)
+            const newId = makeFileId(firstFile.source, firstFile.value)
+            localSelectedFile.value = newId
+            emit('update:selectedFile', newId)
+            emit('file-selected', { filename: firstFile.value, source: firstFile.source })
           }
         } else {
-          selectedResourceFile.value = ''
+          localSelectedFile.value = ''
+          emit('update:selectedFile', '')
         }
       } else {
-        await fetchAndEmitNodes()
+        emit('file-selected', { filename: fileStillExists.value, source: fileStillExists.source })
       }
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("资源加载流程异常", e)
-    status.value = 'failed'
-    message.value = '加载失败'
-  }
-}
-
-// 获取并发送节点数据
-const fetchAndEmitNodes = async () => {
-  if (!selectedResourceFile.value) return
-  const fileObj = getFileObjById(selectedResourceFile.value)
-  if (!fileObj || !fileObj.value) return
-
-  try {
-    message.value = '加载节点中...'
-    const res = await resourceApi.getFileNodes<Record<string, unknown>>(fileObj.source, fileObj.value, {
-      context: { feature: 'resource', action: 'get_nodes', component: 'ResourceManager' }
-    })
-    const nodes = res.nodes || {}
-
-    emit('load-nodes', { filename: fileObj.value, source: fileObj.source })
-    message.value = `已加载: ${Object.keys(nodes).length} 节点`
-
-    try {
-      const imgRes = await resourceApi.getTemplateImages(fileObj.source, fileObj.value, {
-        context: { feature: 'resource', action: 'get_templates', component: 'ResourceManager' }
-      })
-      if (imgRes.results) emit('load-images', imgRes.results as Record<string, unknown>)
-    } catch (imgError) {
-      console.warn("图片加载失败", imgError)
-    }
-  } catch (e: any) {
-    console.error("加载节点失败", e)
-    message.value = '节点加载失败'
+    internalStatus.value = 'failed'
+    internalMessage.value = '加载失败'
   }
 }
 
@@ -188,84 +166,128 @@ const executeFileSwitch = async (filename: string, source?: string) => {
   })
 
   if (target) {
-    selectedResourceFile.value = makeFileId(target.source, target.value)
-    await fetchAndEmitNodes()
+    const newId = makeFileId(target.source, target.value)
+    localSelectedFile.value = newId
+    emit('update:selectedFile', newId)
+    emit('file-selected', { filename: target.value, source: target.source })
   } else {
-    alert(`无法切换: 未找到文件 ${filename}`)
+    ElMessage.error(`无法切换: 未找到文件 ${filename}`)
   }
 }
 
 // 处理文件选择变化
-const handleFileSelectChange = (newFileId: string) => {
-  if (newFileId === selectedResourceFile.value) return
-  const fileObj = getFileObjById(newFileId)
+const handleFileSelectChange = (newFileId: PropertyKey) => {
+  const fileId = String(newFileId)
+  const curFile = props.selectedFile ?? localSelectedFile.value
+  if (fileId === curFile) return
+  const fileObj = findFileById(fileId)
   if (!fileObj || !fileObj.value) return
 
-  emit('request-switch-file', {
+  localSelectedFile.value = fileId
+  emit('update:selectedFile', fileId)
+  emit('file-selected', {
     filename: fileObj.value,
     source: fileObj.source
   })
+}
+
+// 设置 profiles
+const setProfiles = (profiles: EditableProfile[]) => {
+  localProfiles.value = profiles
+  emit('update:profiles', profiles)
+}
+
+const setProfileIndex = (index: number) => {
+  localProfileIndex.value = index
+  emit('update:profileIndex', index)
 }
 
 // 暴露方法
 defineExpose({
   handleResourceLoad,
   executeFileSwitch,
-  resourceProfiles,
-  selectedProfileIndex,
-  selectedResourceFile,
-  availableFiles,
+  setProfiles,
+  setProfileIndex,
   normalizeProfiles,
   makeFileId,
   parseFileId,
-  getFileObjById,
+  findFileById,
   status,
-  message
+  message,
+  fileOptions,
+  currentProfile,
+  availableFiles,
+  resourceProfiles,
+  selectedProfileIndex,
+  selectedResourceFile
 })
 
 // 配置切换时重新加载
-watch(selectedProfileIndex, () => handleResourceLoad())
+watch(selectedProfileIndex, (nv, ov) => {
+  if (nv === ov) return
+  emit('config-changed')
+  handleResourceLoad()
+})
 </script>
 
 <template>
   <section class="space-y-2">
     <div class="flex items-center justify-between text-xs mb-1">
       <div class="flex items-center gap-1.5 font-bold text-slate-700">
-        <Database :size="14" class="text-emerald-500"/>
+        <Database
+          :size="14"
+          class="text-emerald-500"
+        />
         资源配置
       </div>
-      <StatusIndicator :status="status"/>
+      <StatusIndicator :status="status" />
     </div>
     <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm">
       <div class="flex gap-2">
         <Dropdown
-          v-model="selectedProfileIndex"
+          :model-value="selectedProfileIndex"
           :options="profileOptions"
           placeholder="选择资源配置"
           class="flex-1"
+          @update:model-value="emit('update:profileIndex', $event); emit('config-changed')"
         />
-        <button @click="showResourceSettings = true" class="btn-icon">
-          <Settings :size="16"/>
+        <button
+          class="btn-icon"
+          @click="$emit('open-settings')"
+        >
+          <Settings :size="16" />
         </button>
       </div>
       <div class="flex gap-2">
-        <button @click="handleResourceLoad" :disabled="status === 'connecting'"
-                class="flex-1 btn-primary bg-emerald-500 shadow-emerald-100">
-          <component :is="status === 'connecting' ? RefreshCw : HardDrive" :size="12"
-                     :class="{'animate-spin': status === 'connecting'}"/>
+        <button
+          :disabled="status === 'connecting'"
+          class="flex-1 btn-primary bg-emerald-500 shadow-emerald-100"
+          @click="handleResourceLoad"
+        >
+          <component
+            :is="status === 'connecting' ? RefreshCw : HardDrive"
+            :size="12"
+            :class="{'animate-spin': status === 'connecting'}"
+          />
           <span>{{ status === 'connected' ? '重新加载' : '加载资源' }}</span>
         </button>
-        <button @click="showCreateFileModal = true" :disabled="resourceProfiles.length === 0"
-                class="btn-icon px-3">
-          <FilePlus :size="16"/>
+        <button
+          :disabled="resourceProfiles.length === 0"
+          class="btn-icon px-3"
+          @click="$emit('open-create-file')"
+        >
+          <FilePlus :size="16" />
         </button>
       </div>
-      <div v-if="status === 'connected'" class="animate-in fade-in slide-in-from-top-2">
+      <div
+        v-if="status === 'connected'"
+        class="animate-in fade-in slide-in-from-top-2"
+      >
         <Dropdown
           :model-value="selectedResourceFile"
-          @update:model-value="handleFileSelectChange"
           :options="fileOptions"
           placeholder="选择文件"
+          @update:model-value="handleFileSelectChange"
         />
       </div>
     </div>

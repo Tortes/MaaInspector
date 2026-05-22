@@ -4,12 +4,12 @@ import { ChevronDown, Check } from 'lucide-vue-next'
 
 export interface DropdownOption {
   label: string
-  value: any
+  value: PropertyKey
   disabled?: boolean
 }
 
 const props = withDefaults(defineProps<{
-  modelValue: any
+  modelValue: PropertyKey
   options: DropdownOption[]
   placeholder?: string
   disabled?: boolean
@@ -21,7 +21,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: any): void
+  (e: 'update:modelValue', value: PropertyKey): void
 }>()
 
 const isOpen = ref(false)
@@ -89,11 +89,13 @@ const sizeClasses = computed(() => {
 </script>
 
 <template>
-  <div ref="dropdownRef" class="relative w-full">
+  <div
+    ref="dropdownRef"
+    class="relative w-full"
+  >
     <!-- 触发按钮 -->
     <button
       type="button"
-      @click="toggleDropdown"
       :disabled="disabled"
       class="w-full bg-white border border-slate-200 rounded-lg text-slate-600 outline-none transition-all shadow-sm flex items-center justify-between"
       :class="[
@@ -105,8 +107,12 @@ const sizeClasses = computed(() => {
           'cursor-pointer': !disabled
         }
       ]"
+      @click="toggleDropdown"
     >
-      <span class="truncate" :class="{'text-slate-400': !selectedOption}">
+      <span
+        class="truncate"
+        :class="{'text-slate-400': !selectedOption}"
+      >
         {{ displayText }}
       </span>
       <ChevronDown
@@ -135,7 +141,6 @@ const sizeClasses = computed(() => {
             v-for="option in options"
             :key="option.value"
             type="button"
-            @click="selectOption(option)"
             :disabled="option.disabled"
             class="w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between"
             :class="{
@@ -143,6 +148,7 @@ const sizeClasses = computed(() => {
               'text-slate-600 hover:bg-slate-50': option.value !== modelValue && !option.disabled,
               'text-slate-400 cursor-not-allowed': option.disabled
             }"
+            @click="selectOption(option)"
           >
             <span class="truncate">{{ option.label }}</span>
             <Check

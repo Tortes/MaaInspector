@@ -1,8 +1,8 @@
 import type { Ref } from 'vue'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { useVueFlow } from '@vue-flow/core'
-import type { FlowEdge, FlowNode, SpacingKey, LayoutAlgorithm, LayoutDirection } from './flowTypes'
-import { SPACING_OPTIONS } from './flowOptions'
+import type { FlowEdge, FlowNode, SpacingKey, LayoutAlgorithm, LayoutDirection } from '../utils/flowTypes'
+import { SPACING_OPTIONS } from '../utils/flowOptions'
 
 export interface LayoutOptions {
   algorithm: LayoutAlgorithm

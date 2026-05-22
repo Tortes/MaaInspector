@@ -9,13 +9,25 @@ import FocusTab from './NodeDetailsPanels/FocusTab.vue'
 import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
-import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic'
-import type { useImageManager } from '../../utils/useImageManager'
+import { useNodeForm, recognitionTypes, actionTypes, type UseNodeFormEmit } from '../../utils/nodeLogic'
+import type { useImageManager } from '../../composables/useImageManager'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage } from '../../utils/flowTypes'
 
 type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
 type TemplateTarget = { compositeKey: 'all_of' | 'any_of'; compositeIndex: number }
 type TemplateTargetPayload = { compositeKey?: 'all_of' | 'any_of'; compositeIndex?: number }
+
+interface DevicePickResult {
+  type?: string
+  validPaths?: string[]
+  images?: ImageItem[]
+  tempImages?: ImageItem[]
+  deletedImages?: ImageItem[]
+  imagePath?: string
+  imageBase64?: string
+  closeModal?: boolean
+  [key: string]: unknown
+}
 
 const props = defineProps<{
   visible: boolean
@@ -32,7 +44,7 @@ type PickerPayload = {
   referenceField?: string | null
   referenceLabel?: string | null
   referenceRect?: number[] | null
-  onConfirm?: (val: any) => void
+  onConfirm?: (val: DevicePickResult | number[]) => void
 }
 
 const emit = defineEmits<{
@@ -43,7 +55,7 @@ const emit = defineEmits<{
   (e: 'open-picker', payload: string | PickerPayload, referenceField?: string | null, referenceLabel?: string): void
 }>()
 
-const formMethods = useNodeForm(props as any, emit as any)
+const formMethods = useNodeForm(props, emit as unknown as UseNodeFormEmit)
 const {
   formData, jsonStr, jsonError, getValue, setValue,
   getArrayList, setArrayList, updateJsonFromForm, handleJsonInput,
@@ -99,7 +111,7 @@ const deviceScreenConfig = reactive<{
   deletedImageList: ImageItem[]
   filename: string
   nodeId: string
-  onConfirm?: ((val: any) => void) | null
+  onConfirm?: ((val: DevicePickResult | number[]) => void) | null
   templateTarget?: TemplateTarget | null
 }>({
   targetField: '',
@@ -294,46 +306,48 @@ const openImageManager = (payload?: TemplateTargetPayload) => {
   showDeviceScreen.value = true
 }
 
-const handleDevicePick = (result: any) => {
+const handleDevicePick = (result: unknown) => {
   if (deviceScreenConfig.onConfirm) {
-    deviceScreenConfig.onConfirm(result)
+    deviceScreenConfig.onConfirm(result as DevicePickResult | number[])
     showDeviceScreen.value = false
     return
   }
-  if (deviceScreenConfig.mode === 'image_manager') {
-    if (result.type === 'save_image_changes') {
+  if (deviceScreenConfig.mode === 'image_manager' && typeof result === 'object' && result !== null && 'type' in result) {
+    const imgResult = result as DevicePickResult
+    if (imgResult.type === 'save_image_changes') {
       emit('update-data', {
         _action: 'save_image_changes',
-        validPaths: result.validPaths,
-        images: result.images,
-        tempImages: result.tempImages,
-        deletedImages: result.deletedImages,
+        validPaths: imgResult.validPaths,
+        images: imgResult.images,
+        tempImages: imgResult.tempImages,
+        deletedImages: imgResult.deletedImages,
         templateTarget: deviceScreenConfig.templateTarget
       })
-    } else if (result.type === 'add_temp_image') {
+    } else if (imgResult.type === 'add_temp_image') {
       emit('update-data', {
         _action: 'add_temp_image',
-        imagePath: result.imagePath,
-        imageBase64: result.imageBase64,
+        imagePath: imgResult.imagePath,
+        imageBase64: imgResult.imageBase64,
         templateTarget: deviceScreenConfig.templateTarget
       })
-    } else if (result.type === 'restore_image') {
+    } else if (imgResult.type === 'restore_image') {
       emit('update-data', {
         _action: 'restore_image',
-        imagePath: result.imagePath,
+        imagePath: imgResult.imagePath,
         templateTarget: deviceScreenConfig.templateTarget
       })
     }
-    if (result.closeModal !== false) {
+    if (imgResult.closeModal !== false) {
       showDeviceScreen.value = false
     }
-  } else {
+  } else if (Array.isArray(result)) {
+    const coords = result as number[]
     const field = deviceScreenConfig.targetField
     const refRect = deviceScreenConfig.referenceRect
     if (deviceScreenConfig.mode !== 'ocr' && field.includes('offset') && refRect) {
-      setValue(field, [result[0] - refRect[0], result[1] - refRect[1], result[2] - refRect[2], result[3] - refRect[3]])
+      setValue(field, [coords[0] - refRect[0], coords[1] - refRect[1], coords[2] - refRect[2], coords[3] - refRect[3]])
     } else {
-      setValue(field, result)
+      setValue(field, coords)
     }
   }
 }
@@ -385,35 +399,50 @@ watch(() => props.visible, (val) => {
 </script>
 
 <template>
-  <div v-if="anyDropdownOpen" class="fixed inset-0 z-[60] bg-transparent" @click="closeAllDropdowns"></div>
+  <div
+    v-if="anyDropdownOpen"
+    class="fixed inset-0 z-[60] bg-transparent"
+    @click="closeAllDropdowns"
+  />
 
   <transition
-      enter-active-class="transition ease-out duration-200"
-      enter-from-class="opacity-0 translate-x-[-10px] scale-95"
-      enter-to-class="opacity-100 translate-x-0 scale-100"
-      leave-active-class="transition ease-in duration-150"
-      leave-from-class="opacity-100 translate-x-0 scale-100"
-      leave-to-class="opacity-0 translate-x-[-10px] scale-95"
+    enter-active-class="transition ease-out duration-200"
+    enter-from-class="opacity-0 translate-x-[-10px] scale-95"
+    enter-to-class="opacity-100 translate-x-0 scale-100"
+    leave-active-class="transition ease-in duration-150"
+    leave-from-class="opacity-100 translate-x-0 scale-100"
+    leave-to-class="opacity-0 translate-x-[-10px] scale-95"
   >
     <div
-        v-if="visible"
-          class="absolute left-[105%] top-0 w-[440px] bg-white rounded-2xl shadow-2xl border border-slate-200/80 z-50 nodrag cursor-default flex flex-col overflow-hidden max-h-[70vh] h-auto"
-        @dblclick.stop
-        @wheel.stop
+      v-if="visible"
+      class="absolute left-[105%] top-0 w-[440px] bg-white rounded-2xl shadow-2xl border border-slate-200/80 z-50 nodrag cursor-default flex flex-col overflow-hidden max-h-[70vh] h-auto"
+      @dblclick.stop
+      @wheel.stop
     >
       <div
-          class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-100/80 border-b border-slate-100 shrink-0">
+        class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-100/80 border-b border-slate-100 shrink-0"
+      >
         <div class="flex items-center gap-2.5">
           <div class="p-1.5 rounded-lg bg-white shadow-sm border border-slate-100">
-            <component v-if="recognitionConfig.icon" :is="recognitionConfig.icon" :size="16" :class="recognitionConfig.color"/>
+            <component
+              :is="recognitionConfig.icon"
+              v-if="recognitionConfig.icon"
+              :size="16"
+              :class="recognitionConfig.color"
+            />
           </div>
-          <div><span class="font-bold text-slate-700 text-sm">节点属性</span>
-            <div class="text-[10px] text-slate-400 font-mono">#{{ nodeId }}</div>
+          <div>
+            <span class="font-bold text-slate-700 text-sm">节点属性</span>
+            <div class="text-[10px] text-slate-400 font-mono">
+              #{{ nodeId }}
+            </div>
           </div>
         </div>
-        <button @click.stop="$emit('close'); closeAllDropdowns()"
-                class="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
-          <X :size="16"/>
+        <button
+          class="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+          @click.stop="$emit('close'); closeAllDropdowns()"
+        >
+          <X :size="16" />
         </button>
       </div>
 
@@ -421,17 +450,23 @@ watch(() => props.visible, (val) => {
         <button
           v-for="tab in tabs"
           :key="tab.key"
-          @click="() => { activeTab = tab.key; if (tab.key === 'json') updateJsonFromForm() }"
           :title="tab.label"
           class="flex-1 basis-[48px] flex items-center justify-center px-2 py-2 text-xs font-medium transition-all rounded-lg"
           :class="activeTab === tab.key ? 'text-indigo-600 bg-white border border-indigo-100 shadow-sm' : 'text-slate-500 hover:text-slate-700 bg-white/70 border border-transparent hover:border-slate-200'"
+          @click="() => { activeTab = tab.key; if (tab.key === 'json') updateJsonFromForm() }"
         >
-          <component :is="tab.icon" :size="12" />
+          <component
+            :is="tab.icon"
+            :size="12"
+          />
         </button>
       </div>
 
       <div class="flex-1 min-h-[300px] relative">
-        <div v-show="activeTab === 'basic'" class="absolute inset-0 overflow-y-auto custom-scrollbar-dark">
+        <div
+          v-show="activeTab === 'basic'"
+          class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
+        >
           <BasicPropsTab
             :node-id="nodeId"
             :editing-id="editingId"
@@ -444,7 +479,7 @@ watch(() => props.visible, (val) => {
             :current-action="currentAction"
             :is-action-dropdown-open="dropdownStates.action"
             :form="formMethods"
-            @update:editingId="handleUpdateEditingId"
+            @update:editing-id="handleUpdateEditingId"
             @confirm-id-change="confirmIdChange"
             @toggle-dropdown="toggleDropdown"
             @select-recognition="selectRecognitionType"
@@ -453,7 +488,10 @@ watch(() => props.visible, (val) => {
           />
         </div>
 
-        <div v-show="activeTab === 'flow'" class="absolute inset-0 overflow-y-auto custom-scrollbar-dark">
+        <div
+          v-show="activeTab === 'flow'"
+          class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
+        >
           <FlowTab
             :next-list="nextList"
             :on-error-list="onErrorList"
@@ -463,11 +501,20 @@ watch(() => props.visible, (val) => {
           />
         </div>
 
-        <div v-show="activeTab === 'common'" class="absolute inset-0 overflow-y-auto custom-scrollbar-dark">
-          <CommonTab :get-value="getValue" :set-value="setValue" />
+        <div
+          v-show="activeTab === 'common'"
+          class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
+        >
+          <CommonTab
+            :get-value="getValue"
+            :set-value="setValue"
+          />
         </div>
 
-        <div v-show="activeTab === 'focus'" class="absolute inset-0 overflow-y-auto custom-scrollbar-dark">
+        <div
+          v-show="activeTab === 'focus'"
+          class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
+        >
           <FocusTab
             :focus-data="focusData"
             :available-focus-events="availableFocusEvents"
@@ -479,7 +526,10 @@ watch(() => props.visible, (val) => {
           />
         </div>
 
-        <div v-show="activeTab === 'recognition'" class="absolute inset-0 overflow-y-auto custom-scrollbar-dark">
+        <div
+          v-show="activeTab === 'recognition'"
+          class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
+        >
           <RecognitionTab
             :current-recognition="currentRecognition"
             :recognition-config="recognitionConfig"
@@ -489,7 +539,10 @@ watch(() => props.visible, (val) => {
           />
         </div>
 
-        <div v-show="activeTab === 'action'" class="absolute inset-0 overflow-y-auto custom-scrollbar-dark">
+        <div
+          v-show="activeTab === 'action'"
+          class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
+        >
           <ActionTab
             :current-action="currentAction"
             :action-config="actionConfig"
@@ -510,20 +563,20 @@ watch(() => props.visible, (val) => {
 
   <Teleport to="body">
     <DeviceScreen
-        :visible="showDeviceScreen"
-        :title="deviceScreenConfig.title"
-        :reference-rect="deviceScreenConfig.referenceRect"
-        :reference-label="deviceScreenConfig.referenceLabel"
-        :mode="deviceScreenConfig.mode"
-        :image-list="deviceScreenConfig.imageList"
-        :temp-image-list="deviceScreenConfig.tempImageList"
-        :deleted-image-list="deviceScreenConfig.deletedImageList"
-        :filename="deviceScreenConfig.filename"
-        :node-id="deviceScreenConfig.nodeId"
-        :initial-rect="deviceScreenConfig.initialRect"
-        @confirm="handleDevicePick"
-        @close="showDeviceScreen = false"
-        @delete-image="handleImageDelete"
+      :visible="showDeviceScreen"
+      :title="deviceScreenConfig.title"
+      :reference-rect="deviceScreenConfig.referenceRect"
+      :reference-label="deviceScreenConfig.referenceLabel"
+      :mode="deviceScreenConfig.mode"
+      :image-list="deviceScreenConfig.imageList"
+      :temp-image-list="deviceScreenConfig.tempImageList"
+      :deleted-image-list="deviceScreenConfig.deletedImageList"
+      :filename="deviceScreenConfig.filename"
+      :node-id="deviceScreenConfig.nodeId"
+      :initial-rect="deviceScreenConfig.initialRect"
+      @confirm="handleDevicePick"
+      @close="showDeviceScreen = false"
+      @delete-image="handleImageDelete"
     />
   </Teleport>
 </template>

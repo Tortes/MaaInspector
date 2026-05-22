@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, h } from 'vue'
 import { Bot, Loader2, CheckCircle2, XCircle, Circle } from 'lucide-vue-next'
 import { agentApi } from '../../../services/api'
 
@@ -15,8 +15,6 @@ const StatusIndicator = {
     }
   }
 }
-
-import { h } from 'vue'
 
 // 状态
 const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
@@ -51,9 +49,9 @@ const handleAgentConnect = async () => {
 
     status.value = 'connected'
     message.value = msg
-  } catch (e: any) {
+  } catch (e: unknown) {
     status.value = 'failed'
-    message.value = '连接失败: ' + (e?.message || '未知错误')
+    message.value = '连接失败: ' + (e instanceof Error ? e.message : '未知错误')
     setTimeout(() => {
       if (status.value === 'failed') status.value = 'disconnected'
     }, 3000)
@@ -72,20 +70,32 @@ defineExpose({
   <section class="space-y-2">
     <div class="flex items-center justify-between text-xs mb-1">
       <div class="flex items-center gap-1.5 font-bold text-slate-700">
-        <Bot :size="14" class="text-violet-500"/>
+        <Bot
+          :size="14"
+          class="text-violet-500"
+        />
         Agent
       </div>
-      <StatusIndicator :status="status"/>
+      <StatusIndicator :status="status" />
     </div>
     <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm">
-      <input v-model="currentAgentSocket" type="text" placeholder="Socket ID..."
-             class="input-base focus:border-violet-500 focus:ring-violet-100 w-full"
-             @keyup.enter="handleAgentConnect"/>
-      <button @click="handleAgentConnect"
-              :disabled="status === 'connecting'"
-              class="w-full btn-primary bg-violet-500 shadow-violet-100">
-        <component :is="status === 'connecting' ? Loader2 : Bot" :size="14"
-                   :class="{'animate-spin': status === 'connecting'}"/>
+      <input
+        v-model="currentAgentSocket"
+        type="text"
+        placeholder="Socket ID..."
+        class="input-base focus:border-violet-500 focus:ring-violet-100 w-full"
+        @keyup.enter="handleAgentConnect"
+      >
+      <button
+        :disabled="status === 'connecting'"
+        class="w-full btn-primary bg-violet-500 shadow-violet-100"
+        @click="handleAgentConnect"
+      >
+        <component
+          :is="status === 'connecting' ? Loader2 : Bot"
+          :size="14"
+          :class="{'animate-spin': status === 'connecting'}"
+        />
         {{ agentButtonLabel }}
       </button>
     </div>

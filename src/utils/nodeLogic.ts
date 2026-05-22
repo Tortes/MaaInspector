@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import type { Component } from 'vue'
-import type { FlowBusinessData } from './flowTypes'
+import type { FlowBusinessData, FlowNodeMeta } from './flowTypes'
 import { toPipelineV1Node, toPipelineV2Node } from './pipelineTransform'
 import {
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, HelpCircle,
@@ -34,15 +34,14 @@ export interface SelectOption<TValue = string> {
 
 export interface UseNodeFormProps {
   visible: boolean
-  nodeData?: {
-    data?: FlowBusinessData
-    focus?: Record<string, unknown>
-    [key: string]: unknown
-  }
+  nodeData?: FlowNodeMeta | null
   pipelineVersion?: 'V1' | 'V2'
 }
 
-export type UseNodeFormEmit = (event: 'update-data', payload: FlowBusinessData) => void
+export interface UseNodeFormEmit {
+  (e: 'update-data', data: FlowBusinessData): void
+  (e: 'update-json', json: string): void
+}
 
 export const RECOGNITION_CONFIG: ConfigItem[] = [
   { key: 'DirectHit', label: '直接命中', icon: Target, color: 'text-blue-600', bg: 'bg-blue-500', border: 'border-blue-200' },
@@ -171,9 +170,7 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
         : formData.value
       jsonStr.value = JSON.stringify(previewData, null, 2)
       jsonError.value = ''
-    } catch (e) {
-      // ignore stringify error
-    }
+    } catch (e) { jsonError.value = 'JSON serialization failed' }
   }
 
   const emitUpdateData = () => {
@@ -246,9 +243,7 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
     try {
       const parsed = JSON.parse(rawVal)
       if (Array.isArray(parsed)) { setValue(key, parsed); return }
-    } catch (e) {
-      // ignore parse error
-    }
+    } catch (e) { console.warn('Failed to set target value:', e) }
     setValue(key, rawVal)
   }
 

@@ -9,6 +9,9 @@ import type { EdgeType } from '../utils/flowOptions'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey } from '../utils/flowTypes'
 import type { NodeStatus } from '../utils/flowTypes'
 import { perfLog, perfMark, perfNow } from '../utils/perfTrace'
+import { useWorkspaceStore } from '../stores/workspace'
+import { useSettingsStore } from '../stores/settings'
+import type { FlowTab } from '../stores/workspace'
 
 const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
 
@@ -29,12 +32,6 @@ type FlowEditorExpose = {
 type InfoPanelExpose = {
   executeFileSwitch: (filename: string, source?: string) => Promise<void>
   handleSaveNodes: () => Promise<void>
-}
-
-interface FlowTab {
-  id: string
-  title: string
-  snapshot: FlowEditorSnapshot
 }
 
 interface DebugPanelState {
@@ -100,6 +97,9 @@ const applyDefaultConfigToBlankSnapshot = (
   }
 }
 
+const workspaceStore = useWorkspaceStore()
+const settingsStore = useSettingsStore()
+
 const restoreInitialState = () => {
   const stored = loadWorkspaceState()
   const appSettings = {
@@ -116,67 +116,71 @@ const restoreInitialState = () => {
 }
 
 const initialState = restoreInitialState()
-const tabs = ref<FlowTab[]>(initialState.tabs)
-const activeTabId = ref(initialState.activeTabId)
-const appSettings = ref<FlowAppSettings>(initialState.appSettings)
+workspaceStore.setTabs(initialState.tabs)
+workspaceStore.setActiveTabId(initialState.activeTabId)
+settingsStore.updateSettings(initialState.appSettings)
+
 const editorRefs = ref<Map<string, FlowEditorExpose>>(new Map())
 const infoPanelRef = ref<InfoPanelExpose | null>(null)
 const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
-const activeTab = computed(() => tabs.value.find(tab => tab.id === activeTabId.value) || tabs.value[0])
-const activeSnapshot = computed(() => activeTab.value.snapshot)
-const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
-const useLowMemoryMode = computed(() => appSettings.value.lowMemoryMode)
+const activeSnapshot = computed(() => workspaceStore.activeTab?.snapshot)
+const activeEditorRef = computed(() => editorRefs.value.get(workspaceStore.activeTabId) || null)
 
 const makeTabTitle = (tab: FlowTab, index: number) => tab.snapshot.flowState?.currentFilename || tab.title || `流程 ${index + 1}`
 
 const snapshotCurrentEditor = () => {
-  if (useLowMemoryMode.value) {
-    const editor = editorRefs.value.get(activeTabId.value)
+  if (settingsStore.lowMemoryMode) {
+    const editor = editorRefs.value.get(workspaceStore.activeTabId)
     if (!editor) return
-    updateTabSnapshot(activeTabId.value, editor.getSnapshot())
+    updateTabSnapshot(workspaceStore.activeTabId, editor.getSnapshot())
   }
 }
 
 const selectTab = (tabId: string) => {
-  if (tabId === activeTabId.value) return
+  if (tabId === workspaceStore.activeTabId) return
   snapshotCurrentEditor()
-  activeTabId.value = tabId
+  workspaceStore.setActiveTabId(tabId)
   schedulePersistWorkspaceState()
 }
 
 const addTab = () => {
-  const nextIndex = tabs.value.length + 1
+  const nextIndex = workspaceStore.tabs.length + 1
   const nextTab = {
     id: `flow-${Date.now()}-${nextIndex}`,
     title: `流程 ${nextIndex}`,
-    snapshot: createEmptySnapshot(appSettings.value)
+    snapshot: createEmptySnapshot({
+      edgeType: settingsStore.edgeType,
+      spacing: settingsStore.spacing,
+      layoutAlgorithm: settingsStore.layoutAlgorithm,
+      layoutDirection: settingsStore.layoutDirection,
+      pipelineVersion: settingsStore.pipelineVersion,
+      restoreWorkspaceOnStart: settingsStore.restoreWorkspaceOnStart,
+      lowMemoryMode: settingsStore.lowMemoryMode
+    })
   }
-  tabs.value.push(nextTab)
-  activeTabId.value = nextTab.id
+  workspaceStore.addTab(nextTab)
   schedulePersistWorkspaceState()
 }
 
 const closeTab = (tabId: string) => {
-  if (tabs.value.length <= 1) return
-  const index = tabs.value.findIndex(tab => tab.id === tabId)
+  if (workspaceStore.tabs.length <= 1) return
+  const index = workspaceStore.tabs.findIndex(tab => tab.id === tabId)
   if (index < 0) return
-  const wasActive = activeTabId.value === tabId
-  tabs.value.splice(index, 1)
   editorRefs.value.delete(tabId)
-  if (wasActive) activeTabId.value = tabs.value[Math.max(0, index - 1)]?.id || tabs.value[0].id
+  workspaceStore.removeTab(tabId)
   schedulePersistWorkspaceState()
 }
 
 const updateTabSnapshot = (tabId: string, snapshot: FlowEditorSnapshot) => {
   const start = perfNow()
-  const tab = tabs.value.find(item => item.id === tabId)
+  const tab = workspaceStore.tabs.find(item => item.id === tabId)
   if (!tab) return
   const hadLoadedFile = !!tab.snapshot.flowState?.currentFilename || !!tab.snapshot.selectedResourceFile
   const nextHasLoadedFile = !!snapshot.flowState?.currentFilename || !!snapshot.selectedResourceFile
   if (hadLoadedFile && !nextHasLoadedFile) return
-  tab.snapshot = snapshot
+  workspaceStore.updateTabSnapshot(tabId, snapshot)
   schedulePersistWorkspaceState()
   perfLog('FlowWorkspace.updateTabSnapshot', start, {
     tabId,
@@ -187,7 +191,7 @@ const updateTabSnapshot = (tabId: string, snapshot: FlowEditorSnapshot) => {
 }
 
 const updateActiveSnapshot = (snapshot: FlowEditorSnapshot, tabId?: string) => {
-  updateTabSnapshot(tabId || activeTabId.value, snapshot)
+  updateTabSnapshot(tabId || workspaceStore.activeTabId, snapshot)
 }
 
 const handleRequestSwitchFile = async (payload: { filename: string; source: string }) => {
@@ -208,15 +212,15 @@ const closeDebugPanel = () => {
 const handleLoadNodes = async (payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }) => {
   const start = perfNow()
   perfMark('FlowWorkspace.handleLoadNodes.start', {
-    tabId: activeTabId.value,
+    tabId: workspaceStore.activeTabId,
     filename: payload.filename,
     nodeCount: Object.keys(payload.nodes).length
   })
-  const targetTabId = activeTabId.value
+  const targetTabId = workspaceStore.activeTabId
   const targetEditor = editorRefs.value.get(targetTabId)
   if (!targetEditor) return
   await targetEditor.handleLoadNodesWrapper(payload)
-  if (targetTabId !== activeTabId.value) return
+  if (targetTabId !== workspaceStore.activeTabId) return
   const snapshot = targetEditor.getSnapshot()
   if (snapshot) updateTabSnapshot(targetTabId, snapshot)
   perfLog('FlowWorkspace.handleLoadNodes.total', start, { targetTabId, filename: payload.filename })
@@ -230,11 +234,23 @@ const handleLoadImages = (payload: Record<string, unknown>, basePath?: string) =
 }
 
 const updateActiveSelectedResourceFile = (value: string) => {
-  updateTabSnapshot(activeTabId.value, {
-    ...activeSnapshot.value,
+  const currentSnapshot = activeSnapshot.value
+  if (!currentSnapshot) return
+  updateTabSnapshot(workspaceStore.activeTabId, {
+    ...currentSnapshot,
     selectedResourceFile: value
   })
 }
+
+const getAppSettings = (): FlowAppSettings => ({
+  edgeType: settingsStore.edgeType,
+  spacing: settingsStore.spacing,
+  layoutAlgorithm: settingsStore.layoutAlgorithm,
+  layoutDirection: settingsStore.layoutDirection,
+  pipelineVersion: settingsStore.pipelineVersion,
+  restoreWorkspaceOnStart: settingsStore.restoreWorkspaceOnStart,
+  lowMemoryMode: settingsStore.lowMemoryMode
+})
 
 const handleUpdateCanvasConfig = (payload: {
   edgeType?: EdgeType
@@ -242,22 +258,22 @@ const handleUpdateCanvasConfig = (payload: {
   layoutAlgorithm?: LayoutAlgorithm
   layoutDirection?: LayoutDirection
 }) => {
-  appSettings.value = {
-    ...appSettings.value,
-    ...(payload.edgeType ? { edgeType: payload.edgeType } : {}),
-    ...(payload.spacing ? { spacing: payload.spacing } : {}),
-    ...(payload.layoutAlgorithm ? { layoutAlgorithm: payload.layoutAlgorithm } : {}),
-    ...(payload.layoutDirection ? { layoutDirection: payload.layoutDirection } : {})
-  }
-  tabs.value = tabs.value.map(tab => ({
+  settingsStore.updateSettings({
+    edgeType: payload.edgeType,
+    spacing: payload.spacing,
+    layoutAlgorithm: payload.layoutAlgorithm,
+    layoutDirection: payload.layoutDirection
+  })
+  const currentSettings = getAppSettings()
+  workspaceStore.updateAllTabs(tab => ({
     ...tab,
-    snapshot: applyDefaultConfigToBlankSnapshot(tab.snapshot, appSettings.value)
+    snapshot: applyDefaultConfigToBlankSnapshot(tab.snapshot, currentSettings)
   }))
   schedulePersistWorkspaceState()
   const currentSnapshot = activeSnapshot.value
-  const currentFlowState = currentSnapshot.flowState
+  const currentFlowState = currentSnapshot?.flowState
   if (currentFlowState) {
-    updateTabSnapshot(activeTabId.value, {
+    updateTabSnapshot(workspaceStore.activeTabId, {
       ...currentSnapshot,
       flowState: {
         ...currentFlowState,
@@ -272,18 +288,17 @@ const handleUpdateCanvasConfig = (payload: {
 }
 
 const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {
-  appSettings.value = {
-    ...appSettings.value,
-    pipelineVersion: val
-  }
-  tabs.value = tabs.value.map(tab => ({
+  settingsStore.updateSettings({ pipelineVersion: val })
+  const currentSettings = getAppSettings()
+  workspaceStore.updateAllTabs(tab => ({
     ...tab,
-    snapshot: applyDefaultConfigToBlankSnapshot(tab.snapshot, appSettings.value)
+    snapshot: applyDefaultConfigToBlankSnapshot(tab.snapshot, currentSettings)
   }))
   schedulePersistWorkspaceState()
-  if (!isBlankSnapshot(activeSnapshot.value)) {
-    updateTabSnapshot(activeTabId.value, {
-      ...activeSnapshot.value,
+  const currentSnapshot = activeSnapshot.value
+  if (currentSnapshot && !isBlankSnapshot(currentSnapshot)) {
+    updateTabSnapshot(workspaceStore.activeTabId, {
+      ...currentSnapshot,
       pipelineVersion: val
     })
   }
@@ -291,10 +306,7 @@ const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {
 }
 
 const handleUpdateRestoreWorkspace = (value: boolean) => {
-  appSettings.value = {
-    ...appSettings.value,
-    restoreWorkspaceOnStart: value
-  }
+  settingsStore.updateSettings({ restoreWorkspaceOnStart: value })
   if (value) {
     saveWorkspaceState(getWorkspaceState())
   } else {
@@ -303,28 +315,25 @@ const handleUpdateRestoreWorkspace = (value: boolean) => {
 }
 
 const handleUpdateLowMemory = (value: boolean) => {
-  appSettings.value = {
-    ...appSettings.value,
-    lowMemoryMode: value
-  }
+  settingsStore.updateSettings({ lowMemoryMode: value })
   schedulePersistWorkspaceState()
 }
 
 const getWorkspaceState = (): FlowWorkspaceState => ({
-  tabs: tabs.value,
-  activeTabId: activeTabId.value,
-  appSettings: appSettings.value
+  tabs: workspaceStore.tabs,
+  activeTabId: workspaceStore.activeTabId,
+  appSettings: getAppSettings()
 })
 
 const persistWorkspaceState = () => {
-  if (!appSettings.value.restoreWorkspaceOnStart) return
+  if (!settingsStore.restoreWorkspaceOnStart) return
   const start = perfNow()
   saveWorkspaceState(getWorkspaceState())
-  perfLog('FlowWorkspace.persistWorkspaceState', start, { tabCount: tabs.value.length, activeTabId: activeTabId.value })
+  perfLog('FlowWorkspace.persistWorkspaceState', start, { tabCount: workspaceStore.tabs.length, activeTabId: workspaceStore.activeTabId })
 }
 
 const schedulePersistWorkspaceState = () => {
-  if (!appSettings.value.restoreWorkspaceOnStart) return
+  if (!settingsStore.restoreWorkspaceOnStart) return
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     persistTimer = null
@@ -337,7 +346,6 @@ onBeforeUnmount(() => {
     clearTimeout(persistTimer)
     persistTimer = null
   }
-  // Snapshot all editor instances before unmounting
   editorRefs.value.forEach((editor, tabId) => {
     if (editor) {
       updateTabSnapshot(tabId, editor.getSnapshot())
@@ -352,23 +360,26 @@ onBeforeUnmount(() => {
     <div class="shrink-0 border-b border-slate-200 bg-white px-2 py-1.5">
       <div class="flex items-end gap-1 overflow-x-auto overflow-y-hidden">
         <button
-          v-for="(tab, index) in tabs"
+          v-for="(tab, index) in workspaceStore.tabs"
           :key="tab.id"
           type="button"
           class="group h-9 min-w-0 max-w-[220px] px-3 flex items-center gap-2 border border-b-0 text-xs font-medium transition-colors"
-          :class="activeTab?.id === tab.id
+          :class="workspaceStore.activeTab?.id === tab.id
             ? 'bg-slate-50 border-slate-200 text-slate-900 rounded-t-lg shadow-sm'
             : 'bg-white border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-t-lg'"
           @click="selectTab(tab.id)"
         >
-          <FileJson :size="14" class="shrink-0" />
+          <FileJson
+            :size="14"
+            class="shrink-0"
+          />
           <span class="truncate">{{ makeTabTitle(tab, index) }}</span>
           <span
             v-if="tab.snapshot.flowState?.dataSnapshot !== tab.snapshot.flowState?.originalDataSnapshot"
             class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
           />
           <span
-            v-if="tabs.length > 1"
+            v-if="workspaceStore.tabs.length > 1"
             class="ml-auto p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700"
             title="关闭标签页"
             @click.stop="closeTab(tab.id)"
@@ -382,7 +393,10 @@ onBeforeUnmount(() => {
           title="新建流程标签页"
           @click="addTab"
         >
-          <Plus :size="16" class="mx-auto" />
+          <Plus
+            :size="16"
+            class="mx-auto"
+          />
         </button>
       </div>
     </div>
@@ -390,37 +404,40 @@ onBeforeUnmount(() => {
     <div class="relative flex-1 min-h-0">
       <!-- 低消耗模式: 单实例 + key 强制重建 -->
       <FlowEditor
-        v-if="useLowMemoryMode"
-        :key="activeTab.id"
-        :ref="(el: any) => { if (el) editorRefs.set(activeTabId, el as FlowEditorExpose); else editorRefs.delete(activeTabId) }"
-        :tab-id="activeTab.id"
-        :snapshot="activeTab.snapshot"
-        :default-edge-type="appSettings.edgeType"
-        :default-spacing="appSettings.spacing"
-        :default-layout-algorithm="appSettings.layoutAlgorithm"
-        :default-layout-direction="appSettings.layoutDirection"
-        :default-pipeline-version="appSettings.pipelineVersion"
+        v-if="settingsStore.lowMemoryMode"
+        :key="workspaceStore.activeTab!.id"
+        :ref="(el: any) => { if (el) editorRefs.set(workspaceStore.activeTabId, el as FlowEditorExpose); else editorRefs.delete(workspaceStore.activeTabId) }"
+        :tab-id="workspaceStore.activeTab!.id"
+        :snapshot="workspaceStore.activeTab!.snapshot"
+        :default-edge-type="settingsStore.edgeType"
+        :default-spacing="settingsStore.spacing"
+        :default-layout-algorithm="settingsStore.layoutAlgorithm"
+        :default-layout-direction="settingsStore.layoutDirection"
+        :default-pipeline-version="settingsStore.pipelineVersion"
         :debug-panel-visible="debugPanel.visible"
         @snapshot-change="updateActiveSnapshot"
         @request-switch-file="handleRequestSwitchFile"
         @open-debug-panel="openDebugPanel"
         @close-debug-panel="closeDebugPanel"
       />
-      
+
       <!-- 快速模式: 多实例 + v-show 切换 -->
-      <div v-else class="absolute inset-0">
+      <div
+        v-else
+        class="absolute inset-0"
+      >
         <FlowEditor
-          v-for="tab in tabs"
+          v-for="tab in workspaceStore.tabs"
+          v-show="tab.id === workspaceStore.activeTabId"
           :key="tab.id"
           :ref="(el: any) => { if (el) editorRefs.set(tab.id, el as FlowEditorExpose); else editorRefs.delete(tab.id) }"
-          v-show="tab.id === activeTabId"
           :tab-id="tab.id"
           :snapshot="tab.snapshot"
-          :default-edge-type="appSettings.edgeType"
-          :default-spacing="appSettings.spacing"
-          :default-layout-algorithm="appSettings.layoutAlgorithm"
-          :default-layout-direction="appSettings.layoutDirection"
-          :default-pipeline-version="appSettings.pipelineVersion"
+          :default-edge-type="settingsStore.edgeType"
+          :default-spacing="settingsStore.spacing"
+          :default-layout-algorithm="settingsStore.layoutAlgorithm"
+          :default-layout-direction="settingsStore.layoutDirection"
+          :default-pipeline-version="settingsStore.pipelineVersion"
           :debug-panel-visible="debugPanel.visible"
           @snapshot-change="updateActiveSnapshot"
           @request-switch-file="handleRequestSwitchFile"
@@ -432,18 +449,18 @@ onBeforeUnmount(() => {
       <div class="absolute top-3 right-3 z-50 pointer-events-none">
         <InfoPanel
           ref="infoPanelRef"
-          :node-count="activeTab.snapshot.flowState?.nodes?.length || 0"
-          :edge-count="activeTab.snapshot.flowState?.edges?.length || 0"
-          :is-dirty="activeTab.snapshot.flowState?.dataSnapshot !== activeTab.snapshot.flowState?.originalDataSnapshot"
-          :current-filename="activeTab.snapshot.flowState?.currentFilename || ''"
-          :selected-resource-file="activeTab.snapshot.selectedResourceFile || ''"
-          :zoom="activeTab.snapshot.viewport?.zoom || 1"
-          :edge-type="appSettings.edgeType"
-          :spacing="appSettings.spacing"
-          :layout-algorithm="appSettings.layoutAlgorithm"
-          :layout-direction="appSettings.layoutDirection"
-          :pipeline-version="appSettings.pipelineVersion"
-          :restore-workspace-on-start="appSettings.restoreWorkspaceOnStart"
+          :node-count="workspaceStore.activeTab!.snapshot.flowState?.nodes?.length || 0"
+          :edge-count="workspaceStore.activeTab!.snapshot.flowState?.edges?.length || 0"
+          :is-dirty="workspaceStore.activeTab!.snapshot.flowState?.dataSnapshot !== workspaceStore.activeTab!.snapshot.flowState?.originalDataSnapshot"
+          :current-filename="workspaceStore.activeTab!.snapshot.flowState?.currentFilename || ''"
+          :selected-resource-file="workspaceStore.activeTab!.snapshot.selectedResourceFile || ''"
+          :zoom="workspaceStore.activeTab!.snapshot.viewport?.zoom || 1"
+          :edge-type="settingsStore.edgeType"
+          :spacing="settingsStore.spacing"
+          :layout-algorithm="settingsStore.layoutAlgorithm"
+          :layout-direction="settingsStore.layoutDirection"
+          :pipeline-version="settingsStore.pipelineVersion"
+          :restore-workspace-on-start="settingsStore.restoreWorkspaceOnStart"
           @update:selected-resource-file="updateActiveSelectedResourceFile"
           @load-nodes="handleLoadNodes"
           @load-images="handleLoadImages"
@@ -459,9 +476,9 @@ onBeforeUnmount(() => {
 
       <NodeDebugPanel
         :visible="debugPanel.visible"
-        :nodes="activeTab.snapshot.flowState?.nodes || []"
-        :current-filename="activeTab.snapshot.flowState?.currentFilename || ''"
-        :current-source="activeTab.snapshot.flowState?.currentSource || ''"
+        :nodes="workspaceStore.activeTab!.snapshot.flowState?.nodes || []"
+        :current-filename="workspaceStore.activeTab!.snapshot.flowState?.currentFilename || ''"
+        :current-source="workspaceStore.activeTab!.snapshot.flowState?.currentSource || ''"
         :initial-node-id="debugPanel.nodeId"
         @close="closeDebugPanel"
         @locate-node="(nodeId) => activeEditorRef?.handleLocateNode(nodeId)"

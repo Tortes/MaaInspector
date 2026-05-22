@@ -21,7 +21,12 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
 <template>
   <div class="p-3 space-y-3">
     <div class="flex items-center gap-2 text-xs font-semibold text-slate-700">
-      <component :is="actionConfig?.icon" v-if="actionConfig?.icon" :size="14" :class="actionConfig?.color" />
+      <component
+        :is="actionConfig?.icon"
+        v-if="actionConfig?.icon"
+        :size="14"
+        :class="actionConfig?.color"
+      />
       <span>{{ actionConfig?.label }} 属性</span>
       <span class="text-[10px] text-slate-400">({{ actionConfig?.value }})</span>
     </div>
@@ -32,7 +37,10 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
     >
       当前动作无需额外配置。
     </div>
-    <div v-else class="rounded-xl border border-slate-100 overflow-hidden">
+    <div
+      v-else
+      class="rounded-xl border border-slate-100 overflow-hidden"
+    >
       <div class="p-3 space-y-2.5 border-t border-slate-100">
         <template v-if="['Click', 'LongPress', 'TouchDown', 'TouchMove', 'TouchUp', 'Custom'].includes(currentAction)">
           <div class="space-y-1">
@@ -40,13 +48,13 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <div class="flex gap-1">
               <input
                 :value="getTargetValue('target')"
-                @input="setTargetValue('target', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="留空默认自身, 或输入节点名/[x,y,w,h]"
-              />
+                @input="setTargetValue('target', getInputValue($event))"
+              >
               <button
-                @click="emit('open-picker', 'target', null, 'Target')"
                 class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"
+                @click="emit('open-picker', 'target', null, 'Target')"
               >
                 <Crop :size="12" />
               </button>
@@ -57,42 +65,51 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <div class="flex gap-1">
               <input
                 :value="getJsonValue('target_offset')"
-                @input="setJsonValue('target_offset', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="[x,y,w,h]"
-              />
+                @input="setJsonValue('target_offset', getInputValue($event))"
+              >
               <button
-                @click="emit('open-picker', 'target_offset', 'target', '目标区域')"
                 class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center"
+                @click="emit('open-picker', 'target_offset', 'target', '目标区域')"
               >
                 <Crosshair :size="12" />
               </button>
             </div>
           </div>
-          <div v-if="['Click', 'LongPress', 'TouchDown', 'TouchMove', 'TouchUp'].includes(currentAction)" class="grid grid-cols-2 gap-2">
+          <div
+            v-if="['Click', 'LongPress', 'TouchDown', 'TouchMove', 'TouchUp'].includes(currentAction)"
+            class="grid grid-cols-2 gap-2"
+          >
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">触点编号</label>
               <input
                 type="number"
                 :value="getValue('contact', 0)"
-                @input="setValue('contact', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-              />
+                @input="setValue('contact', parseInt(getInputValue($event)) || 0)"
+              >
             </div>
-            <div v-if="currentAction.startsWith('Touch')" class="space-y-1">
+            <div
+              v-if="currentAction.startsWith('Touch')"
+              class="space-y-1"
+            >
               <label class="text-[10px] font-semibold text-slate-500 uppercase">压力值</label>
               <input
                 type="number"
                 :value="getValue('pressure', 0)"
-                @input="setValue('pressure', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-              />
+                @input="setValue('pressure', parseInt(getInputValue($event)) || 0)"
+              >
             </div>
           </div>
         </template>
 
         <template v-if="['Swipe', 'MultiSwipe'].includes(currentAction)">
-          <div v-if="currentAction === 'MultiSwipe'" class="p-2 bg-amber-50 rounded text-[10px] text-amber-700 mb-2">
+          <div
+            v-if="currentAction === 'MultiSwipe'"
+            class="p-2 bg-amber-50 rounded text-[10px] text-amber-700 mb-2"
+          >
             MultiSwipe 请直接在 JSON 模式编辑 `swipes` 数组。下方仅为单个 Swipe 属性参考。
           </div>
           <div class="grid grid-cols-2 gap-2">
@@ -101,12 +118,12 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
               <div class="flex gap-1">
                 <input
                   :value="getTargetValue('begin')"
-                  @input="setTargetValue('begin', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
-                />
+                  @input="setTargetValue('begin', getInputValue($event))"
+                >
                 <button
-                  @click="emit('open-picker', 'begin', null, '起点')"
                   class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg"
+                  @click="emit('open-picker', 'begin', null, '起点')"
                 >
                   <Crop :size="12" />
                 </button>
@@ -117,12 +134,12 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
               <div class="flex gap-1">
                 <input
                   :value="getJsonValue('begin_offset')"
-                  @input="setJsonValue('begin_offset', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
-                />
+                  @input="setJsonValue('begin_offset', getInputValue($event))"
+                >
                 <button
-                  @click="emit('open-picker', 'begin_offset', 'begin', '起点')"
                   class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg"
+                  @click="emit('open-picker', 'begin_offset', 'begin', '起点')"
                 >
                   <Crosshair :size="12" />
                 </button>
@@ -133,12 +150,12 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
               <div class="flex gap-1">
                 <input
                   :value="getTargetValue('end')"
-                  @input="setTargetValue('end', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
-                />
+                  @input="setTargetValue('end', getInputValue($event))"
+                >
                 <button
-                  @click="emit('open-picker', 'end', 'begin', '起点')"
                   class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg"
+                  @click="emit('open-picker', 'end', 'begin', '起点')"
                 >
                   <Crop :size="12" />
                 </button>
@@ -149,12 +166,12 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
               <div class="flex gap-1">
                 <input
                   :value="getJsonValue('end_offset')"
-                  @input="setJsonValue('end_offset', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
-                />
+                  @input="setJsonValue('end_offset', getInputValue($event))"
+                >
                 <button
-                  @click="emit('open-picker', 'end_offset', 'end', '终点')"
                   class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg"
+                  @click="emit('open-picker', 'end_offset', 'end', '终点')"
                 >
                   <Crosshair :size="12" />
                 </button>
@@ -166,17 +183,17 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
               <label class="text-[10px] font-semibold text-slate-500 uppercase">持续 (ms)</label>
               <input
                 :value="getJsonValue('duration')"
-                @input="setJsonValue('duration', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-              />
+                @input="setJsonValue('duration', getInputValue($event))"
+              >
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">保持 (ms)</label>
               <input
                 :value="getJsonValue('end_hold')"
-                @input="setJsonValue('end_hold', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-              />
+                @input="setJsonValue('end_hold', getInputValue($event))"
+              >
             </div>
           </div>
           <div class="mt-2 flex gap-3">
@@ -184,9 +201,9 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
               <input
                 type="checkbox"
                 :checked="getValue('only_hover', false)"
-                @change="setValue('only_hover', getChecked($event))"
                 class="w-3.5 h-3.5 rounded text-indigo-600"
-              />
+                @change="setValue('only_hover', getChecked($event))"
+              >
               <span class="text-[11px] text-slate-600">仅悬停 (Only Hover)</span>
             </label>
           </div>
@@ -197,10 +214,10 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <label class="text-[10px] font-semibold text-slate-500 uppercase">按键码 (Key)</label>
             <input
               :value="getJsonValue('key')"
-              @input="setJsonValue('key', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
               placeholder="25 或 [25, 26]"
-            />
+              @input="setJsonValue('key', getInputValue($event))"
+            >
           </div>
         </template>
 
@@ -211,18 +228,18 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
               <input
                 type="number"
                 :value="getValue('dx', 0)"
-              @input="setValue('dx', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-              />
+                @input="setValue('dx', parseInt(getInputValue($event)) || 0)"
+              >
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">垂直滚动 (DY)</label>
               <input
                 type="number"
                 :value="getValue('dy', 0)"
-              @input="setValue('dy', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-              />
+                @input="setValue('dy', parseInt(getInputValue($event)) || 0)"
+              >
             </div>
           </div>
         </template>
@@ -232,9 +249,9 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <label class="text-[10px] font-semibold text-slate-500 uppercase">输入文本</label>
             <input
               :value="getValue('input_text', '')"
-              @input="setValue('input_text', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-            />
+              @input="setValue('input_text', getInputValue($event))"
+            >
           </div>
         </template>
 
@@ -243,10 +260,10 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <label class="text-[10px] font-semibold text-slate-500 uppercase">应用包名</label>
             <input
               :value="getValue('package', '')"
-              @input="setValue('package', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
               placeholder="com.example.app"
-            />
+              @input="setValue('package', getInputValue($event))"
+            >
           </div>
         </template>
 
@@ -256,9 +273,9 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <input
               type="number"
               :value="getValue('duration', 1000)"
-              @input="setValue('duration', parseInt(getInputValue($event)) || 1000)"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-            />
+              @input="setValue('duration', parseInt(getInputValue($event)) || 1000)"
+            >
           </div>
         </template>
 
@@ -267,26 +284,26 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <label class="text-[10px] font-semibold text-slate-500 uppercase">执行程序</label>
             <input
               :value="getValue('exec', '')"
-              @input="setValue('exec', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
-            />
+              @input="setValue('exec', getInputValue($event))"
+            >
           </div>
           <div class="space-y-1">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">参数</label>
             <input
               :value="getJsonValue('args')"
-              @input="setJsonValue('args', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
-              placeholder='["arg1"]'
-            />
+              placeholder="[&quot;arg1&quot;]"
+              @input="setJsonValue('args', getInputValue($event))"
+            >
           </div>
           <label class="inline-flex items-center gap-1.5 cursor-pointer">
             <input
               type="checkbox"
               :checked="getValue('detach', false)"
-              @change="setValue('detach', getChecked($event))"
               class="w-3.5 h-3.5 rounded text-indigo-600"
-            />
+              @change="setValue('detach', getChecked($event))"
+            >
             <span class="text-[11px] text-slate-600">分离进程</span>
           </label>
         </template>
@@ -299,23 +316,23 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <label class="text-[10px] font-semibold text-slate-500 uppercase">命令 (cmd)</label>
             <input
               :value="getValue('cmd', '')"
-              @input="setValue('cmd', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
               placeholder="getprop ro.build.version.sdk"
-            />
+              @input="setValue('cmd', getInputValue($event))"
+            >
           </div>
           <div class="space-y-1">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">目标位置 (Target)</label>
             <div class="flex gap-1">
               <input
                 :value="getTargetValue('target')"
-                @input="setTargetValue('target', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="true / 节点名 / [x,y,w,h]"
-              />
+                @input="setTargetValue('target', getInputValue($event))"
+              >
               <button
-                @click="emit('open-picker', 'target', null, 'Target')"
                 class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"
+                @click="emit('open-picker', 'target', null, 'Target')"
               >
                 <Crop :size="12" />
               </button>
@@ -326,13 +343,13 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <div class="flex gap-1">
               <input
                 :value="getJsonValue('target_offset')"
-                @input="setJsonValue('target_offset', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="[x,y,w,h]"
-              />
+                @input="setJsonValue('target_offset', getInputValue($event))"
+              >
               <button
-                @click="emit('open-picker', 'target_offset', 'target', '目标区域')"
                 class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center"
+                @click="emit('open-picker', 'target_offset', 'target', '目标区域')"
               >
                 <Crosshair :size="12" />
               </button>
@@ -345,18 +362,18 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
             <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义动作名</label>
             <input
               :value="getValue('custom_action', '')"
-              @input="setValue('custom_action', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-            />
+              @input="setValue('custom_action', getInputValue($event))"
+            >
           </div>
           <div class="space-y-1">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义参数</label>
             <textarea
               :value="getJsonValue('custom_action_param')"
-              @input="setJsonValue('custom_action_param', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono h-14 resize-none"
               placeholder="JSON"
-            ></textarea>
+              @input="setJsonValue('custom_action_param', getInputValue($event))"
+            />
           </div>
         </template>
       </div>

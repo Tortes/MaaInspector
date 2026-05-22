@@ -227,112 +227,154 @@ onUnmounted(() => {
 
 <template>
   <transition
-      enter-active-class="transition ease-out duration-200"
-      enter-from-class="opacity-0 scale-95"
-      enter-to-class="opacity-100 scale-100"
-      leave-active-class="transition ease-in duration-150"
-      leave-from-class="opacity-100 scale-100"
-      leave-to-class="opacity-0 scale-95"
+    enter-active-class="transition ease-out duration-200"
+    enter-from-class="opacity-0 scale-95"
+    enter-to-class="opacity-100 scale-100"
+    leave-active-class="transition ease-in duration-150"
+    leave-from-class="opacity-100 scale-100"
+    leave-to-class="opacity-0 scale-95"
   >
     <div
-        v-if="visible"
-        class="fixed z-[100] w-[400px] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none flex flex-col max-h-[500px]"
-        :style="{ left: `${position.x}px`, top: `${position.y}px` }"
-        @mousedown.stop
+      v-if="visible"
+      class="fixed z-[100] w-[400px] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none flex flex-col max-h-[500px]"
+      :style="{ left: `${position.x}px`, top: `${position.y}px` }"
+      @mousedown.stop
     >
       <div
-          class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-slate-100 cursor-move shrink-0"
-          @mousedown="startDrag">
+        class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-slate-100 cursor-move shrink-0"
+        @mousedown="startDrag"
+      >
         <div class="flex items-center gap-2">
           <div class="p-1.5 rounded-lg bg-white shadow-sm border border-slate-100">
-            <Search :size="14" class="text-emerald-500"/>
+            <Search
+              :size="14"
+              class="text-emerald-500"
+            />
           </div>
           <span class="font-bold text-slate-700 text-sm">搜索节点</span>
         </div>
-        <button @click.stop="$emit('close')"
-                class="p-1.5 hover:bg-white/80 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
-          <X :size="16"/>
+        <button
+          class="p-1.5 hover:bg-white/80 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+          @click.stop="$emit('close')"
+        >
+          <X :size="16" />
         </button>
       </div>
 
       <div class="p-3 border-b border-slate-100 bg-white shrink-0">
         <div class="flex gap-2">
           <div class="relative flex-1">
-            <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-            <input
-                ref="inputRef"
-                v-model="searchQuery"
-                type="text"
-                :placeholder="useRegex ? '输入正则表达式...' : '输入节点 ID 搜索...'"
-                class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all font-mono"
+            <Search
+              :size="14"
+              class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
+            <input
+              ref="inputRef"
+              v-model="searchQuery"
+              type="text"
+              :placeholder="useRegex ? '输入正则表达式...' : '输入节点 ID 搜索...'"
+              class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all font-mono"
+            >
           </div>
           <button
-              @click="useRegex = !useRegex"
-              class="px-3 rounded-lg border flex items-center justify-center transition-all"
-              :class="useRegex ? 'bg-indigo-100 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'"
-              title="正则表达式开关"
+            class="px-3 rounded-lg border flex items-center justify-center transition-all"
+            :class="useRegex ? 'bg-indigo-100 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'"
+            title="正则表达式开关"
+            @click="useRegex = !useRegex"
           >
-            <Regex :size="16"/>
+            <Regex :size="16" />
           </button>
         </div>
       </div>
 
       <div class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/30">
-
-        <div v-if="localResults.length > 0" class="py-2">
+        <div
+          v-if="localResults.length > 0"
+          class="py-2"
+        >
           <div class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
             <span>当前文件</span>
             <span class="bg-emerald-100 text-emerald-600 px-1.5 rounded-full">{{ localResults.length }}</span>
           </div>
           <div
-              v-for="node in localResults"
-              :key="node.id"
-              class="flex items-center justify-between px-4 py-2 hover:bg-emerald-50 cursor-pointer transition-colors group"
-              @click="locateLocalNode(node)"
+            v-for="node in localResults"
+            :key="node.id"
+            class="flex items-center justify-between px-4 py-2 hover:bg-emerald-50 cursor-pointer transition-colors group"
+            @click="locateLocalNode(node)"
           >
             <div class="min-w-0">
-              <div class="font-mono text-sm text-slate-700 font-medium truncate">{{ getNodeDisplayId(node) }}</div>
+              <div class="font-mono text-sm text-slate-700 font-medium truncate">
+                {{ getNodeDisplayId(node) }}
+              </div>
               <div class="text-[10px] text-slate-400 flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 {{ getNodeTypeLabel(node.data?.type) }}
               </div>
             </div>
-            <MapPin :size="14" class="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"/>
+            <MapPin
+              :size="14"
+              class="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            />
           </div>
         </div>
 
-        <div v-if="localResults.length > 0 && (otherFileResults.length > 0 || isSearchingRemote)"
-             class="h-px bg-slate-200 mx-4 my-1"></div>
+        <div
+          v-if="localResults.length > 0 && (otherFileResults.length > 0 || isSearchingRemote)"
+          class="h-px bg-slate-200 mx-4 my-1"
+        />
 
-        <div v-if="searchQuery.trim()" class="pb-2 pt-2">
+        <div
+          v-if="searchQuery.trim()"
+          class="pb-2 pt-2"
+        >
           <div class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between mb-1">
             <span>全局搜索</span>
-            <span v-if="!isSearchingRemote" class="bg-slate-200 text-slate-600 px-1.5 rounded-full">{{ otherFileResults.length }}</span>
-            <Loader2 v-else :size="12" class="animate-spin text-blue-500"/>
+            <span
+              v-if="!isSearchingRemote"
+              class="bg-slate-200 text-slate-600 px-1.5 rounded-full"
+            >{{ otherFileResults.length }}</span>
+            <Loader2
+              v-else
+              :size="12"
+              class="animate-spin text-blue-500"
+            />
           </div>
 
-          <div v-if="otherFileResults.length === 0 && !isSearchingRemote && searchQuery"
-               class="px-4 py-2 text-xs text-slate-400 italic">
+          <div
+            v-if="otherFileResults.length === 0 && !isSearchingRemote && searchQuery"
+            class="px-4 py-2 text-xs text-slate-400 italic"
+          >
             其他资源目录中无匹配节点
           </div>
 
           <div v-if="!isSearchingRemote && groupedRemoteResults.length > 0">
-            <div v-for="group in groupedRemoteResults" :key="group.key" class="mb-2">
-              
+            <div
+              v-for="group in groupedRemoteResults"
+              :key="group.key"
+              class="mb-2"
+            >
               <div class="px-4 py-1.5 bg-slate-100 border-y border-slate-200/50 flex items-center gap-2 sticky top-0 z-10">
-                <FileJson :size="12" class="text-slate-500"/>
-                <span class="text-xs font-semibold text-slate-600 truncate" :title="group.filename">{{ group.filename }}</span>
-                <span class="text-[10px] text-slate-400 truncate ml-auto font-mono" :title="group.source">
+                <FileJson
+                  :size="12"
+                  class="text-slate-500"
+                />
+                <span
+                  class="text-xs font-semibold text-slate-600 truncate"
+                  :title="group.filename"
+                >{{ group.filename }}</span>
+                <span
+                  class="text-[10px] text-slate-400 truncate ml-auto font-mono"
+                  :title="group.source"
+                >
                   {{ shortenPath(group.source) }}
                 </span>
               </div>
 
               <div
-                  v-for="(res, idx) in group.items"
-                  :key="idx + res.node_id"
-                  class="flex items-center justify-between px-4 pl-8 py-2 hover:bg-blue-50 cursor-pointer transition-colors group border-l-[3px] border-transparent hover:border-blue-400 ml-0"
-                  @click="switchToRemoteNode(res)"
+                v-for="(res, idx) in group.items"
+                :key="idx + res.node_id"
+                class="flex items-center justify-between px-4 pl-8 py-2 hover:bg-blue-50 cursor-pointer transition-colors group border-l-[3px] border-transparent hover:border-blue-400 ml-0"
+                @click="switchToRemoteNode(res)"
               >
                 <div class="min-w-0 flex-1">
                   <div class="font-mono text-sm text-slate-700 font-medium truncate flex items-center gap-2">
@@ -341,14 +383,15 @@ onUnmounted(() => {
                 </div>
                 <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                   <span class="text-[10px] text-blue-600 font-bold">Go</span>
-                  <ArrowRightCircle :size="14" class="text-blue-500"/>
+                  <ArrowRightCircle
+                    :size="14"
+                    class="text-blue-500"
+                  />
                 </div>
               </div>
-
             </div>
           </div>
         </div>
-
       </div>
 
       <div class="px-4 py-2 bg-slate-50 border-t border-slate-100 shrink-0">

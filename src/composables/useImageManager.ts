@@ -1,6 +1,6 @@
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import type { TemplateImage, ImageDataPayload } from './flowTypes'
+import type { TemplateImage, ImageDataPayload } from '../utils/flowTypes'
 
 interface NodeImageState {
   images: TemplateImage[]
@@ -10,30 +10,33 @@ interface NodeImageState {
 
 export function useImageManager() {
   const imageUrlCache = reactive(new Map<string, string>())
-  const nodeImageStates = new Map<string, NodeImageState>()
+  const nodeImageStates = ref(new Map<string, NodeImageState>())
+  const version = ref(0)
 
   function ensureNodeState(nodeId: string): NodeImageState {
-    if (!nodeImageStates.has(nodeId)) {
-      nodeImageStates.set(nodeId, {
+    if (!nodeImageStates.value.has(nodeId)) {
+      nodeImageStates.value.set(nodeId, {
         images: [],
         tempImages: [],
         delImages: []
       })
+      version.value++
     }
-    return nodeImageStates.get(nodeId)!
+    return nodeImageStates.value.get(nodeId)!
   }
 
   const getImageUrl = (fullPath: string): string | undefined => {
     if (!fullPath) return undefined
     if (!imageUrlCache.has(fullPath)) {
       const url = convertFileSrc(fullPath)
-      console.log('[DEBUG getImageUrl] fullPath:', fullPath, '-> url:', url)
+      console.log('[DEBUG] getImageUrl:', { fullPath, url })
       imageUrlCache.set(fullPath, url)
     }
     return imageUrlCache.get(fullPath)
   }
 
   const setNodeImages = (nodeId: string, images: TemplateImage[]) => {
+    console.log('[DEBUG] setNodeImages:', { nodeId, imagesCount: images.length, images: images.map(img => ({ path: img.path, fullPath: img.fullPath, found: img.found })) })
     const state = ensureNodeState(nodeId)
     const enriched = images.map(img => ({
       ...img,
@@ -45,26 +48,26 @@ export function useImageManager() {
         imageUrlCache.set(img.fullPath, img.url)
       }
     })
-    console.log('[DEBUG setNodeImages] nodeId:', nodeId, 'count:', enriched.length, 'first url:', enriched[0]?.url, 'first fullPath:', enriched[0]?.fullPath)
+    version.value++
   }
 
   const getNodeImages = (nodeId: string): TemplateImage[] => {
-    const state = nodeImageStates.get(nodeId)
+    const state = nodeImageStates.value.get(nodeId)
     return state ? [...state.images, ...state.tempImages] : []
   }
 
   const getNodeSavedImages = (nodeId: string): TemplateImage[] => {
-    const state = nodeImageStates.get(nodeId)
+    const state = nodeImageStates.value.get(nodeId)
     return state ? [...state.images] : []
   }
 
   const getNodeTempImages = (nodeId: string): TemplateImage[] => {
-    const state = nodeImageStates.get(nodeId)
+    const state = nodeImageStates.value.get(nodeId)
     return state ? [...state.tempImages] : []
   }
 
   const getNodeDeletedImages = (nodeId: string): TemplateImage[] => {
-    const state = nodeImageStates.get(nodeId)
+    const state = nodeImageStates.value.get(nodeId)
     return state ? [...state.delImages] : []
   }
 
@@ -124,7 +127,7 @@ export function useImageManager() {
     const delImages: ImageDataPayload['delImages'] = []
     const tempImages: ImageDataPayload['tempImages'] = []
 
-    nodeImageStates.forEach((state, nodeId) => {
+    nodeImageStates.value.forEach((state, nodeId) => {
       state.delImages.forEach(img => {
         if (img.path) {
           delImages.push({ path: img.path, nodeId })
@@ -141,7 +144,7 @@ export function useImageManager() {
   }
 
   const clearTempImageData = () => {
-    nodeImageStates.forEach((state) => {
+    nodeImageStates.value.forEach((state) => {
       if (state.tempImages.length > 0) {
         state.images.push(...state.tempImages)
         state.tempImages = []
@@ -151,16 +154,18 @@ export function useImageManager() {
   }
 
   const clearNodeState = (nodeId: string) => {
-    nodeImageStates.delete(nodeId)
+    nodeImageStates.value.delete(nodeId)
+    version.value++
   }
 
   const clearAll = () => {
-    nodeImageStates.clear()
+    nodeImageStates.value.clear()
     imageUrlCache.clear()
+    version.value++
   }
 
   const exportState = () => ({
-    nodeImageStates: Array.from(nodeImageStates.entries()).map(([nodeId, state]) => [
+    nodeImageStates: Array.from(nodeImageStates.value.entries()).map(([nodeId, state]) => [
       nodeId,
       {
         images: JSON.parse(JSON.stringify(state.images)) as TemplateImage[],
@@ -187,7 +192,7 @@ export function useImageManager() {
         url: img.fullPath ? getImageUrl(img.fullPath) : img.url
       }))
 
-      nodeImageStates.set(nodeId, {
+      nodeImageStates.value.set(nodeId, {
         images: enrichImages(images),
         tempImages: enrichImages(tempImages),
         delImages: enrichImages(delImages)
@@ -196,7 +201,7 @@ export function useImageManager() {
   }
 
   const getImagePaths = (nodeId: string): string[] => {
-    const state = nodeImageStates.get(nodeId)
+    const state = nodeImageStates.value.get(nodeId)
     if (!state) return []
     return [...state.images, ...state.tempImages]
       .map(img => img.path)
@@ -211,11 +216,10 @@ export function useImageManager() {
   }
 
   const getImagesForDisplayWithCache = (nodeId: string, templatePaths: string[]): TemplateImage[] => {
-    const state = nodeImageStates.get(nodeId)
-    if (!state) {
-      console.log('[DEBUG getImagesForDisplayWithCache] NO STATE for nodeId:', nodeId, 'templatePaths:', templatePaths)
-      return []
-    }
+    void version.value
+    const state = nodeImageStates.value.get(nodeId)
+    console.log('[DEBUG] getImagesForDisplayWithCache:', { nodeId, templatePaths, hasState: !!state, stateKeys: state ? { imagesCount: state.images.length, tempImagesCount: state.tempImages.length } : null })
+    if (!state) return []
 
     const result: TemplateImage[] = []
 
@@ -223,24 +227,34 @@ export function useImageManager() {
       if (result.length >= 16) break
 
       const stateImg = [...state.images, ...state.tempImages].find(img => img.path === path)
-      if (stateImg && stateImg.url) {
-        result.push(stateImg)
-        continue
+      console.log('[DEBUG] getImagesForDisplayWithCache - path check:', { path, foundStateImg: !!stateImg, fullPath: stateImg?.fullPath, url: stateImg?.url })
+      if (stateImg) {
+        let url = stateImg.url
+        if (!url && stateImg.fullPath) {
+          url = getImageUrl(stateImg.fullPath)
+          console.log('[DEBUG] getImagesForDisplayWithCache - URL generated:', { fullPath: stateImg.fullPath, url })
+          stateImg.url = url
+          version.value++
+        }
+        if (url) {
+          result.push({ ...stateImg, url })
+        }
       }
     }
 
-    console.log('[DEBUG getImagesForDisplayWithCache] nodeId:', nodeId, 'templatePaths:', templatePaths, 'state.images count:', state.images.length, 'result count:', result.length, 'result urls:', result.map(r => r.url))
+    console.log('[DEBUG] getImagesForDisplayWithCache - result:', { resultCount: result.length, resultPaths: result.map(r => r.path) })
     return result
   }
 
   const hasTemplateChanged = (nodeId: string): boolean => {
-    const state = nodeImageStates.get(nodeId)
+    const state = nodeImageStates.value.get(nodeId)
     if (!state) return false
     return state.tempImages.length > 0 || state.delImages.length > 0
   }
 
   return {
     imageUrlCache,
+    version,
     getImageUrl,
     setNodeImages,
     setNodeImageChanges,

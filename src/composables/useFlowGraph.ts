@@ -1,10 +1,11 @@
 // src/composables/useFlowGraph.ts
-import { ref, shallowRef, triggerRef, markRaw, computed } from 'vue'
+import { ref, markRaw, computed } from 'vue'
 import { useVueFlow, MarkerType } from '@vue-flow/core'
 import { useLayout, type LayoutOptions } from './useLayout'
 import { useImageManager } from './useImageManager'
-import { SPACING_OPTIONS, type EdgeType } from './flowOptions'
-import { perfLog, perfMark, perfNow } from './perfTrace'
+import { SPACING_OPTIONS, type EdgeType } from '../utils/flowOptions'
+import { perfLog, perfMark, perfNow } from '../utils/perfTrace'
+import { ElMessage } from 'element-plus'
 import type {
   FlowBusinessData,
   FlowConnection,
@@ -20,7 +21,7 @@ import type {
   LayoutAlgorithm,
   LayoutDirection,
   TemplateImage
-} from './flowTypes'
+} from '../utils/flowTypes'
 import CustomNode from '../components/Flow/CustomNode.vue'
 
 type EdgeStyleResult = Pick<FlowEdge, 'style' | 'animated' | 'type' | 'markerEnd' | 'data'>
@@ -32,8 +33,8 @@ interface PortMapping {
 }
 
 export function useFlowGraph() {
-  const nodes = shallowRef<FlowNode[]>([])
-  const edges = shallowRef<FlowEdge[]>([])
+  const nodes = ref<FlowNode[]>([])
+  const edges = ref<FlowEdge[]>([])
   const currentEdgeType = ref<EdgeType>('smoothstep')
   const currentSpacing = ref<SpacingKey>('normal')
   const currentAlgorithm = ref<LayoutAlgorithm>('layered')
@@ -125,8 +126,8 @@ export function useFlowGraph() {
   const restoreState = (snapshot?: ReturnType<typeof exportState>) => {
     if (!snapshot) return
     const start = perfNow()
-    nodes.value = JSON.parse(JSON.stringify(snapshot.nodes || [])) as FlowNode[]
-    edges.value = JSON.parse(JSON.stringify(snapshot.edges || [])) as FlowEdge[]
+    nodes.value = structuredClone(snapshot.nodes || []) as FlowNode[]
+    edges.value = structuredClone(snapshot.edges || []) as FlowEdge[]
     currentEdgeType.value = snapshot.currentEdgeType || 'smoothstep'
     currentSpacing.value = snapshot.currentSpacing || 'normal'
     currentAlgorithm.value = snapshot.currentAlgorithm || 'layered'
@@ -137,8 +138,8 @@ export function useFlowGraph() {
     dataSnapshot.value = snapshot.dataSnapshot || ''
     selectedNodeId.value = snapshot.selectedNodeId || null
     imageManager.restoreState(snapshot.imageState)
-    triggerRef(nodes)
-    triggerRef(edges)
+
+
     perfLog('useFlowGraph.restoreState', start, {
       filename: currentFilename.value,
       nodeCount: nodes.value.length,
@@ -167,7 +168,7 @@ export function useFlowGraph() {
     const meta = ensureNodeMeta(node)
     if (!meta || meta.status === nextStatus) return false
     nodes.value[index] = { ...node, data: { ...meta, status: nextStatus } }
-    triggerRef(nodes)
+
     return true
   }
 
@@ -177,27 +178,17 @@ export function useFlowGraph() {
     let changed = false
 
     if (selectedNodeId.value) {
-      const prevIndex = nodes.value.findIndex(n => n.id === selectedNodeId.value)
-      if (prevIndex >= 0) {
-        const prevNode = nodes.value[prevIndex]
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(nodes.value as any)[prevIndex] = { ...prevNode, selected: false }
-        changed = true
-      }
+      const prevId = selectedNodeId.value
+      nodes.value = nodes.value.map(n => n.id === prevId ? { ...n, selected: false } : n)
+      changed = true
     }
 
     if (nextId) {
-      const nextIndex = nodes.value.findIndex(n => n.id === nextId)
-      if (nextIndex >= 0) {
-        const nextNode = nodes.value[nextIndex]
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(nodes.value as any)[nextIndex] = { ...nextNode, selected: true }
-        changed = true
-      }
+      nodes.value = nodes.value.map(n => n.id === nextId ? { ...n, selected: true } : n)
+      changed = true
     }
 
     selectedNodeId.value = nextId
-    if (changed) triggerRef(nodes)
     return changed
   }
 
@@ -279,10 +270,15 @@ export function useFlowGraph() {
     if (isMissing) logicType = 'Unknown'
     const isUnknown = logicType === 'Unknown'
 
-    return {
+    const node = {
       id,
       type: 'custom',
       position: { x: 0, y: 0 },
+      draggable: true,
+      selectable: true,
+      focusable: true,
+      width: 280,
+      height: 150,
       data: {
         id,
         type: logicType,
@@ -294,6 +290,8 @@ export function useFlowGraph() {
         status: 'idle'
       }
     }
+    console.log('[DEBUG] createNodeObject:', { id, type: logicType, draggable: node.draggable, width: node.width, height: node.height, position: node.position })
+    return node
   }
 
   const updateNodeDataConnection = (
@@ -403,7 +401,7 @@ export function useFlowGraph() {
     edge.style = newStyle.style
     edge.animated = newStyle.animated
 
-    triggerRef(edges)
+
 
       if (sourceNode && portConfig) {
         updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack, isAnchorTarget)
@@ -419,13 +417,13 @@ export function useFlowGraph() {
 
     if (newData && (newData as Record<string, unknown>)._action) {
       handleSpecialAction(node, newData)
-      triggerRef(nodes)
+
       markDataChanged()
       return
     }
 
     if (oldId !== newId) {
-      if (findNode(newId)) { alert(`ID "${newId}" already exists!`); return }
+      if (findNode(newId)) { ElMessage.error(`ID "${newId}" already exists!`); return }
 
       node.id = newId
       nodeMeta.id = newId
@@ -437,7 +435,7 @@ export function useFlowGraph() {
         if (e.target === oldId) update.target = newId
         return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
       })
-      triggerRef(edges)
+
 
       const replaceLinkVal = (val: unknown) => {
         if (typeof val !== 'string') return val
@@ -472,7 +470,7 @@ export function useFlowGraph() {
     else if (nodeMeta.data) nodeMeta.data.recognition = newType
 
     normalizeLinksAcrossNodes(nodes.value)
-    triggerRef(nodes)
+
     markDataChanged()
   }
 
@@ -698,8 +696,18 @@ export function useFlowGraph() {
     const assignStart = perfNow()
     nodes.value = layoutedNodes
     edges.value = newEdges
-    triggerRef(nodes)
-    triggerRef(edges)
+
+    console.log('[DEBUG] loadNodes - nodes assigned:', {
+      count: nodes.value.length,
+      firstNode: nodes.value[0] ? {
+        id: nodes.value[0].id,
+        type: nodes.value[0].type,
+        draggable: nodes.value[0].draggable,
+        width: nodes.value[0].width,
+        height: nodes.value[0].height,
+        position: nodes.value[0].position
+      } : null
+    })
     perfLog('useFlowGraph.loadNodes.assignRefs', assignStart, { nodeCount: nodes.value.length, edgeCount: edges.value.length })
 
     currentFilename.value = filename || ''

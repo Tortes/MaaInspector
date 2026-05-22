@@ -8,6 +8,7 @@ import { deviceApi, debugApi } from '../../services/api.ts'
 import { withCache } from '../../services/cache.ts'
 import { createThrottledHandler } from '../../utils/throttle'
 import type { FlowNode } from '../../utils/flowTypes'
+import type { ScreenshotResponse } from '../../services/api.ts'
 
 // ... (原有类型定义保持不变) ...
 const STATUS = {
@@ -141,8 +142,8 @@ const selectedDetail = ref<{
   child: NextChild
   mainImage: string
   drawImages: string[]
-  fields: Array<{ label: string; text: string; raw: any }>
-  results: Array<{ label: string; text: string; raw: any; flags?: string[] }>
+  fields: Array<{ label: string; text: string; raw: unknown }>
+  results: Array<{ label: string; text: string; raw: unknown; flags?: string[] }>
   meta?: {
     algorithm?: string | null
     hit?: boolean
@@ -159,7 +160,7 @@ let isFetchingPreview = false // Prevent concurrent screenshot requests
 // ... (computed 保持不变) ...
 const nodeOptions = computed(() => (props.nodes || []).map(node => ({
   id: node.id,
-  label: (node as any).data?.data?.id || node.id
+  label: node.data?.data?.id || node.id
 })))
 
 const filteredNodeOptions = computed(() => {
@@ -194,7 +195,7 @@ const fetchPreview = async () => {
       }),
       1000 // 1秒缓存
     )
-    previewUrl.value = (res as any)?.image || (res as any)?.data || ''
+    previewUrl.value = (res as ScreenshotResponse)?.image || (res as Record<string, unknown>)?.data as string || ''
   } catch (e) {
     console.warn('[DebugPanel] 获取设备预览失败，使用占位图', e)
     previewUrl.value = ''
@@ -239,7 +240,7 @@ const upsertNextList = (payload: NextListPayload) => {
   if (nextList.length && props.nodes) {
     const targetNames = new Set(nextList.map(child => child.name).filter(Boolean))
     props.nodes.forEach(node => {
-      const nodeName = (node as any).data?.data?.id || node.id
+      const nodeName = node.data?.data?.id || node.id
       if (targetNames.has(nodeName)) {
         emit('update-node-status', { nodeId: nodeName, status: 'ignored' })
       }
@@ -247,7 +248,20 @@ const upsertNextList = (payload: NextListPayload) => {
   }
 }
 
-const normalizeDetailFields = (child: any) => {
+interface DetailChild {
+  name?: string
+  status?: StatusKey
+  jump_back?: boolean
+  debug_image?: string
+  image?: string
+  screenshot?: string
+  draw_images?: string[]
+  detailList?: Array<{ label: string; text: string; raw: unknown }>
+  details?: Array<{ label: string; text: string; raw: unknown }>
+  [key: string]: unknown
+}
+
+const normalizeDetailFields = (child: DetailChild | null | undefined) => {
   if (!child) return []
   if (Array.isArray(child.detailList)) return child.detailList
   if (Array.isArray(child.details)) return child.details
@@ -351,7 +365,7 @@ const handleSsePayload = throttledSseHandler.handler
 
 const startRealtimeStream = () => {
   if (isStreamRunning.value) return
-  stopStream = debugApi.subscribeNodeStream((data: any) => handleSsePayload(data as SsePayload))
+  stopStream = debugApi.subscribeNodeStream((data: unknown) => handleSsePayload(data as SsePayload))
   isStreamRunning.value = true
 }
 
@@ -401,49 +415,63 @@ const handlePauseDebug = async () => {
   }
 }
 
+interface RecoDetail {
+  raw_image?: string
+  debug_image?: string
+  image?: string
+  draw_images?: unknown[]
+  algorithm?: string
+  hit?: boolean
+  box?: Record<string, unknown> | null
+  all_results?: unknown[]
+  filtered_results?: unknown[]
+  best_result?: unknown
+  [key: string]: unknown
+}
+
 const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
   if (child.status !== STATUS.SUCCEEDED && child.status !== STATUS.FAILED) return
   let mainImage =
-    (typeof (child as any).debug_image === 'string' && (child as any).debug_image) ||
-    (typeof (child as any).image === 'string' && (child as any).image) ||
-    (typeof (child as any).screenshot === 'string' && (child as any).screenshot) ||
+    (typeof child.debug_image === 'string' && child.debug_image) ||
+    (typeof child.image === 'string' && child.image) ||
+    (typeof child.screenshot === 'string' && child.screenshot) ||
     ''
   let drawImages: string[] = []
   let fields = normalizeDetailFields(child)
-  let meta: { algorithm?: string; hit?: boolean; box?: any } | undefined
-  let results: Array<{ label: string; text: string; raw: any; flags?: string[] }> = []
+  let meta: { algorithm?: string; hit?: boolean; box?: Record<string, unknown> | null } | undefined
+  let results: Array<{ label: string; text: string; raw: unknown; flags?: string[] }> = []
 
   if (child.reco_id !== undefined && child.reco_id !== null) {
     try {
         const res = await debugApi.getRecoDetails(child.reco_id, {
           context: { feature: 'debug', action: 'get_reco_details', component: 'NodeDebugPanel' }
         })
-      const detail = (res as any)?.detail
+      const detail = (res as Record<string, unknown>)?.detail as RecoDetail | undefined
       if (detail) {
-        const rawImage = typeof (detail as any).raw_image === 'string' ? (detail as any).raw_image : ''
-        const debugImage = typeof (detail as any).debug_image === 'string' ? (detail as any).debug_image : ''
-        const imageField = typeof (detail as any).image === 'string' ? (detail as any).image : ''
+        const rawImage = typeof detail.raw_image === 'string' ? detail.raw_image : ''
+        const debugImage = typeof detail.debug_image === 'string' ? detail.debug_image : ''
+        const imageField = typeof detail.image === 'string' ? detail.image : ''
         const fallback = mainImage
         mainImage = rawImage || debugImage || imageField || fallback
-        if (Array.isArray((detail as any).draw_images)) {
-          drawImages = (detail as any).draw_images.filter((x: any) => typeof x === 'string')
+        if (Array.isArray(detail.draw_images)) {
+          drawImages = detail.draw_images.filter((x: unknown): x is string => typeof x === 'string')
           if (!mainImage && drawImages.length) mainImage = drawImages[0]
         }
         meta = {
-          algorithm: (detail as any).algorithm ?? undefined,
-          hit: typeof (detail as any).hit === 'boolean' ? (detail as any).hit : undefined,
-          box: (detail as any).box ?? undefined
+          algorithm: detail.algorithm ?? undefined,
+          hit: typeof detail.hit === 'boolean' ? detail.hit : undefined,
+          box: detail.box ?? undefined
         }
-        const detailFields = normalizeDetailFields(detail)
+        const detailFields = normalizeDetailFields(detail as DetailChild)
         if (detailFields.length) {
           fields = [...fields, ...detailFields]
         }
 
-        const allList = Array.isArray((detail as any).all_results) ? (detail as any).all_results : []
-        const filteredList = Array.isArray((detail as any).filtered_results) ? (detail as any).filtered_results : []
-        const bestItem = (detail as any).best_result
+        const allList = Array.isArray(detail.all_results) ? detail.all_results : []
+        const filteredList = Array.isArray(detail.filtered_results) ? detail.filtered_results : []
+        const bestItem = detail.best_result
 
-        const keyOf = (item: any) => {
+        const keyOf = (item: unknown) => {
           try {
             return JSON.stringify(item)
           } catch (_) {
@@ -454,7 +482,7 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
         const filteredSet = new Set(filteredList.map(keyOf))
         const bestKey = bestItem ? keyOf(bestItem) : null
 
-        const markFlags = (item: any) => {
+        const markFlags = (item: unknown) => {
           const k = keyOf(item)
           const flags: string[] = []
           if (bestKey && k === bestKey) flags.push('best')
@@ -463,7 +491,7 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
         }
 
         const merged = allList.length ? allList : (bestItem ? [bestItem] : filteredList)
-        merged.forEach((item: any, idx: number) => {
+        merged.forEach((item: unknown, idx: number) => {
           const flags = markFlags(item)
           const label = `all[${idx}]`
           let text = ''
@@ -549,7 +577,7 @@ const closeOptionList = () => {
 }
 
 const formatTime = (ts: number | string) => {
-  const d = new Date(ts as any)
+  const d = new Date(ts)
   return d.toLocaleTimeString()
 }
 
@@ -582,30 +610,33 @@ onUnmounted(() => {
 
 <template>
   <transition
-      enter-active-class="transition ease-out duration-200"
-      enter-from-class="translate-x-full opacity-0"
-      enter-to-class="translate-x-0 opacity-100"
-      leave-active-class="transition ease-in duration-150"
-      leave-from-class="translate-x-0 opacity-100"
-      leave-to-class="translate-x-full opacity-0"
+    enter-active-class="transition ease-out duration-200"
+    enter-from-class="translate-x-full opacity-0"
+    enter-to-class="translate-x-0 opacity-100"
+    leave-active-class="transition ease-in duration-150"
+    leave-from-class="translate-x-0 opacity-100"
+    leave-to-class="translate-x-full opacity-0"
   >
     <div
-        v-if="visible"
-        class="fixed right-0 top-0 bottom-0 z-[120] bg-white shadow-2xl border-l border-slate-200 overflow-hidden select-none flex flex-col"
-        :style="{ width: `${panelWidth}px` }"
-        @mousedown.stop
+      v-if="visible"
+      class="fixed right-0 top-0 bottom-0 z-[120] bg-white shadow-2xl border-l border-slate-200 overflow-hidden select-none flex flex-col"
+      :style="{ width: `${panelWidth}px` }"
+      @mousedown.stop
     >
       <div
-          class="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-amber-400/60 z-[130] transition-colors"
-          title="拖动调整调试面板宽度"
-          @mousedown.stop="startWidthResize"
-      ></div>
+        class="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-amber-400/60 z-[130] transition-colors"
+        title="拖动调整调试面板宽度"
+        @mousedown.stop="startWidthResize"
+      />
       <div
-          class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200 shrink-0"
+        class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200 shrink-0"
       >
         <div class="flex items-center gap-2">
           <div class="p-1.5 rounded-lg bg-white shadow-sm border border-amber-100">
-            <Bug :size="16" class="text-amber-600"/>
+            <Bug
+              :size="16"
+              class="text-amber-600"
+            />
           </div>
           <div class="flex flex-col leading-tight">
             <span class="font-bold text-slate-800 text-sm">调试窗口</span>
@@ -614,26 +645,40 @@ onUnmounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <button
-              class="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
-              @click.stop="$emit('close')"
+            class="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+            @click.stop="$emit('close')"
           >
-            <X :size="16"/>
+            <X :size="16" />
           </button>
         </div>
       </div>
 
       <div class="flex flex-1 min-h-0">
         <div
-            v-if="showPreviewPanel"
-            class="w-[260px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3 shrink-0"
+          v-if="showPreviewPanel"
+          class="w-[260px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3 shrink-0"
         >
           <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
-            <Terminal :size="14" class="text-amber-500"/> 设备预览
+            <Terminal
+              :size="14"
+              class="text-amber-500"
+            /> 设备预览
           </div>
           <div class="relative w-full aspect-[4/5] bg-white border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center">
-            <img v-if="previewUrl" :src="previewUrl" alt="preview" class="w-full h-full object-contain"/>
-            <div v-else class="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center text-slate-400 text-xs gap-1">
-              <Bug :size="20" class="text-amber-500"/>
+            <img
+              v-if="previewUrl"
+              :src="previewUrl"
+              alt="preview"
+              class="w-full h-full object-contain"
+            >
+            <div
+              v-else
+              class="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center text-slate-400 text-xs gap-1"
+            >
+              <Bug
+                :size="20"
+                class="text-amber-500"
+              />
               <span>等待截图或使用占位图</span>
             </div>
           </div>
@@ -646,35 +691,38 @@ onUnmounted(() => {
           <div class="p-4 border-b border-slate-100 bg-white flex flex-col gap-3 shrink-0">
             <div class="flex gap-3 items-center">
               <div class="relative flex-1">
-                <SearchIcon :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-                <input
-                    v-model="searchValue"
-                    type="text"
-                    :placeholder="selectedNodeId ? '' : '输入或选择节点 ID...'"
-                    class="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all font-mono"
-                    @focus="isOptionOpen = true"
-                    @blur="closeOptionList"
-                    @keyup.enter="handleDebugNow"
+                <SearchIcon
+                  :size="14"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                 />
+                <input
+                  v-model="searchValue"
+                  type="text"
+                  :placeholder="selectedNodeId ? '' : '输入或选择节点 ID...'"
+                  class="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all font-mono"
+                  @focus="isOptionOpen = true"
+                  @blur="closeOptionList"
+                  @keyup.enter="handleDebugNow"
+                >
                 <button
-                    class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-xs border border-slate-200 text-slate-500 hover:bg-white"
-                    type="button"
-                    @mousedown.prevent
-                    @click="toggleOptionList"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-xs border border-slate-200 text-slate-500 hover:bg-white"
+                  type="button"
+                  @mousedown.prevent
+                  @click="toggleOptionList"
                 >
                   列表
                 </button>
                 <div
-                    v-if="isOptionOpen && filteredNodeOptions.length"
-                    class="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-sm custom-scrollbar"
+                  v-if="isOptionOpen && filteredNodeOptions.length"
+                  class="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-sm custom-scrollbar"
                 >
                   <button
-                      v-for="opt in filteredNodeOptions"
-                      :key="opt.id"
-                      type="button"
-                      class="w-full text-left px-3 py-2 hover:bg-amber-50 text-sm text-slate-700 flex justify-between items-center"
-                      @mousedown.prevent
-                      @click="handleOptionSelect(opt)"
+                    v-for="opt in filteredNodeOptions"
+                    :key="opt.id"
+                    type="button"
+                    class="w-full text-left px-3 py-2 hover:bg-amber-50 text-sm text-slate-700 flex justify-between items-center"
+                    @mousedown.prevent
+                    @click="handleOptionSelect(opt)"
                   >
                     <span class="font-mono">{{ opt.label }}</span>
                     <span class="text-[11px] text-slate-400">{{ opt.id }}</span>
@@ -683,51 +731,62 @@ onUnmounted(() => {
               </div>
               <div class="flex items-center gap-2">
                 <button
-                    class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
-                    :class="isStreamRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'"
-                    @click="handleActionButton"
+                  class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
+                  :class="isStreamRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'"
+                  @click="handleActionButton"
                 >
-                  <PlayCircle :size="16"/>
+                  <PlayCircle :size="16" />
                   <span>{{ actionButtonText }}</span>
                 </button>
                 <button
-                    class="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold shadow transition-colors border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
-                    @click="handlePauseDebug"
+                  class="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold shadow transition-colors border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                  @click="handlePauseDebug"
                 >
-                  <PauseCircle :size="16" class="text-amber-600"/>
+                  <PauseCircle
+                    :size="16"
+                    class="text-amber-600"
+                  />
                   <span>暂停调试</span>
                 </button>
               </div>
             </div>
             <div class="flex items-center gap-3 text-[11px] text-slate-500">
               <div class="flex items-center gap-1">
-                <Activity :size="14" class="text-amber-500"/>
+                <Activity
+                  :size="14"
+                  class="text-amber-500"
+                />
                 <span>实时事件数量：{{ events.length }}</span>
               </div>
               <div class="flex items-center gap-3 text-[11px] text-slate-500 ml-auto">
                 <div class="flex items-center gap-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-blue-400" />
                   <span>顺序</span>
-                  <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-purple-400" />
                   <span>JumpBack</span>
                 </div>
                 <button
-                    class="px-2 py-1 rounded border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
-                    @click="handleResetStream"
-                >清空调试记录</button>
+                  class="px-2 py-1 rounded border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                  @click="handleResetStream"
+                >
+                  清空调试记录
+                </button>
               </div>
             </div>
           </div>
 
           <div class="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-3 custom-scrollbar min-h-0">
-            <div v-if="sortedEvents.length === 0" class="h-full w-full flex items-center justify-center text-slate-400 text-sm">
+            <div
+              v-if="sortedEvents.length === 0"
+              class="h-full w-full flex items-center justify-center text-slate-400 text-sm"
+            >
               等待调试结果流入...
             </div>
 
             <div
-                v-for="item in sortedEvents"
-                :key="item.recordId || `${item.taskId}-${item.timestamp}`"
-                class="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-2"
+              v-for="item in sortedEvents"
+              :key="item.recordId || `${item.taskId}-${item.timestamp}`"
+              class="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-2"
             >
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -739,20 +798,20 @@ onUnmounted(() => {
                 </div>
                 <div class="flex items-center gap-2">
                   <button
-                      class="px-2 py-1 text-[12px] rounded bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 flex items-center gap-1"
-                      @click="handleLocate(item.name)"
+                    class="px-2 py-1 text-[12px] rounded bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 flex items-center gap-1"
+                    @click="handleLocate(item.name)"
                   >
-                    <MapPin :size="14"/> 定位节点
+                    <MapPin :size="14" /> 定位节点
                   </button>
                 </div>
               </div>
               <div class="flex flex-wrap gap-2">
                 <button
-                    v-for="(child, idx) in item.nextList"
-                    :key="child.name + idx"
-                    class="px-2 py-1 rounded-full text-[12px] font-mono border transition-colors flex items-center gap-2"
-                    :class="[
-                      child.jump_back ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100',
+                  v-for="(child, idx) in item.nextList"
+                  :key="child.name + idx"
+                  class="px-2 py-1 rounded-full text-[12px] font-mono border transition-colors flex items-center gap-2"
+                  :class="[
+                    child.jump_back ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100',
                     child.status === STATUS.UNKNOWN
                       ? 'opacity-60'
                       : child.status === STATUS.STARTING
@@ -760,15 +819,31 @@ onUnmounted(() => {
                         : child.status === STATUS.SUCCEEDED
                           ? (child.jump_back ? 'ring-1 ring-purple-200' : 'ring-1 ring-blue-200')
                           : 'ring-1 ring-rose-200'
-                    ]"
-                    @click="handleChildClick(child, item)"
+                  ]"
+                  @click="handleChildClick(child, item)"
                 >
                   <span>{{ child.name }}</span>
                   <span class="text-[11px] flex items-center gap-1">
-                    <Activity v-if="child.status === STATUS.UNKNOWN" :size="14" class="text-slate-400"/>
-                    <Loader2 v-else-if="child.status === STATUS.STARTING" :size="12" class="animate-spin text-amber-600"/>
-                    <CheckCircle2 v-else-if="child.status === STATUS.SUCCEEDED" :size="14" class="text-emerald-600"/>
-                    <XCircle v-else :size="14" class="text-rose-600"/>
+                    <Activity
+                      v-if="child.status === STATUS.UNKNOWN"
+                      :size="14"
+                      class="text-slate-400"
+                    />
+                    <Loader2
+                      v-else-if="child.status === STATUS.STARTING"
+                      :size="12"
+                      class="animate-spin text-amber-600"
+                    />
+                    <CheckCircle2
+                      v-else-if="child.status === STATUS.SUCCEEDED"
+                      :size="14"
+                      class="text-emerald-600"
+                    />
+                    <XCircle
+                      v-else
+                      :size="14"
+                      class="text-rose-600"
+                    />
                   </span>
                 </button>
               </div>
@@ -778,29 +853,35 @@ onUnmounted(() => {
 
         <transition name="detail-slide">
           <div
-              v-if="selectedDetail"
-              class="w-[320px] border-l border-slate-200 bg-white flex flex-col min-h-0 shrink-0"
+            v-if="selectedDetail"
+            class="w-[320px] border-l border-slate-200 bg-white flex flex-col min-h-0 shrink-0"
           >
-             <div class="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
               <div class="flex flex-col">
                 <span class="text-sm font-semibold text-slate-700">{{ selectedDetail.child.name }}</span>
                 <span class="text-[11px] text-slate-500">任务 #{{ selectedDetail.record.taskId }}</span>
-                <div v-if="selectedDetail.meta" class="flex items-center gap-2 pt-1">
-                  <span v-if="selectedDetail.meta.algorithm" class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100 text-[11px]">
+                <div
+                  v-if="selectedDetail.meta"
+                  class="flex items-center gap-2 pt-1"
+                >
+                  <span
+                    v-if="selectedDetail.meta.algorithm"
+                    class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100 text-[11px]"
+                  >
                     算法 {{ selectedDetail.meta.algorithm }}
                   </span>
                   <span
-                      v-if="selectedDetail.meta.hit !== undefined"
-                      class="px-2 py-0.5 rounded text-[11px] border"
-                      :class="selectedDetail.meta.hit ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'"
+                    v-if="selectedDetail.meta.hit !== undefined"
+                    class="px-2 py-0.5 rounded text-[11px] border"
+                    :class="selectedDetail.meta.hit ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'"
                   >
                     {{ selectedDetail.meta.hit ? '命中' : '未命中' }}
                   </span>
                 </div>
               </div>
               <button
-                  class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
-                  @click="handleDetailClose"
+                class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
+                @click="handleDetailClose"
               >
                 返回
               </button>
@@ -809,146 +890,192 @@ onUnmounted(() => {
             <div class="flex-1 overflow-y-auto custom-scrollbar">
               <div class="p-3 space-y-3">
                 <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
-                  <Activity :size="14" class="text-amber-500"/> 调试快照
-                  <span v-if="selectedDetail.meta?.box" class="text-[11px] text-slate-400">
+                  <Activity
+                    :size="14"
+                    class="text-amber-500"
+                  /> 调试快照
+                  <span
+                    v-if="selectedDetail.meta?.box"
+                    class="text-[11px] text-slate-400"
+                  >
                     Box: {{ JSON.stringify(selectedDetail.meta.box) }}
                   </span>
                 </div>
                 <div
-                    class="relative w-full aspect-[4/5] bg-slate-50 border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center"
-                    :class="selectedDetail.mainImage ? 'cursor-zoom-in' : ''"
-                    @click="selectedDetail.mainImage && openImagePreview(selectedDetail.mainImage)"
+                  class="relative w-full aspect-[4/5] bg-slate-50 border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center"
+                  :class="selectedDetail.mainImage ? 'cursor-zoom-in' : ''"
+                  @click="selectedDetail.mainImage && openImagePreview(selectedDetail.mainImage)"
                 >
                   <img
-                      v-if="selectedDetail.mainImage"
-                      :src="selectedDetail.mainImage"
-                      alt="debug detail"
-                      class="w-full h-full object-contain"
-                  />
-                  <div v-else class="text-xs text-slate-400 flex flex-col items-center gap-1">
-                    <Bug :size="18" class="text-amber-500"/>
+                    v-if="selectedDetail.mainImage"
+                    :src="selectedDetail.mainImage"
+                    alt="debug detail"
+                    class="w-full h-full object-contain"
+                  >
+                  <div
+                    v-else
+                    class="text-xs text-slate-400 flex flex-col items-center gap-1"
+                  >
+                    <Bug
+                      :size="18"
+                      class="text-amber-500"
+                    />
                     <span>暂无调试截图</span>
                   </div>
                 </div>
-                <div v-if="selectedDetail.drawImages && selectedDetail.drawImages.length" class="grid grid-cols-3 gap-2">
+                <div
+                  v-if="selectedDetail.drawImages && selectedDetail.drawImages.length"
+                  class="grid grid-cols-3 gap-2"
+                >
                   <div
-                      v-for="(img, idx) in selectedDetail.drawImages"
-                      :key="idx"
-                      class="relative overflow-hidden rounded border bg-slate-50 h-20 flex items-center justify-center cursor-pointer transition"
-                      :class="activeThumbIdx === idx ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200 hover:border-amber-200'"
-                      @click="handleThumbClick(img, idx)"
+                    v-for="(img, idx) in selectedDetail.drawImages"
+                    :key="idx"
+                    class="relative overflow-hidden rounded border bg-slate-50 h-20 flex items-center justify-center cursor-pointer transition"
+                    :class="activeThumbIdx === idx ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200 hover:border-amber-200'"
+                    @click="handleThumbClick(img, idx)"
                   >
-                    <img :src="img" class="w-full h-full object-contain" :alt="`draw-${idx}`"/>
+                    <img
+                      :src="img"
+                      class="w-full h-full object-contain"
+                      :alt="`draw-${idx}`"
+                    >
                   </div>
                 </div>
 
                 <div class="text-xs text-slate-500 font-semibold flex items-center gap-2 pt-2">
-                  <Terminal :size="14" class="text-amber-500"/> 调试结果
+                  <Terminal
+                    :size="14"
+                    class="text-amber-500"
+                  /> 调试结果
                 </div>
-                <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                <div
+                  class="grid gap-2"
+                  style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));"
+                >
                   <div
-                      v-for="(field, idx) in selectedDetail.fields"
-                      :key="idx"
-                      class="p-2 rounded border border-slate-200 bg-white shadow-sm group relative"
+                    v-for="(field, idx) in selectedDetail.fields"
+                    :key="idx"
+                    class="p-2 rounded border border-slate-200 bg-white shadow-sm group relative"
                   >
                     <div class="flex items-center justify-between gap-2">
-                      <div class="text-[11px] text-slate-500 truncate">{{ field.label }}</div>
+                      <div class="text-[11px] text-slate-500 truncate">
+                        {{ field.label }}
+                      </div>
                       <button
-                          class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
-                          @click.stop="copyText(field.text || '')"
-                      >复制</button>
+                        class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
+                        @click.stop="copyText(field.text || '')"
+                      >
+                        复制
+                      </button>
                     </div>
                     <div
-                        v-if="field.raw && typeof field.raw === 'object'"
-                        class="space-y-1 text-[12px] text-slate-700"
+                      v-if="field.raw && typeof field.raw === 'object'"
+                      class="space-y-1 text-[12px] text-slate-700"
                     >
                       <div
-                          v-for="(val, key) in field.raw"
-                          :key="String(key)"
-                          class="flex items-start gap-2"
+                        v-for="(val, key) in field.raw"
+                        :key="String(key)"
+                        class="flex items-start gap-2"
                       >
                         <span class="text-slate-500">{{ key }}:</span>
                         <span class="font-mono break-all whitespace-pre-wrap text-slate-800">
                           {{ typeof val === 'object' ? JSON.stringify(val) : String(val) }}
                         </span>
                         <button
-                            class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
-                            @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
-                        >复制</button>
+                          class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
+                          @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
+                        >
+                          复制
+                        </button>
                       </div>
                     </div>
                     <div
-                        v-else
-                        class="text-sm text-slate-700 break-words whitespace-pre-wrap flex items-start gap-2"
+                      v-else
+                      class="text-sm text-slate-700 break-words whitespace-pre-wrap flex items-start gap-2"
                     >
                       <span class="font-mono break-all">{{ field.text || '—' }}</span>
                       <button
-                          class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
-                          @click.stop="copyText(field.text || '')"
-                      >复制</button>
+                        class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
+                        @click.stop="copyText(field.text || '')"
+                      >
+                        复制
+                      </button>
                     </div>
                   </div>
                   <div
-                      v-if="!selectedDetail.fields || selectedDetail.fields.length === 0"
-                      class="text-xs text-slate-400"
+                    v-if="!selectedDetail.fields || selectedDetail.fields.length === 0"
+                    class="text-xs text-slate-400"
                   >
                     暂无可显示的调试结果。
                   </div>
                 </div>
 
-                <div v-if="selectedDetail.results && selectedDetail.results.length" class="pt-3 space-y-3">
+                <div
+                  v-if="selectedDetail.results && selectedDetail.results.length"
+                  class="pt-3 space-y-3"
+                >
                   <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
-                    <Activity :size="14" class="text-amber-500"/> 识别结果列表
+                    <Activity
+                      :size="14"
+                      class="text-amber-500"
+                    /> 识别结果列表
                   </div>
-                  <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                  <div
+                    class="grid gap-2"
+                    style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
+                  >
                     <div
-                        v-for="(res, idx) in selectedDetail.results"
-                        :key="idx"
-                        class="p-3 rounded border border-slate-200 bg-white shadow-sm group"
+                      v-for="(res, idx) in selectedDetail.results"
+                      :key="idx"
+                      class="p-3 rounded border border-slate-200 bg-white shadow-sm group"
                     >
                       <div class="flex items-center justify-between gap-2 mb-2">
                         <div class="flex items-center gap-2 overflow-hidden">
                           <span class="text-[12px] font-semibold text-slate-700 truncate">{{ res.label }}</span>
                           <div class="flex items-center gap-1">
                             <span
-                                v-for="flag in res.flags || []"
-                                :key="flag"
-                                class="px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap"
-                                :class="flag === 'best'
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                  : 'bg-sky-50 text-sky-700 border-sky-200'"
+                              v-for="flag in res.flags || []"
+                              :key="flag"
+                              class="px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap"
+                              :class="flag === 'best'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-sky-50 text-sky-700 border-sky-200'"
                             >
                               {{ flag }}
                             </span>
                           </div>
                         </div>
                         <button
-                            class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
-                            @click.stop="copyText(res.text || '')"
-                        >复制</button>
+                          class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
+                          @click.stop="copyText(res.text || '')"
+                        >
+                          复制
+                        </button>
                       </div>
                       <div
-                          v-if="res.raw && typeof res.raw === 'object'"
-                          class="space-y-1 text-[12px] text-slate-700"
+                        v-if="res.raw && typeof res.raw === 'object'"
+                        class="space-y-1 text-[12px] text-slate-700"
                       >
                         <div
-                            v-for="(val, key) in res.raw"
-                            :key="String(key)"
-                            class="flex items-start gap-2"
+                          v-for="(val, key) in res.raw"
+                          :key="String(key)"
+                          class="flex items-start gap-2"
                         >
                           <span class="text-slate-500">{{ key }}:</span>
                           <span class="font-mono break-all whitespace-pre-wrap text-slate-800">
                             {{ typeof val === 'object' ? JSON.stringify(val) : String(val) }}
                           </span>
                           <button
-                              class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
-                              @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
-                          >复制</button>
+                            class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
+                            @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
+                          >
+                            复制
+                          </button>
                         </div>
                       </div>
                       <pre
-                          v-else
-                          class="text-[12px] text-slate-800 font-mono whitespace-pre-wrap break-words bg-slate-50 border border-slate-200 rounded p-2 flex items-start gap-2"
+                        v-else
+                        class="text-[12px] text-slate-800 font-mono whitespace-pre-wrap break-words bg-slate-50 border border-slate-200 rounded p-2 flex items-start gap-2"
                       >
                         <span>{{ res.text || '—' }}</span>
                         <button
@@ -968,39 +1095,28 @@ onUnmounted(() => {
   </transition>
 
   <div
-      v-if="fullImagePreview.visible"
-      class="fixed inset-0 z-[140] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
-      @click="closeImagePreview"
+    v-if="fullImagePreview.visible"
+    class="fixed inset-0 z-[140] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+    @click="closeImagePreview"
   >
     <div class="relative max-w-[90vw] max-h-[90vh]">
       <button
-          class="absolute -top-10 right-0 px-3 py-1 rounded bg-white/90 text-slate-700 text-sm shadow hover:bg-white"
-          @click.stop="closeImagePreview"
+        class="absolute -top-10 right-0 px-3 py-1 rounded bg-white/90 text-slate-700 text-sm shadow hover:bg-white"
+        @click.stop="closeImagePreview"
       >
         关闭
       </button>
       <img
-          :src="fullImagePreview.src"
-          alt="full-preview"
-          class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-          @click.stop
-      />
+        :src="fullImagePreview.src"
+        alt="full-preview"
+        class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+        @click.stop
+      >
     </div>
   </div>
 </template>
 
 <style scoped>
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 .detail-slide-enter-active,
 .detail-slide-leave-active {
   transition: all 180ms ease;

@@ -1,4 +1,4 @@
-import type { useFlowGraph } from './useFlowGraph'
+import type { useFlowGraph } from '../composables/useFlowGraph'
 import type { EdgeType } from './flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from './flowTypes'
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useLazyLoad } from '../../utils/useLazyLoad'
+import { useLazyLoad } from '../../composables/useLazyLoad'
 
 const props = defineProps<{
   src?: string
@@ -11,19 +11,25 @@ const props = defineProps<{
 const containerRef = ref<HTMLElement | null>(null)
 const { hasBeenVisible } = useLazyLoad(containerRef, { rootMargin: '100px' })
 
-const shouldLoad = computed(() => props.src && (hasBeenVisible.value || true))
+const shouldLoad = computed(() => props.src && hasBeenVisible.value)
 </script>
 
 <template>
-  <div ref="containerRef" class="lazy-image-container">
+  <div
+    ref="containerRef"
+    class="lazy-image-container"
+  >
     <img
       v-if="shouldLoad"
       :src="src"
       :alt="alt"
       :class="className"
-    />
-    <slot v-else name="placeholder">
-      <div class="lazy-placeholder"></div>
+    >
+    <slot
+      v-else
+      name="placeholder"
+    >
+      <div class="lazy-placeholder" />
     </slot>
   </div>
 </template>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { useFlowGraph } from '../utils/useFlowGraph'
+import { useFlowGraph } from '../composables/useFlowGraph'
 
 // Mock the dependencies
 vi.mock('@vue-flow/core', () => ({
@@ -14,7 +14,7 @@ vi.mock('@vue-flow/core', () => ({
   },
 }))
 
-vi.mock('../utils/useLayout', () => ({
+vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     elkLayout: vi.fn().mockImplementation((nodes: unknown, _edges: unknown, _options: unknown) => {
       // Simulate synchronous layout for testing - call callback immediately
@@ -31,7 +31,7 @@ vi.mock('../utils/useLayout', () => ({
   }),
 }))
 
-vi.mock('../utils/useImageManager', () => ({
+vi.mock('../composables/useImageManager', () => ({
   useImageManager: () => ({
     getImageData: vi.fn(),
     clearTempImageData: vi.fn(),
