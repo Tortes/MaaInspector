@@ -64,12 +64,12 @@ pub fn device_connect_win32(
 pub fn device_screenshot(maafw: State<'_, Mutex<MaaFrameworkWrapper>>) -> ScreenshotResponse {
     let mut fw = maafw.lock().unwrap();
 
-    if let Some(image_base64) = fw.screencap() {
+    if let Some((image_base64, size)) = fw.screencap() {
         ScreenshotResponse {
             success: true,
             message: Some("OK".to_string()),
             image: Some(image_base64),
-            size: Some(vec![1280, 720]), // Default size, should be detected
+            size: Some(size),
         }
     } else {
         ScreenshotResponse {

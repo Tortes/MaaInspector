@@ -68,6 +68,7 @@ const imageUrl = ref<string>('')
 const previewUrl = ref<string>('')
 const ocrResult = ref<string>('')
 const canvasRef = ref<InstanceType<typeof DeviceScreenCanvas> | null>(null)
+const imageSize = ref({ width: 1280, height: 720 })
 
 // 选区状态 (共享给 Sidebar 和 Canvas)
 const selection = reactive<Selection>({x: 0, y: 0, w: 0, h: 0})
@@ -179,7 +180,7 @@ watch(() => props.visible, async (val: boolean) => {
       selection.w = props.initialRect[2]
       selection.h = props.initialRect[3]
       await nextTick(() => {
-        if(canvasRef.value) canvasRef.value.generatePreviewSnapshot()
+        void canvasRef.value?.generatePreviewSnapshot()
       })
     } else {
       selection.x = 0; selection.y = 0; selection.w = 0; selection.h = 0;
@@ -194,11 +195,18 @@ const fetchScreenshot = async () => {
       context: { feature: 'device', action: 'screenshot', component: 'DeviceScreen' }
     })
     const img = (res as any)?.image ?? (res as any)?.data
+    const size = Array.isArray((res as any)?.size) ? (res as any).size : null
     if (img && typeof img === 'string') {
       imageUrl.value = img
+      if (size && size.length >= 2 && Number(size[0]) > 0 && Number(size[1]) > 0) {
+        imageSize.value = {
+          width: Number(size[0]),
+          height: Number(size[1])
+        }
+      }
       if (selection.w > 0) {
         setTimeout(() => {
-          if(canvasRef.value) canvasRef.value.generatePreviewSnapshot()
+          void canvasRef.value?.generatePreviewSnapshot()
         }, 100)
       }
     }
@@ -340,14 +348,19 @@ const restoreImage = (path: string) => {
   }
 }
 
-const handleSaveTempImage = () => {
-  if (!previewUrl.value || !saveImagePath.value.trim()) return
+const handleSaveTempImage = async () => {
+  if (!saveImagePath.value.trim()) return
+  let imageBase64 = previewUrl.value
+  if (!imageBase64 && selection.w > 0 && selection.h > 0) {
+    imageBase64 = await canvasRef.value?.generatePreviewSnapshot() || ''
+  }
+  if (!imageBase64) return
   const imagePath = saveImagePath.value.trim()
-  const imageBase64 = previewUrl.value
 
   localTempImages.value.push({
     path: imagePath,
     base64: imageBase64,
+    url: imageBase64,
     found: true
   })
 
@@ -379,6 +392,7 @@ saveImagePath.value = generateDefaultSavePath()
         :referenceLabel="referenceLabel"
         :mode="mode"
         :initialSelection="selection"
+        :imageSize="imageSize"
         @refresh="fetchScreenshot"
         @selection-change="handleSelectionChange"
         @preview-generated="handlePreviewGenerated"

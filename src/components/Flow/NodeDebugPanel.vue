@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import {
   X, Bug, PlayCircle, PauseCircle, MapPin, Loader2, Search as SearchIcon,
   Terminal, Activity, CheckCircle2, XCircle
@@ -57,6 +57,33 @@ interface NextListPayload {
 
 type SsePayload = RecognitionPayload | NextListPayload
 
+const WIDTH_STORAGE_KEY = 'maainspector.debugPanel.width.v1'
+const DEFAULT_PANEL_WIDTH = 1120
+const MIN_PANEL_WIDTH = 600
+const SIDE_GAP = 24
+
+const clampPanelWidth = (value: number) => {
+  const maxWidth = typeof window === 'undefined'
+    ? DEFAULT_PANEL_WIDTH
+    : Math.max(MIN_PANEL_WIDTH, window.innerWidth - SIDE_GAP)
+  return Math.min(maxWidth, Math.max(MIN_PANEL_WIDTH, value))
+}
+
+const loadPanelWidth = () => {
+  if (typeof window === 'undefined') return DEFAULT_PANEL_WIDTH
+  const stored = Number(window.localStorage.getItem(WIDTH_STORAGE_KEY))
+  return clampPanelWidth(Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_PANEL_WIDTH)
+}
+
+const savePanelWidth = (width: number) => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(WIDTH_STORAGE_KEY, String(Math.round(clampPanelWidth(width))))
+  } catch (_) {
+    // ignore storage failures
+  }
+}
+
 const props = defineProps<{
   visible?: boolean
   nodes?: FlowNode[]
@@ -65,6 +92,10 @@ const props = defineProps<{
   initialNodeId?: string
 }>()
 
+const panelWidth = ref(DEFAULT_PANEL_WIDTH)
+const isResizingWidth = ref(false)
+const resizeStart = ref({ x: 0, width: DEFAULT_PANEL_WIDTH })
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'locate-node', id: string): void
@@ -72,19 +103,31 @@ const emit = defineEmits<{
   (e: 'update-node-status', payload: { nodeId: string; status: NodeStatus }): void
 }>()
 
-// --- 窗口位置与大小状态 ---
-const position = ref({ x: 360, y: 140 })
-const size = ref({ w: 1024, h: 620 }) // 新增：控制窗口大小
-const minSize = { w: 600, h: 400 }    // 新增：最小限制
+const startWidthResize = (e: MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  isResizingWidth.value = true
+  resizeStart.value = { x: e.clientX, width: panelWidth.value }
+  document.body.style.cursor = 'ew-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onWidthResize)
+  document.addEventListener('mouseup', stopWidthResize)
+}
 
-// --- 拖拽移动逻辑 ---
-const isDragging = ref(false)
-const dragOffset = ref({ x: 0, y: 0 })
+const onWidthResize = (e: MouseEvent) => {
+  if (!isResizingWidth.value) return
+  panelWidth.value = clampPanelWidth(resizeStart.value.width + resizeStart.value.x - e.clientX)
+}
 
-// --- 调整大小逻辑 ---
-const isResizing = ref(false)
-const resizeDirection = ref<'e' | 's' | 'se' | null>(null) // e:右, s:下, se:右下
-const resizeStart = ref({ x: 0, y: 0, w: 0, h: 0 })
+const stopWidthResize = () => {
+  if (!isResizingWidth.value) return
+  isResizingWidth.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  document.removeEventListener('mousemove', onWidthResize)
+  document.removeEventListener('mouseup', stopWidthResize)
+  savePanelWidth(panelWidth.value)
+}
 
 // ... (原有业务状态保持不变) ...
 const searchValue = ref('')
@@ -136,65 +179,6 @@ const mapStatusToNode = (status: StatusKey): NodeStatus => {
   if (status === STATUS.FAILED) return 'error'
   if (status === STATUS.STARTING) return 'running'
   return null
-}
-
-// --- 拖拽移动实现 ---
-const startDrag = (e: MouseEvent) => {
-  // 如果正在调整大小，禁止拖拽移动
-  if (isResizing.value) return
-  const target = e.target as HTMLElement | null
-  if (target && (target.closest('input') || target.closest('select') || target.closest('button'))) return
-  isDragging.value = true
-  dragOffset.value = { x: e.clientX - position.value.x, y: e.clientY - position.value.y }
-  document.addEventListener('mousemove', onDrag)
-  document.addEventListener('mouseup', stopDrag)
-}
-const onDrag = (e: MouseEvent) => {
-  if (!isDragging.value) return
-  position.value = { x: e.clientX - dragOffset.value.x, y: e.clientY - dragOffset.value.y }
-}
-const stopDrag = () => {
-  isDragging.value = false
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
-}
-
-// --- 调整大小实现 (新增) ---
-const startResize = (dir: 'e' | 's' | 'se', e: MouseEvent) => {
-  e.preventDefault()
-  e.stopPropagation()
-  isResizing.value = true
-  resizeDirection.value = dir
-  resizeStart.value = {
-    x: e.clientX,
-    y: e.clientY,
-    w: size.value.w,
-    h: size.value.h
-  }
-  document.body.style.cursor = dir === 'e' ? 'ew-resize' : (dir === 's' ? 'ns-resize' : 'nwse-resize')
-  document.addEventListener('mousemove', onResize)
-  document.addEventListener('mouseup', stopResize)
-}
-
-const onResize = (e: MouseEvent) => {
-  if (!isResizing.value) return
-  const dx = e.clientX - resizeStart.value.x
-  const dy = e.clientY - resizeStart.value.y
-
-  if (resizeDirection.value === 'e' || resizeDirection.value === 'se') {
-    size.value.w = Math.max(minSize.w, resizeStart.value.w + dx)
-  }
-  if (resizeDirection.value === 's' || resizeDirection.value === 'se') {
-    size.value.h = Math.max(minSize.h, resizeStart.value.h + dy)
-  }
-}
-
-const stopResize = () => {
-  isResizing.value = false
-  resizeDirection.value = null
-  document.body.style.cursor = ''
-  document.removeEventListener('mousemove', onResize)
-  document.removeEventListener('mouseup', stopResize)
 }
 
 // ... (原有业务逻辑 fetchPreview, upsertNextList 等保持不变) ...
@@ -571,12 +555,9 @@ const formatTime = (ts: number | string) => {
 
 watch(() => props.visible, (val) => {
   if (val) {
+    panelWidth.value = loadPanelWidth()
     selectedNodeId.value = props.initialNodeId || ''
     searchValue.value = props.initialNodeId || ''
-    // 重置位置时，也可以根据需求重置大小，或者保持上次大小
-    // 这里保持默认逻辑，如果窗口太小被挤出去可以调整
-    const safeX = Math.min(window.innerWidth - size.value.w - 20, Math.max(20, window.innerWidth - size.value.w - 100))
-    position.value = { x: safeX > 0 ? safeX : 20, y: 160 }
     startPreviewAutoRefresh()
     startRealtimeStream()
   } else {
@@ -591,16 +572,8 @@ watch(() => props.initialNodeId, (val) => {
   }
 })
 
-onMounted(() => {
-  document.addEventListener('mouseup', stopDrag)
-  document.addEventListener('mouseup', stopResize) // 防止异常状态
-})
-
 onUnmounted(() => {
-  document.removeEventListener('mouseup', stopDrag)
-  document.removeEventListener('mouseup', stopResize)
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mousemove', onResize)
+  stopWidthResize()
   throttledSseHandler.clear() // 清理节流队列
   stopRealtimeStream()
   stopPreviewAutoRefresh()
@@ -610,41 +583,25 @@ onUnmounted(() => {
 <template>
   <transition
       enter-active-class="transition ease-out duration-200"
-      enter-from-class="opacity-0 scale-95"
-      enter-to-class="opacity-100 scale-100"
+      enter-from-class="translate-x-full opacity-0"
+      enter-to-class="translate-x-0 opacity-100"
       leave-active-class="transition ease-in duration-150"
-      leave-from-class="opacity-100 scale-100"
-      leave-to-class="opacity-0 scale-95"
+      leave-from-class="translate-x-0 opacity-100"
+      leave-to-class="translate-x-full opacity-0"
   >
     <div
         v-if="visible"
-        class="fixed z-[120] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none flex flex-col"
-        :style="{
-          left: `${position.x}px`,
-          top: `${position.y}px`,
-          width: `${size.w}px`,
-          height: `${size.h}px`
-        }"
+        class="fixed right-0 top-0 bottom-0 z-[120] bg-white shadow-2xl border-l border-slate-200 overflow-hidden select-none flex flex-col"
+        :style="{ width: `${panelWidth}px` }"
         @mousedown.stop
     >
       <div
-          class="absolute right-0 top-0 bottom-4 w-1 cursor-ew-resize hover:bg-amber-400/50 z-[130] transition-colors"
-          @mousedown.stop="(e) => startResize('e', e)"
+          class="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-amber-400/60 z-[130] transition-colors"
+          title="拖动调整调试面板宽度"
+          @mousedown.stop="startWidthResize"
       ></div>
       <div
-          class="absolute left-0 right-4 bottom-0 h-1 cursor-ns-resize hover:bg-amber-400/50 z-[130] transition-colors"
-          @mousedown.stop="(e) => startResize('s', e)"
-      ></div>
-      <div
-          class="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize z-[131] flex items-end justify-end p-0.5 group"
-          @mousedown.stop="(e) => startResize('se', e)"
-      >
-        <div class="w-2 h-2 border-r-2 border-b-2 border-slate-300 group-hover:border-amber-400 rounded-br-sm"></div>
-      </div>
-
-      <div
-          class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200 cursor-move shrink-0"
-          @mousedown="startDrag"
+          class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200 shrink-0"
       >
         <div class="flex items-center gap-2">
           <div class="p-1.5 rounded-lg bg-white shadow-sm border border-amber-100">

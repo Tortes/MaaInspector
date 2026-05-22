@@ -14,7 +14,6 @@ import type { EdgeType } from '../utils/flowOptions'
 import { perfLog, perfMark, perfNow } from '../utils/perfTrace'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
-const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
 const DeleteImagesConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/DeleteImagesConfirmModal.vue'))
 
@@ -36,11 +35,6 @@ interface EditorState {
   nodeData: FlowBusinessData | null
 }
 
-interface DebugPanelState {
-  visible: boolean
-  nodeId: string
-}
-
 interface PendingSwitchConfig {
   filename: string
   source: string
@@ -60,11 +54,14 @@ const props = defineProps<{
   defaultLayoutAlgorithm?: LayoutAlgorithm
   defaultLayoutDirection?: LayoutDirection
   defaultPipelineVersion?: 'V1' | 'V2'
+  debugPanelVisible?: boolean
 }>()
 
 const emit = defineEmits<{
   snapshotChange: [snapshot: FlowEditorSnapshot, tabId?: string]
   'request-switch-file': [payload: { filename: string; source: string }]
+  'open-debug-panel': [payload?: { nodeId?: string }]
+  'close-debug-panel': []
 }>()
 
 const {
@@ -97,7 +94,6 @@ const isDeviceConnected = ref<boolean>(false)
 const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
 const editor = ref<EditorState>({ visible: false, nodeId: '', nodeData: null })
 const searchVisible = ref<boolean>(false)
-const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
 
 const pendingFocusNodeId = ref<string | null>(null)
 const showSaveModal = ref<boolean>(false)
@@ -351,7 +347,7 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       if (type === 'node' && isFlowNodeData(data) && data.id) handleDebugNode(String(data.id), 'recognition_only')
       break
     case 'debug_in_panel':
-      if (type === 'node' && isFlowNodeData(data) && data.id) debugPanel.value = { visible: true, nodeId: String(data.id) }
+      if (type === 'node' && isFlowNodeData(data) && data.id) emit('open-debug-panel', { nodeId: String(data.id) })
       break
     case 'edit':
       if (type === 'node' && isFlowNodeData(data)) {
@@ -424,10 +420,10 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       searchVisible.value = false
       break
     case 'openDebugPanel':
-      debugPanel.value = { visible: true, nodeId: type === 'node' && isFlowNodeData(data) ? data.id : '' }
+      emit('open-debug-panel', { nodeId: type === 'node' && isFlowNodeData(data) ? String(data.id) : '' })
       break
     case 'closeDebugPanel':
-      debugPanel.value = { ...debugPanel.value, visible: false, nodeId: '' }
+      emit('close-debug-panel')
       break
     case 'closeAllDetails':
       closeAllDetailsSignal.value++
@@ -639,7 +635,10 @@ defineExpose({
   handleDeviceConnected,
   handleUpdateCanvasConfig,
   handleUpdatePipelineVersion,
-  handleRequestSwitch
+  handleRequestSwitch,
+  handleLocateNode,
+  handleDebugNodeFromPanel,
+  handleUpdateNodeStatus
 })
 </script>
 
@@ -674,24 +673,13 @@ defineExpose({
         :currentSpacing="currentSpacing"
         :currentAlgorithm="currentAlgorithm"
         :currentDirection="currentDirection"
-        :debug-panel-visible="debugPanel.visible"
+        :debug-panel-visible="props.debugPanelVisible"
         :search-visible="searchVisible"
         @close="closeMenu"
         @action="handleMenuAction"
       />
     </VueFlow>
     <NodeSearch :visible="searchVisible" :nodes="nodes" :current-filename="currentFilename" :current-source="currentSource" @close="searchVisible = false" @locate-node="handleLocateNode" @switch-file="handleRequestSwitch" />
-    <NodeDebugPanel
-      :visible="debugPanel.visible"
-      :nodes="nodes"
-      :current-filename="currentFilename"
-      :current-source="currentSource"
-      :initial-node-id="debugPanel.nodeId"
-      @close="debugPanel.visible = false"
-      @locate-node="handleLocateNode"
-      @debug-node="handleDebugNodeFromPanel"
-      @update-node-status="handleUpdateNodeStatus"
-    />
     <SaveConfirmModal :visible="showSaveModal" :filename="currentFilename" :is-saving="isSavingModal" @cancel="handleCancelSwitch" @discard="handleDiscardChanges" @save="handleSaveAndSwitch" />
     <DeleteImagesConfirmModal :visible="showDeleteImagesModal" :unused-images="unusedImages" :used-images="usedImages" :is-processing="isProcessingImages" @cancel="handleCancelDeleteImages" @confirm="handleConfirmDeleteImages" @skip="handleSkipDeleteImages" />
   </div>

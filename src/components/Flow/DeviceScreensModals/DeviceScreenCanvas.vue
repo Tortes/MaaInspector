@@ -12,6 +12,7 @@ const props = defineProps<{
   referenceLabel?: string
   mode?: ModeType
   initialSelection?: Selection
+  imageSize?: { width: number; height: number }
 }>()
 
 const emit = defineEmits<{
@@ -23,9 +24,13 @@ const emit = defineEmits<{
 
 const contentRef = ref<HTMLDivElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const screenImageRef = ref<HTMLImageElement | null>(null)
 
-const BASE_WIDTH = 1280
-const BASE_HEIGHT = 720
+const fallbackImageSize = { width: 1280, height: 720 }
+const logicalImageSize = computed(() => ({
+  width: props.imageSize?.width && props.imageSize.width > 0 ? props.imageSize.width : fallbackImageSize.width,
+  height: props.imageSize?.height && props.imageSize.height > 0 ? props.imageSize.height : fallbackImageSize.height
+}))
 
 // 本地状态
 const isDragging = ref(false)
@@ -49,11 +54,12 @@ watch(() => props.initialSelection, (val) => {
 // 样式计算
 const getRectStyle = (rect: number[]) => {
   if (!rect || rect[2] <= 0 || rect[3] <= 0) return { display: 'none' }
+  const { width, height } = logicalImageSize.value
   return {
-    left: `${(rect[0] / BASE_WIDTH) * 100}%`,
-    top: `${(rect[1] / BASE_HEIGHT) * 100}%`,
-    width: `${(rect[2] / BASE_WIDTH) * 100}%`,
-    height: `${(rect[3] / BASE_HEIGHT) * 100}%`
+    left: `${(rect[0] / width) * 100}%`,
+    top: `${(rect[1] / height) * 100}%`,
+    width: `${(rect[2] / width) * 100}%`,
+    height: `${(rect[3] / height) * 100}%`
   }
 }
 
@@ -64,38 +70,56 @@ const contentStyle = computed(() => ({
   transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`,
   transformOrigin: 'center center',
   width: '100%',
-  aspectRatio: '16/9'
+  aspectRatio: `${logicalImageSize.value.width}/${logicalImageSize.value.height}`
 }))
 
 // 生成预览快照
-const generatePreviewSnapshot = () => {
+const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+  const img = new Image()
+  img.onload = () => resolve(img)
+  img.onerror = () => reject(new Error('Image load failed'))
+  img.src = src
+})
+
+const generatePreviewSnapshot = async (): Promise<string> => {
   if (!props.imageUrl || selection.w <= 0 || selection.h <= 0) {
     emit('preview-generated', '')
-    return
+    return ''
   }
 
-  const img = new Image()
-  img.onload = () => {
+  try {
+    const img =
+      screenImageRef.value?.complete && screenImageRef.value.naturalWidth > 0
+        ? screenImageRef.value
+        : await loadImage(props.imageUrl)
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) {
       emit('preview-generated', '')
-      return
+      return ''
     }
-    const scaleX = img.naturalWidth / BASE_WIDTH
-    const scaleY = img.naturalHeight / BASE_HEIGHT
-    const destW = selection.w * scaleX
-    const destH = selection.h * scaleY
+    const { width, height } = logicalImageSize.value
+    const scaleX = img.naturalWidth / width
+    const scaleY = img.naturalHeight / height
+    const sourceX = Math.round(selection.x * scaleX)
+    const sourceY = Math.round(selection.y * scaleY)
+    const destW = Math.max(1, Math.round(selection.w * scaleX))
+    const destH = Math.max(1, Math.round(selection.h * scaleY))
     canvas.width = destW
     canvas.height = destH
     ctx.drawImage(
       img,
-      selection.x * scaleX, selection.y * scaleY, destW, destH,
+      sourceX, sourceY, destW, destH,
       0, 0, destW, destH
     )
-    emit('preview-generated', canvas.toDataURL('image/png'))
+    const preview = canvas.toDataURL('image/png')
+    emit('preview-generated', preview)
+    return preview
+  } catch (error) {
+    console.error('[DeviceScreenCanvas] 生成预览失败:', error)
+    emit('preview-generated', '')
+    return ''
   }
-  img.src = props.imageUrl
 }
 
 // 处理本地图片上传并缩放
@@ -113,12 +137,12 @@ const handleFileChange = (event: Event) => {
       const img = new Image()
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        canvas.width = BASE_WIDTH
-        canvas.height = BASE_HEIGHT
+        const { width, height } = logicalImageSize.value
+        canvas.width = width
+        canvas.height = height
         const ctx = canvas.getContext('2d')
         if (ctx) {
-          // 强制绘制为 1280x720
-          ctx.drawImage(img, 0, 0, BASE_WIDTH, BASE_HEIGHT)
+          ctx.drawImage(img, 0, 0, width, height)
           emit('image-uploaded', canvas.toDataURL('image/png'))
         }
       }
@@ -149,12 +173,13 @@ const handleWheel = (e: WheelEvent) => {
 const getLogicalPos = (clientX: number, clientY: number) => {
   if (!contentRef.value) return { x: 0, y: 0 }
   const rect = contentRef.value.getBoundingClientRect()
-  const scaleX = BASE_WIDTH / rect.width
-  const scaleY = BASE_HEIGHT / rect.height
+  const { width, height } = logicalImageSize.value
+  const scaleX = width / rect.width
+  const scaleY = height / rect.height
   let x = (clientX - rect.left) * scaleX
   let y = (clientY - rect.top) * scaleY
-  x = Math.max(0, Math.min(x, BASE_WIDTH))
-  y = Math.max(0, Math.min(y, BASE_HEIGHT))
+  x = Math.max(0, Math.min(x, width))
+  y = Math.max(0, Math.min(y, height))
   return { x, y }
 }
 
@@ -206,8 +231,8 @@ const handleGlobalMouseMove = (e: MouseEvent) => {
 }
 
 const handleGlobalMouseUp = () => {
-  if (isDragging.value && props.mode === 'image_manager') {
-    generatePreviewSnapshot()
+  if (isDragging.value && selection.w > 0 && selection.h > 0) {
+    void generatePreviewSnapshot()
   }
   isDragging.value = false
   isPanning.value = false
@@ -260,6 +285,7 @@ defineExpose({ resetView, generatePreviewSnapshot, isDragging })
 
       <img
           v-else
+          ref="screenImageRef"
           :src="imageUrl"
           draggable="false"
           class="w-full h-full object-fill pointer-events-none select-none"
@@ -297,7 +323,7 @@ defineExpose({ resetView, generatePreviewSnapshot, isDragging })
 
       <button @click="triggerFileUpload"
               class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
-              title="上传本地图片(自动缩放至1280x720)">
+              title="上传本地图片(自动缩放至当前截图尺寸)">
         <Upload :size="16"/>
       </button>
 

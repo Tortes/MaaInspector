@@ -162,7 +162,7 @@ const handleApply = (edited: string) => {
                 placeholder="文件名.png"/>
               <button
                 @click="emit('save-temp-image')"
-                :disabled="!previewUrl || !safeSaveImagePath.trim()"
+                :disabled="selection.w <= 0 || selection.h <= 0 || !safeSaveImagePath.trim()"
                 class="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold disabled:opacity-50">
                 保存
               </button>

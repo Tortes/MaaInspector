@@ -72,12 +72,27 @@ export function useImageManager() {
     const state = ensureNodeState(nodeId)
     const existing = state.tempImages.find(img => img.path === path)
     if (!existing) {
-      const url = fullPath ? getImageUrl(fullPath) : undefined
+      const url = fullPath ? getImageUrl(fullPath) : base64
       state.tempImages.push({ path, fullPath, url, base64, found: true })
     } else if (fullPath) {
       existing.fullPath = fullPath
       existing.url = getImageUrl(fullPath)
+    } else if (base64) {
+      existing.base64 = base64
+      existing.url = base64
     }
+  }
+
+  const setNodeImageChanges = (nodeId: string, images: TemplateImage[], tempImages: TemplateImage[]) => {
+    const state = ensureNodeState(nodeId)
+    const enrichImages = (items: TemplateImage[]) => items.map(img => ({
+      ...img,
+      url: img.fullPath ? getImageUrl(img.fullPath) : (img.url || img.base64)
+    }))
+
+    state.images = enrichImages(images)
+    state.tempImages = enrichImages(tempImages)
+    state.delImages = []
   }
 
   const deleteImage = (nodeId: string, path: string) => {
@@ -228,6 +243,7 @@ export function useImageManager() {
     imageUrlCache,
     getImageUrl,
     setNodeImages,
+    setNodeImageChanges,
     getNodeImages,
     getNodeSavedImages,
     getNodeTempImages,

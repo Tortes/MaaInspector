@@ -345,8 +345,8 @@ impl MaaFrameworkWrapper {
         self.tasker.as_ref().map(|t| t.running()).unwrap_or(false)
     }
 
-    /// Take screenshot and return as base64
-    pub fn screencap(&mut self) -> Option<String> {
+    /// Take screenshot and return as base64 with image size
+    pub fn screencap(&mut self) -> Option<(String, Vec<i32>)> {
         let controller = self.controller.as_ref()?;
 
         // Post screencap
@@ -364,8 +364,11 @@ impl MaaFrameworkWrapper {
                         // Get raw image data (returns Option<Vec<u8>>)
                         match img_buffer.to_vec() {
                             Some(raw_data) => {
-                                // Encode as base64 PNG
-                                self.encode_image_as_base64(&raw_data)
+                                // Encode as base64 and keep the actual cached image size.
+                                self.encode_image_as_base64(&raw_data).map(|image| {
+                                    let size = self.detect_image_size(&raw_data).unwrap_or(vec![1280, 720]);
+                                    (image, size)
+                                })
                             }
                             None => None,
                         }
@@ -409,6 +412,11 @@ impl MaaFrameworkWrapper {
         // Encode as base64
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw_data);
         Some(format!("data:{};base64,{}", mime, encoded))
+    }
+
+    fn detect_image_size(&self, raw_data: &[u8]) -> Option<Vec<i32>> {
+        let image = image::load_from_memory(raw_data).ok()?;
+        Some(vec![image.width() as i32, image.height() as i32])
     }
 
     /// Get recognition detail by reco_id

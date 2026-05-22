@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref } from 'vue'
 import { FileJson, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
@@ -7,7 +7,10 @@ import { clearWorkspaceState, loadWorkspaceState, saveWorkspaceState } from '../
 import type { FlowAppSettings, FlowEditorSnapshot, FlowWorkspaceState } from '../utils/flowWorkspaceTypes'
 import type { EdgeType } from '../utils/flowOptions'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey } from '../utils/flowTypes'
+import type { NodeStatus } from '../utils/flowTypes'
 import { perfLog, perfMark, perfNow } from '../utils/perfTrace'
+
+const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
 
 type FlowEditorExpose = {
   snapshotState: () => void
@@ -18,6 +21,9 @@ type FlowEditorExpose = {
   handleDeviceConnected: (val: boolean) => void
   handleUpdateCanvasConfig: (payload: { edgeType?: string; spacing?: string; layoutAlgorithm?: string; layoutDirection?: string }) => void
   handleUpdatePipelineVersion: (val: 'V1' | 'V2') => void
+  handleLocateNode: (nodeId: string) => void
+  handleDebugNodeFromPanel: (nodeId: string) => void
+  handleUpdateNodeStatus: (payload: { nodeId: string; status: NodeStatus }) => void
 }
 
 type InfoPanelExpose = {
@@ -29,6 +35,11 @@ interface FlowTab {
   id: string
   title: string
   snapshot: FlowEditorSnapshot
+}
+
+interface DebugPanelState {
+  visible: boolean
+  nodeId: string
 }
 
 const DEFAULT_APP_SETTINGS: FlowAppSettings = {
@@ -109,6 +120,7 @@ const activeTabId = ref(initialState.activeTabId)
 const appSettings = ref<FlowAppSettings>(initialState.appSettings)
 const editorRef = ref<FlowEditorExpose | null>(null)
 const infoPanelRef = ref<InfoPanelExpose | null>(null)
+const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
 const activeTab = computed(() => tabs.value.find(tab => tab.id === activeTabId.value) || tabs.value[0])
@@ -176,6 +188,17 @@ const snapshotCurrentEditor = () => {
 
 const handleRequestSwitchFile = async (payload: { filename: string; source: string }) => {
   await infoPanelRef.value?.executeFileSwitch?.(payload.filename, payload.source)
+}
+
+const openDebugPanel = (payload?: { nodeId?: string }) => {
+  debugPanel.value = {
+    visible: true,
+    nodeId: payload?.nodeId || ''
+  }
+}
+
+const closeDebugPanel = () => {
+  debugPanel.value = { visible: false, nodeId: '' }
 }
 
 const handleLoadNodes = async (payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }) => {
@@ -356,8 +379,11 @@ onBeforeUnmount(() => {
         :default-layout-algorithm="appSettings.layoutAlgorithm"
         :default-layout-direction="appSettings.layoutDirection"
         :default-pipeline-version="appSettings.pipelineVersion"
+        :debug-panel-visible="debugPanel.visible"
         @snapshot-change="updateActiveSnapshot"
         @request-switch-file="handleRequestSwitchFile"
+        @open-debug-panel="openDebugPanel"
+        @close-debug-panel="closeDebugPanel"
       />
 
       <div class="absolute top-3 right-3 z-50 pointer-events-none">
@@ -383,8 +409,21 @@ onBeforeUnmount(() => {
           @update-canvas-config="handleUpdateCanvasConfig"
           @update-pipeline-version="handleUpdatePipelineVersion"
           @update-restore-workspace="handleUpdateRestoreWorkspace"
+          @open-debug-panel="openDebugPanel"
         />
       </div>
+
+      <NodeDebugPanel
+        :visible="debugPanel.visible"
+        :nodes="activeTab.snapshot.flowState?.nodes || []"
+        :current-filename="activeTab.snapshot.flowState?.currentFilename || ''"
+        :current-source="activeTab.snapshot.flowState?.currentSource || ''"
+        :initial-node-id="debugPanel.nodeId"
+        @close="closeDebugPanel"
+        @locate-node="(nodeId) => editorRef?.handleLocateNode(nodeId)"
+        @debug-node="(nodeId) => editorRef?.handleDebugNodeFromPanel(nodeId)"
+        @update-node-status="(payload) => editorRef?.handleUpdateNodeStatus(payload)"
+      />
     </div>
   </div>
 </template>

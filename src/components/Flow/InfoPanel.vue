@@ -3,7 +3,7 @@ import {computed, ref, reactive, onMounted, onUnmounted, defineComponent, h, wat
 import {
   Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
   Minimize2, Maximize2, Smartphone, Circle,
-  FilePlus, Save, Search, Bell, Settings as SettingsIcon
+  FilePlus, Save, Search, Bell, Settings as SettingsIcon, Bug
 } from 'lucide-vue-next'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
 import {withCache} from '../../services/cache.ts'
@@ -45,6 +45,7 @@ const emit = defineEmits<{
   'update-canvas-config': [payload: { edgeType?: EdgeType; spacing?: SpacingKey; layoutAlgorithm?: LayoutAlgorithm; layoutDirection?: LayoutDirection }]
   'update-pipeline-version': [payload: 'V1' | 'V2']
   'update-restore-workspace': [payload: boolean]
+  'open-debug-panel': []
 }>()
 
 // --- 内部组件 ---
@@ -1064,6 +1065,23 @@ const handleAnnouncementClose = () => {
                 <component :is="agentCtrl.status === 'connecting' ? Loader2 : Bot" :size="14"
                            :class="{'animate-spin': agentCtrl.status === 'connecting'}"/>
                 {{ agentButtonLabel }}
+              </button>
+            </div>
+          </section>
+
+          <!-- 调试模块 -->
+          <section class="space-y-2">
+            <div class="flex items-center justify-between text-xs mb-1">
+              <div class="flex items-center gap-1.5 font-bold text-slate-700">
+                <Bug :size="14" class="text-amber-500"/>
+                调试模块
+              </div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm">
+              <button @click="emit('open-debug-panel')"
+                      class="w-full btn-primary bg-amber-500 shadow-amber-100">
+                <Bug :size="14"/>
+                打开调试模块
               </button>
             </div>
           </section>

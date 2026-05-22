@@ -590,8 +590,7 @@ export function useFlowGraph() {
         tempImages?: TemplateImage[]
       }
       
-      const allImages = [...(images || []), ...(tempImages || [])]
-      imageManager.setNodeImages(node.id, allImages)
+      imageManager.setNodeImageChanges(node.id, images || [], tempImages || [])
       
       if (!meta.data) meta.data = {}
       if (templateTarget) {
