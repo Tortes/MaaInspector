@@ -27,7 +27,7 @@ export interface EditorActionsDeps {
   applyLayout: (options?: Partial<{ algorithm: LayoutAlgorithm; direction: LayoutDirection; spacing: SpacingKey }>) => Promise<void>
   removeEdges: (ids: string[]) => void
   setEdgeJumpBack: (edgeId: string, isJumpBack: boolean) => void
-  layoutChainFromNode: (startId: string, spacingKey?: SpacingKey) => Promise<void>
+  layoutChainFromNode: (startId: string, spacingKey?: SpacingKey, algorithm?: LayoutAlgorithm) => Promise<void>
   markDataChanged: () => void
   fitView: (options?: Record<string, unknown>) => void
   screenToFlowCoordinate: (pos: { x: number; y: number }) => { x: number; y: number }
@@ -155,6 +155,11 @@ export function useEditorActions(deps: EditorActionsDeps) {
         break
       case 'layout_chain':
         if (type === 'node' && isFlowNodeData(data) && data.id) layoutChainFromNode(data.id, currentSpacing.value)
+        break
+      case 'layout_chain_with_algo':
+        if (type === 'node' && isFlowNodeData(data) && data.id && isLayoutAlgorithm(payload)) {
+          layoutChainFromNode(data.id, currentSpacing.value, payload)
+        }
         break
       case 'layout':
         applyLayout()

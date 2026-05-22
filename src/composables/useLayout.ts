@@ -147,6 +147,122 @@ export function useLayout() {
       .filter(Boolean)
   }
 
+  interface TreeNode {
+    id: string
+    children: TreeNode[]
+    depth: number
+    index: number
+  }
+
+  const buildLayoutTree = (
+    rootId: string,
+    _nodesRef: Ref<FlowNode[]>,
+    _edgesRef: Ref<FlowEdge[]>,
+    _options: LayoutOptions
+  ): { root: TreeNode | null; allIds: Set<string> } => {
+    const root = findNode(rootId)
+    if (!root) return { root: null, allIds: new Set() }
+
+    const visited = new Set<string>()
+    const allIds = new Set<string>()
+
+    const buildNode = (nodeId: string, depth: number, index: number): TreeNode | null => {
+      if (visited.has(nodeId)) return null
+      visited.add(nodeId)
+      allIds.add(nodeId)
+
+      const node = findNode(nodeId)
+      if (!node) return null
+
+      const data = node.data?.data || {}
+      const nextChildren = normalizeChainTargets((data as Record<string, unknown>).next)
+      const errorChildren = normalizeChainTargets((data as Record<string, unknown>).on_error)
+
+      const children: TreeNode[] = []
+      let childIndex = 0
+
+      const addChild = (childId: string) => {
+        const childNode = buildNode(childId, depth + 1, childIndex)
+        if (childNode) {
+          children.push(childNode)
+          childIndex++
+        }
+      }
+
+      nextChildren.forEach(addChild)
+      errorChildren.forEach(addChild)
+
+      return { id: nodeId, children, depth, index }
+    }
+
+    const rootNode = buildNode(rootId, 0, 0)
+    return { root: rootNode, allIds: visited }
+  }
+
+  const computeSubtreeSize = (node: TreeNode, nodeSizes: Record<string, { width: number; height: number }>, spacing: { nodeSpacing: number; edgeSpacing: number }, isHorizontal: boolean): { width: number; height: number } => {
+    if (!node.children.length) {
+      const size = nodeSizes[node.id] || { width: 280, height: 150 }
+      return { width: size.width, height: size.height }
+    }
+
+    const childSizes = node.children.map(child => computeSubtreeSize(child, nodeSizes, spacing, isHorizontal))
+
+    if (isHorizontal) {
+      const maxChildWidth = Math.max(...childSizes.map(s => s.width))
+      const totalChildHeight = childSizes.reduce((sum, s) => sum + s.height, 0) + (node.children.length - 1) * spacing.nodeSpacing
+      return {
+        width: maxChildWidth + spacing.nodeSpacing,
+        height: Math.max(nodeSizes[node.id]?.height || 150, totalChildHeight)
+      }
+    } else {
+      const maxChildHeight = Math.max(...childSizes.map(s => s.height))
+      const totalChildWidth = childSizes.reduce((sum, s) => sum + s.width, 0) + (node.children.length - 1) * spacing.nodeSpacing
+      return {
+        width: Math.max(nodeSizes[node.id]?.width || 280, totalChildWidth),
+        height: maxChildHeight + spacing.nodeSpacing
+      }
+    }
+  }
+
+  const assignPositions = (
+    node: TreeNode,
+    nodeSizes: Record<string, { width: number; height: number }>,
+    spacing: { nodeSpacing: number; edgeSpacing: number },
+    isHorizontal: boolean,
+    x: number,
+    y: number,
+    positions: Record<string, { x: number; y: number }>
+  ) => {
+    const size = nodeSizes[node.id] || { width: 280, height: 150 }
+    positions[node.id] = { x, y }
+
+    if (!node.children.length) return
+
+    const childSizes = node.children.map(child => computeSubtreeSize(child, nodeSizes, spacing, isHorizontal))
+
+    if (isHorizontal) {
+      const totalHeight = childSizes.reduce((sum, s, i) => sum + s.height + (i > 0 ? spacing.nodeSpacing : 0), 0)
+      let currentY = y - totalHeight / 2
+
+      node.children.forEach((child, i) => {
+        const childX = x + size.width + spacing.nodeSpacing
+        const childY = currentY + childSizes[i].height / 2
+        assignPositions(child, nodeSizes, spacing, isHorizontal, childX, childY, positions)
+        currentY += childSizes[i].height + spacing.nodeSpacing
+      })
+    } else {
+      const totalWidth = childSizes.reduce((sum, s, i) => sum + s.width + (i > 0 ? spacing.nodeSpacing : 0), 0)
+      let currentX = x - totalWidth / 2
+
+      node.children.forEach((child, i) => {
+        const childX = currentX + childSizes[i].width / 2
+        const childY = y + size.height + spacing.nodeSpacing
+        assignPositions(child, nodeSizes, spacing, isHorizontal, childX, childY, positions)
+        currentX += childSizes[i].width + spacing.nodeSpacing
+      })
+    }
+  }
+
   const computeOrderedChainLayout = async (
     rootId: string,
     nodesRef: Ref<FlowNode[]>,
@@ -154,68 +270,92 @@ export function useLayout() {
     options: LayoutOptions = { algorithm: 'layered', direction: 'TB', spacing: 'normal' }
   ) => {
     if (!rootId) return null
-    const root = findNode(rootId)
-    if (!root) return null
+
+    const { root: layoutTree, allIds: visited } = buildLayoutTree(rootId, nodesRef, edgesRef, options)
+    if (!layoutTree) return null
+
     const spacing = getSpacingConfig(options.spacing)
-
-    const visited = new Set<string>([rootId])
-    const levels: Array<string[]> = []
-    let currentLevel: string[] = [rootId]
-
-    while (currentLevel.length) {
-      levels.push(currentLevel)
-      const nextLevel: string[] = []
-
-      currentLevel.forEach(nodeId => {
-        const node = findNode(nodeId)
-        const data = node?.data?.data || {}
-        const orderedChildren = [
-          ...normalizeChainTargets((data as Record<string, unknown>).next),
-          ...normalizeChainTargets((data as Record<string, unknown>).on_error)
-        ]
-        orderedChildren.forEach(childId => {
-          if (visited.has(childId)) return
-          visited.add(childId)
-          nextLevel.push(childId)
-        })
-      })
-
-      currentLevel = nextLevel
-    }
-
-    if (!levels.length) return null
-
     const isHorizontal = options.direction === 'LR'
-    const chainPositions: Record<string, { x: number; y: number }> = {}
-    levels.forEach((levelNodes, depth) => {
-      const totalSize = (levelNodes.length - 1) * spacing.nodeSpacing
-      const start = -totalSize / 2
-      levelNodes.forEach((nodeId, index) => {
-        chainPositions[nodeId] = isHorizontal
-          ? { x: depth * spacing.nodeSpacing, y: start + index * spacing.nodeSpacing }
-          : { x: start + index * spacing.nodeSpacing, y: depth * spacing.nodeSpacing }
-      })
+
+    const allNodeSizes: Record<string, { width: number; height: number }> = {}
+    nodesRef.value.forEach(node => {
+      allNodeSizes[node.id] = getNodeLayoutSize(node.id, options.direction)
     })
+
+    const positions: Record<string, { x: number; y: number }> = {}
+
+    if (options.algorithm === 'layered') {
+      assignPositions(layoutTree, allNodeSizes, spacing, isHorizontal, 0, 0, positions)
+    } else if (options.algorithm === 'stress' || options.algorithm === 'mrtree') {
+      const chainNodes = nodesRef.value.filter(n => visited.has(n.id))
+      const chainEdges = edgesRef.value.filter(e => visited.has(e.source) && visited.has(e.target))
+
+      const elkOptions = {
+        ...options,
+        spacing: options.algorithm === 'stress' ? 'normal' : options.spacing
+      }
+      const layouted = await elkLayout(chainNodes, chainEdges, elkOptions)
+
+      layouted.forEach(n => {
+        positions[n.id] = n.position
+      })
+    }
 
     const remainingNodes = nodesRef.value.filter(n => !visited.has(n.id))
     const remainingPositions: Record<string, { x: number; y: number }> = {}
+
     if (remainingNodes.length) {
       const remainingIds = new Set(remainingNodes.map(n => n.id))
       const remainingEdges = edgesRef.value.filter(e => remainingIds.has(e.source) && remainingIds.has(e.target))
-      const layouted = await elkLayout(remainingNodes, remainingEdges, options)
-      const chainXs = Object.values(chainPositions).map(p => p.x)
-      const offsetX = isHorizontal
-        ? (chainXs.length ? Math.max(...chainXs) : 0) + spacing.nodeSpacing * 2
-        : (chainXs.length ? Math.max(...chainXs) : 0) + spacing.nodeSpacing * 2
-      layouted.forEach(n => {
-        remainingPositions[n.id] = {
-          x: (n.position?.x || 0) + offsetX,
-          y: n.position?.y || 0
-        }
+
+      let chainMinX = Infinity, chainMinY = Infinity, chainMaxX = -Infinity, chainMaxY = -Infinity
+      Object.entries(positions).forEach(([nodeId, pos]) => {
+        const size = allNodeSizes[nodeId] || { width: 280, height: 150 }
+        chainMinX = Math.min(chainMinX, pos.x)
+        chainMinY = Math.min(chainMinY, pos.y)
+        chainMaxX = Math.max(chainMaxX, pos.x + size.width)
+        chainMaxY = Math.max(chainMaxY, pos.y + size.height)
       })
+
+      if (remainingEdges.length > 0) {
+        const layouted = await elkLayout(remainingNodes, remainingEdges, options)
+        let remainingMinX = Infinity, remainingMinY = Infinity, remainingMaxX = -Infinity, remainingMaxY = -Infinity
+        layouted.forEach(n => {
+          const size = allNodeSizes[n.id] || { width: 280, height: 150 }
+          remainingMinX = Math.min(remainingMinX, n.position?.x || 0)
+          remainingMinY = Math.min(remainingMinY, n.position?.y || 0)
+          remainingMaxX = Math.max(remainingMaxX, (n.position?.x || 0) + size.width)
+          remainingMaxY = Math.max(remainingMaxY, (n.position?.y || 0) + size.height)
+        })
+
+        const offsetX = chainMaxX + spacing.nodeSpacing * 2 - remainingMinX
+        const offsetY = chainMaxY + spacing.nodeSpacing * 2 - remainingMinY
+
+        layouted.forEach(n => {
+          remainingPositions[n.id] = {
+            x: (n.position?.x || 0) + offsetX,
+            y: (n.position?.y || 0) + offsetY
+          }
+        })
+      } else {
+        let offsetX = chainMaxX + spacing.nodeSpacing * 2
+        let offsetY = chainMinY
+
+        remainingNodes.forEach((n, i) => {
+          const size = allNodeSizes[n.id] || { width: 280, height: 150 }
+          remainingPositions[n.id] = {
+            x: offsetX + (i % 3) * (size.width + spacing.nodeSpacing),
+            y: offsetY + Math.floor(i / 3) * (size.height + spacing.nodeSpacing)
+          }
+          if ((i + 1) % 3 === 0) {
+            offsetX = chainMaxX + spacing.nodeSpacing * 2
+            offsetY += size.height + spacing.nodeSpacing
+          }
+        })
+      }
     }
 
-    return { chainPositions, remainingPositions, chainIds: visited }
+    return { chainPositions: positions, remainingPositions, chainIds: visited }
   }
 
   const applyOrderedChainLayout = async (

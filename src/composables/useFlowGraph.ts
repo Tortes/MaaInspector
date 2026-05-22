@@ -744,9 +744,13 @@ export function useFlowGraph() {
     imageManager.clearTempImageData()
   }
 
-  const layoutChainFromNode = async (startId: string, spacingKey: SpacingKey = currentSpacing.value) => {
+  const layoutChainFromNode = async (
+    startId: string,
+    spacingKey: SpacingKey = currentSpacing.value,
+    algorithm: LayoutAlgorithm = currentAlgorithm.value
+  ) => {
     const layoutOptions: LayoutOptions = {
-      algorithm: currentAlgorithm.value,
+      algorithm,
       direction: currentDirection.value,
       spacing: spacingKey
     }

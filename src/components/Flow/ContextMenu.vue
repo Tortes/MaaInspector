@@ -84,7 +84,16 @@ const menuItems = computed<MenuItem[]>(() => {
       {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
       {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
       {type: 'item', label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
-      {type: 'item', label: '重新布局任务链', action: 'layout_chain', icon: Move, color: 'text-indigo-600'},
+      {
+        type: 'item',
+        key: 'layout-chain-algorithm',
+        label: '重新布局任务链',
+        action: 'layout_chain',
+        icon: Move,
+        color: 'text-indigo-600',
+        submenu: LAYOUT_ALGORITHM_OPTIONS,
+        submenuAction: 'layout_chain_with_algo'
+      },
       {type: 'divider'},
       {type: 'item', label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},
@@ -303,7 +312,7 @@ const menuItems = computed<MenuItem[]>(() => {
                     {{ parseLabel(sub.label).note }}
                   </span>
                   <Check
-                    v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing) || (item.key === 'layout-algorithm' && sub.value === currentAlgorithm) || (item.key === 'layout-direction' && sub.value === currentDirection)"
+                    v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing) || (item.key === 'layout-algorithm' && sub.value === currentAlgorithm) || (item.key === 'layout-direction' && sub.value === currentDirection) || (item.key === 'layout-chain-algorithm' && sub.value === currentAlgorithm)"
                     :size="16"
                     class="text-blue-600"
                   />
