@@ -272,6 +272,61 @@ impl MaaFrameworkWrapper {
         self.resource = new_resource;
         (success, message)
     }
+
+    /// OCR text recognition with roi (async)
+    pub async fn ocr_text_async(&mut self, roi: [i32; 4]) -> Result<String, String> {
+        let controller = self.controller.as_ref()
+            .ok_or("Controller not initialized. Please connect a device first.")?;
+        
+        let ctrl_clone = controller.clone();
+        let id = ctrl_clone.post_screencap()
+            .map_err(|e| format!("Failed to post screencap: {}", e))?;
+        
+        let success = wait_with_default_timeout_async(&ctrl_clone, id).await;
+        if !success {
+            return Err("Screencap timeout or failed".to_string());
+        }
+        
+        let img_buffer = ctrl_clone.cached_image()
+            .map_err(|e| format!("Failed to get cached image: {}", e))?;
+        
+        let tasker = match self.tasker.as_ref() {
+            Some(t) => t.clone(),
+            None => {
+                Tasker::new()
+                    .map_err(|e| format!("Failed to create tasker for OCR: {}", e))?
+            }
+        };
+        
+        if self.tasker.is_none() {
+            if let Err(e) = tasker.bind(self.resource.as_ref().ok_or("Resource not initialized")?, controller) {
+                return Err(format!("Failed to bind tasker: {}", e));
+            }
+            if !tasker.inited() {
+                return Err("Tasker initialization failed".to_string());
+            }
+        }
+        
+        let ocr_params = serde_json::json!({
+            "roi": roi
+        });
+        
+        let job = tasker.post_recognition(
+            "OCR",
+            &ocr_params.to_string(),
+            &img_buffer
+        ).map_err(|e| format!("OCR recognition failed: {}", e))?;
+        
+        job.wait();
+        
+        if let Ok(Some(detail)) = job.get(true) {
+            if let Some(ocr_result) = detail.as_ocr_result() {
+                return Ok(ocr_result.text.clone());
+            }
+        }
+        
+        Ok(String::new())
+    }
 }
 
 impl Default for MaaFrameworkWrapper {

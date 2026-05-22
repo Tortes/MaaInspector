@@ -75,8 +75,8 @@ export const useFlowStateExport = (
   const restoreState = (snapshot?: FlowGraphExportState) => {
     if (!snapshot) return
     const start = perfNow()
-    nodes.value = structuredClone(snapshot.nodes || []) as FlowNode[]
-    edges.value = structuredClone(snapshot.edges || []) as FlowEdge[]
+    nodes.value = JSON.parse(JSON.stringify(snapshot.nodes || [])) as FlowNode[]
+    edges.value = JSON.parse(JSON.stringify(snapshot.edges || [])) as FlowEdge[]
     currentEdgeType.value = snapshot.currentEdgeType || 'smoothstep'
     currentSpacing.value = snapshot.currentSpacing || 'normal'
     currentAlgorithm.value = snapshot.currentAlgorithm || 'layered'

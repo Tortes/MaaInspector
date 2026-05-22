@@ -43,6 +43,8 @@ pub fn run_task(
     if let Some(broker) = event_broker {
         let broker_clone = Arc::clone(broker);
 
+        tasker_ref.clear_context_sinks();
+
         let _ = tasker_ref.add_context_sink(move |msg, details| {
             let noti_type = if msg.ends_with(".Starting") {
                 "starting"

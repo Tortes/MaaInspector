@@ -296,6 +296,7 @@ watch(() => props.visible, (val) => {
     )
   } else {
     stopPreviewAutoRefresh()
+    stopRealtimeStream()
   }
 })
 

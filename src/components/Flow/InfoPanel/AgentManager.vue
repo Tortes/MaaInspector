@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { Bot, Loader2 } from 'lucide-vue-next'
 import { agentApi } from '../../../services/api'
+import StatusIndicator from '../Common/StatusIndicator.vue'
 
 // 状态
 const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')

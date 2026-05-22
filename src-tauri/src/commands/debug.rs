@@ -78,19 +78,13 @@ pub async fn debug_ocr_text(maafw: State<'_, Mutex<MaaFrameworkWrapper>>, roi: V
         return Ok(ApiResponse::error_with_status("Missing or invalid roi", 400));
     }
 
-    // Note: OCR is typically done through MaaFramework's OCR capability
-    // This is a placeholder implementation
-    // In production, you would use MaaFramework's OCR API
-
     let mut fw = maafw.lock().await;
+    let roi_array = [roi[0], roi[1], roi[2], roi[3]];
 
-    // Take screenshot first
-    let _ = fw.screencap_async().await;
-
-    // OCR processing would go here
-    // For now, return empty text
-
-    Ok(ApiResponse::ok_with_data("OK", serde_json::json!({ "text": "" })))
+    match fw.ocr_text_async(roi_array).await {
+        Ok(text) => Ok(ApiResponse::ok_with_data("OK", serde_json::json!({ "text": text }))),
+        Err(e) => Ok(ApiResponse::error_with_status(&e, 500)),
+    }
 }
 
 /// Get recognition details
