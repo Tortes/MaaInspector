@@ -1,8 +1,8 @@
 import { ref } from 'vue'
 import type { EdgeMouseEvent, NodeMouseEvent } from '@vue-flow/core'
-import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType } from '../utils/flowTypes'
-import type { EdgeType } from '../utils/flowOptions'
-import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '../utils/typeGuards'
+import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType } from '@/utils/flowTypes'
+import type { EdgeType } from '@/utils/flowOptions'
+import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '@/utils/typeGuards'
 
 type MenuData = FlowNode | FlowEdge | null
 

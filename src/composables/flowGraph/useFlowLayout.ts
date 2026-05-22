@@ -1,6 +1,6 @@
 import type { Ref } from 'vue'
-import type { FlowNode, FlowEdge, SpacingKey, LayoutAlgorithm } from '../../utils/flowTypes'
-import type { LayoutOptions } from '../useLayout'
+import type { FlowNode, FlowEdge, SpacingKey, LayoutAlgorithm } from '@/utils/flowTypes'
+import type { LayoutOptions } from '@/composables/useLayout'
 
 export const layoutTaskChain = async (
   nodes: Ref<FlowNode[]>,

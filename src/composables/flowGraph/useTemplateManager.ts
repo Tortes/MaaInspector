@@ -1,6 +1,6 @@
-import type { FlowNodeMeta, FlowBusinessData, FlowNode, TemplateImage } from '../../utils/flowTypes'
-import type { useImageManager } from '../useImageManager'
-import { normalizeTemplateList } from '../../utils/templateUtils'
+import type { FlowNodeMeta, FlowBusinessData, FlowNode, TemplateImage } from '@/utils/flowTypes'
+import type { useImageManager } from '@/composables/useImageManager'
+import { normalizeTemplateList } from '@/utils/templateUtils'
 
 export const modifyTemplatePath = (nodeData: FlowNodeMeta, path: string, mode: 'add' | 'remove' = 'add') => {
   if (!nodeData.data) nodeData.data = {}

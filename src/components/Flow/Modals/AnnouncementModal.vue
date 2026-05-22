@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { Bell, X, Clock, CheckCircle, Sparkles, Bug } from 'lucide-vue-next'
 
-import { changelogContent } from '../../../changelog'
+import { changelogContent } from '@/changelog'
 
 interface AnnouncementProps {
   visible?: boolean

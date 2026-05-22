@@ -10,7 +10,7 @@ import DeviceScreenMaskEditor from './DeviceScreenMaskEditor.vue'
 type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 interface Selection { x: number; y: number; w: number; h: number }
 interface GuideItem { icon: any; text: string }
-import type { TemplateImage } from '../../../utils/flowTypes'
+import type { TemplateImage } from '@/utils/flowTypes'
 
 const props = defineProps<{
   mode?: ModeType
@@ -247,6 +247,7 @@ const handleApply = (edited: string) => {
                 :size="14"
                 class="text-indigo-400 mt-0.5 shrink-0"
               />
+              <!-- eslint-disable-next-line vue/no-v-html -->
               <span v-html="guide.text" />
             </div>
           </div>

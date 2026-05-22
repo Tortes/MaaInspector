@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeTemplateList } from '../utils/templateUtils'
+import { normalizeTemplateList } from '@/utils/templateUtils'
 
 describe('normalizeTemplateList', () => {
   it('should return empty array for null', () => {

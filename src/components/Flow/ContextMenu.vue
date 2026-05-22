@@ -4,7 +4,7 @@ import {
   Trash2, Copy, PlusCircle, RefreshCw, XCircle, ChevronRight,
   Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
 } from 'lucide-vue-next'
-import { recognitionMenuOptions } from '../../utils/nodeLogic'
+import { recognitionMenuOptions } from '@/utils/node-config'
 import { 
   EDGE_TYPE_OPTIONS, 
   SPACING_TYPE_OPTIONS, 
@@ -12,8 +12,8 @@ import {
   LAYOUT_DIRECTION_OPTIONS,
   type EdgeType, 
   type OptionItem 
-} from '../../utils/flowOptions'
-import type { SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType, FlowNode, FlowEdge } from '../../utils/flowTypes'
+} from '@/utils/flowOptions'
+import type { SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType, FlowNode, FlowEdge } from '@/utils/flowTypes'
 
 type SubmenuItem = OptionItem<string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection> & { color?: string }
 

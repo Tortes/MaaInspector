@@ -1,17 +1,12 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Plus, Info, X } from 'lucide-vue-next'
 
-type FocusRecord = Record<string, string>
-
-const props = withDefaults(defineProps<{
-  focusData: FocusRecord
-  availableFocusEvents: string[]
-  isDropdownOpen: boolean
-}>(), {
-  focusData: () => ({}),
-  availableFocusEvents: () => [],
-  isDropdownOpen: false
-})
+const props = defineProps<{
+  focusData?: Record<string, string>
+  availableFocusEvents?: string[]
+  isDropdownOpen?: boolean
+}>()
 
 const emit = defineEmits<{
   (e: 'toggle-dropdown'): void
@@ -19,8 +14,10 @@ const emit = defineEmits<{
   (e: 'remove-focus', key: string): void
   (e: 'update-focus', payload: { key: string; value: string }): void
 }>()
-void props
-void emit
+
+const focusData = computed(() => props.focusData ?? {})
+const availableFocusEvents = computed(() => props.availableFocusEvents ?? [])
+const isDropdownOpen = computed(() => props.isDropdownOpen ?? false)
 
 const getInputValue = (event: Event) => (event.target as HTMLInputElement | null)?.value ?? ''
 </script>

@@ -1,6 +1,6 @@
-import type { FlowNode, NodeStatus } from '../utils/flowTypes'
-import type { DebugStreamPayload } from '../services/api'
-import { debugApi } from '../services/api'
+import type { FlowNode, NodeStatus } from '@/utils/flowTypes'
+import type { DebugStreamPayload } from '@/services/api'
+import { debugApi } from '@/services/api'
 
 type DebugMode = 'standard' | 'recognition_only'
 

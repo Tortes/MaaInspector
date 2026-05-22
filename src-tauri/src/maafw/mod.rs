@@ -6,6 +6,7 @@ mod tasker;
 use crate::config::DeviceInfo;
 use crate::events::DebugEventBroker;
 use crate::response::RecognitionDetail;
+use controller::wait_with_timeout;
 use maa_framework::controller::Controller;
 use maa_framework::resource::Resource;
 use maa_framework::sys;
@@ -27,40 +28,6 @@ async fn wait_with_timeout_async(controller: &Controller, id: sys::MaaId, timeou
 /// Async wait with default timeout
 async fn wait_with_default_timeout_async(controller: &Controller, id: sys::MaaId) -> bool {
     wait_with_timeout_async(controller, id, CONTROLLER_TIMEOUT_MS).await
-}
-
-/// Poll interval for checking operation status
-const STATUS_POLL_INTERVAL_MS: u64 = 50;
-
-/// Wait for controller operation with timeout
-fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
-    use std::time::{Duration, Instant};
-
-    let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
-    let poll_interval = Duration::from_millis(STATUS_POLL_INTERVAL_MS);
-
-    loop {
-        let status = controller.status(id);
-
-        if status.succeeded() {
-            return true;
-        }
-        if status.failed() {
-            eprintln!("Controller operation failed");
-            return false;
-        }
-
-        if start.elapsed() > timeout {
-            eprintln!(
-                "Controller operation timeout after {}ms",
-                timeout_ms
-            );
-            return false;
-        }
-
-        std::thread::sleep(poll_interval);
-    }
 }
 
 /// MaaFramework wrapper - equivalent to Python MaaFW class
@@ -293,19 +260,17 @@ impl MaaFrameworkWrapper {
         let tasker = match self.tasker.as_ref() {
             Some(t) => t.clone(),
             None => {
-                Tasker::new()
-                    .map_err(|e| format!("Failed to create tasker for OCR: {}", e))?
+                let new_tasker = Tasker::new()
+                    .map_err(|e| format!("Failed to create tasker for OCR: {}", e))?;
+                new_tasker.bind(self.resource.as_ref().ok_or("Resource not initialized")?, controller)
+                    .map_err(|e| format!("Failed to bind tasker: {}", e))?;
+                if !new_tasker.inited() {
+                    return Err("Tasker initialization failed".to_string());
+                }
+                self.tasker = Some(new_tasker.clone());
+                new_tasker
             }
         };
-        
-        if self.tasker.is_none() {
-            if let Err(e) = tasker.bind(self.resource.as_ref().ok_or("Resource not initialized")?, controller) {
-                return Err(format!("Failed to bind tasker: {}", e));
-            }
-            if !tasker.inited() {
-                return Err("Tasker initialization failed".to_string());
-            }
-        }
         
         let ocr_params = serde_json::json!({
             "roi": roi

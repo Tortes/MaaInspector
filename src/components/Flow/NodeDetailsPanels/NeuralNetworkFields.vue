@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { NodeFormMethods } from '../../../utils/nodeLogic'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
 
 const props = defineProps<{
   currentRecognition: string

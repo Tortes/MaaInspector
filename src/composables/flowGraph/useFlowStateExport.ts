@@ -1,10 +1,10 @@
 import { computed } from 'vue'
-import { perfLog, perfNow } from '../../utils/perfTrace'
+import { perfLog, perfNow } from '@/utils/perfTrace'
 import type { Ref } from 'vue'
-import type { FlowNode, FlowEdge, FlowBusinessData } from '../../utils/flowTypes'
-import type { EdgeType } from '../../utils/flowOptions'
-import type { SpacingKey, LayoutAlgorithm } from '../../utils/flowTypes'
-import type { useImageManager } from '../useImageManager'
+import type { FlowNode, FlowEdge, FlowBusinessData } from '@/utils/flowTypes'
+import type { EdgeType } from '@/utils/flowOptions'
+import type { SpacingKey, LayoutAlgorithm } from '@/utils/flowTypes'
+import type { useImageManager } from '@/composables/useImageManager'
 
 export interface FlowGraphExportState {
   nodes: FlowNode[]

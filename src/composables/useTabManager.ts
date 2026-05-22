@@ -1,8 +1,8 @@
 import { computed, ref } from 'vue'
-import { clearWorkspaceState, loadWorkspaceState, saveWorkspaceState } from '../utils/flowWorkspaceStorage'
-import type { FlowAppSettings, FlowEditorSnapshot, FlowWorkspaceState } from '../utils/flowWorkspaceTypes'
-import type { EdgeType } from '../utils/flowOptions'
-import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../utils/flowTypes'
+import { clearWorkspaceState, loadWorkspaceState, saveWorkspaceState } from '@/utils/flowWorkspaceStorage'
+import type { FlowAppSettings, FlowEditorSnapshot, FlowWorkspaceState } from '@/utils/flowWorkspaceTypes'
+import type { EdgeType } from '@/utils/flowOptions'
+import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 
 interface FlowTab {
   id: string

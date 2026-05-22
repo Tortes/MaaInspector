@@ -1,6 +1,6 @@
 import { reactive, ref } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import type { TemplateImage, ImageDataPayload } from '../utils/flowTypes'
+import type { TemplateImage, ImageDataPayload } from '@/utils/flowTypes'
 
 interface NodeImageState {
   images: TemplateImage[]

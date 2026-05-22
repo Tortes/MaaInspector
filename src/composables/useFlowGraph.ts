@@ -2,8 +2,8 @@ import { ref, markRaw } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useLayout, type LayoutOptions } from './useLayout'
 import { useImageManager } from './useImageManager'
-import { SPACING_OPTIONS, type EdgeType } from '../utils/flowOptions'
-import { perfLog, perfNow } from '../utils/perfTrace'
+import { SPACING_OPTIONS, type EdgeType } from '@/utils/flowOptions'
+import { perfLog, perfNow } from '@/utils/perfTrace'
 import { ElMessage } from 'element-plus'
 import type {
   FlowBusinessData,
@@ -19,8 +19,8 @@ import type {
   SpacingKey,
   LayoutAlgorithm,
   LayoutDirection
-} from '../utils/flowTypes'
-import CustomNode from '../components/Flow/CustomNode.vue'
+} from '@/utils/flowTypes'
+import CustomNode from '@/components/Flow/CustomNode.vue'
 import {
   PORT_MAPPING,
   getEdgeStyle,

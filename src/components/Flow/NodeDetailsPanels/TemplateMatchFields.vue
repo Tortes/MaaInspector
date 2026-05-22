@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Plus, Trash2, ImageIcon } from 'lucide-vue-next'
-import type { NodeFormMethods } from '../../../utils/nodeLogic'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
 
 const props = defineProps<{
   form: NodeFormMethods

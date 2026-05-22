@@ -14,7 +14,7 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock
 })
 
-import { usePanelResize } from '../composables/usePanelResize'
+import { usePanelResize } from '@/composables/usePanelResize'
 
 describe('usePanelResize', () => {
   beforeEach(() => {

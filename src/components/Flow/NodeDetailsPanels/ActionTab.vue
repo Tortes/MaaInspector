@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Crop, Crosshair } from 'lucide-vue-next'
-import type { ActionType, NodeFormMethods, SelectOption } from '../../../utils/nodeLogic'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
+import type { ActionType, SelectOption } from '@/utils/node-config'
 
 const emit = defineEmits<{
   (e: 'open-picker', field: string, referenceField: string | null, referenceLabel?: string): void

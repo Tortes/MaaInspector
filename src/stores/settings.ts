@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { EdgeType } from '../utils/flowOptions'
-import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../utils/flowTypes'
+import type { EdgeType } from '@/utils/flowOptions'
+import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 
 export const useSettingsStore = defineStore('settings', () => {
   const edgeType = ref<EdgeType>('smoothstep')

@@ -9,9 +9,10 @@ import FocusTab from './NodeDetailsPanels/FocusTab.vue'
 import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
-import { useNodeForm, recognitionTypes, actionTypes, type UseNodeFormEmit } from '../../utils/nodeLogic'
-import { useDeviceScreenPicker, type PickerPayload } from '../../composables/useDeviceScreenPicker'
-import type { FlowBusinessData, FlowNodeMeta } from '../../utils/flowTypes'
+import { useNodeForm, type UseNodeFormEmit } from '@/composables/useNodeForm'
+import { recognitionTypes, actionTypes } from '@/utils/node-config'
+import { useDeviceScreenPicker, type PickerPayload } from '@/composables/useDeviceScreenPicker'
+import type { FlowBusinessData, FlowNodeMeta } from '@/utils/flowTypes'
 
 const props = defineProps<{
   visible: boolean

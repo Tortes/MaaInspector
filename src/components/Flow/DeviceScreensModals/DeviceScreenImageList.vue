@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ImageIcon, Trash2, RotateCw, Check, GripVertical } from 'lucide-vue-next'
-import type { TemplateImage } from '../../../utils/flowTypes'
+import type { TemplateImage } from '@/utils/flowTypes'
 
 const props = defineProps<{
   localImages?: TemplateImage[]

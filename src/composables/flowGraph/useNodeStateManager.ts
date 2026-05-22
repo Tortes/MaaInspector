@@ -1,5 +1,5 @@
-import { perfLog, perfNow } from '../../utils/perfTrace'
-import type { FlowNode, FlowNodeMeta, FlowBusinessData, NodeStatus } from '../../utils/flowTypes'
+import { perfLog, perfNow } from '@/utils/perfTrace'
+import type { FlowNode, FlowNodeMeta, FlowBusinessData, NodeStatus } from '@/utils/flowTypes'
 
 const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
   if (!node) return null

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {ref, computed, watch, onMounted, onUnmounted} from 'vue'
 import {X, Search, MapPin, Regex, FileJson, Loader2, ArrowRightCircle} from 'lucide-vue-next'
-import {resourceApi} from '../../services/api.ts'
-import type { FlowNode } from '../../utils/flowTypes'
+import {resourceApi} from '@/services/api'
+import type { FlowNode } from '@/utils/flowTypes'
 
 interface RemoteResult {
   node_id: string
@@ -51,7 +51,7 @@ const localResults = computed(() => {
     if (useRegex.value) {
       try {
         regex = new RegExp(query, 'i')
-      } catch (e) {
+      } catch (_e) {
         return []
       }
     }

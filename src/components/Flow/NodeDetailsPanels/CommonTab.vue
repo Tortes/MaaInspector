@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Clock } from 'lucide-vue-next'
-import type { NodeFormMethods } from '../../../utils/nodeLogic'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
 
 type ValueGetter = NodeFormMethods['getValue']
 type ValueSetter = NodeFormMethods['setValue']

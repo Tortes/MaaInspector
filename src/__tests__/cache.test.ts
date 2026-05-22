@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { withCache, invalidateCache, invalidateCacheByPattern, clearCache, getCacheStats } from '../services/cache'
+import { withCache, invalidateCache, invalidateCacheByPattern, clearCache, getCacheStats } from '@/services/cache'
 
 describe('cache service', () => {
   beforeEach(() => {

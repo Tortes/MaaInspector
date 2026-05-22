@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { AlertTriangle, Trash2, Image as ImageIcon, FileWarning } from 'lucide-vue-next'
-import type { UsedImageInfo } from '../../../utils/flowTypes'
+import type { UsedImageInfo } from '@/utils/flowTypes'
 
 const props = withDefaults(defineProps<{
   visible?: boolean

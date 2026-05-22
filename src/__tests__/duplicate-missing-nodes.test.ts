@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { useFlowGraph } from '../composables/useFlowGraph'
+import { useFlowGraph } from '@/composables/useFlowGraph'
 
 // Mock the dependencies
 vi.mock('@vue-flow/core', () => ({

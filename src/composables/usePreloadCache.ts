@@ -1,7 +1,7 @@
-import { resourceApi } from '../services/api'
-import { isPipelineV2Nodes, toPipelineV1Nodes } from '../utils/pipelineTransform'
-import type { FlowBusinessData, TemplateImage } from '../utils/flowTypes'
-import type { FlowTab } from '../stores/workspace'
+import { resourceApi } from '@/services/api'
+import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
+import type { FlowBusinessData, TemplateImage } from '@/utils/flowTypes'
+import type { FlowTab } from '@/stores/workspace'
 
 interface ResourceFileInfo {
   source?: string | null

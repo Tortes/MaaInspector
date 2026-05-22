@@ -4,13 +4,13 @@ import { ChevronDown, ChevronUp, GitBranch, X } from 'lucide-vue-next'
 
 type LinkKey = 'next' | 'on_error'
 
-const props = withDefaults(defineProps<{
-  nextList: string[]
-  onErrorList: string[]
-}>(), {
-  nextList: () => [],
-  onErrorList: () => []
-})
+const props = defineProps<{
+  nextList?: string[]
+  onErrorList?: string[]
+}>()
+
+const nextList = computed(() => props.nextList ?? [])
+const onErrorList = computed(() => props.onErrorList ?? [])
 
 const emit = defineEmits<{
   (e: 'add-link', payload: { key: LinkKey; value: Ref<string> }): void
@@ -21,8 +21,8 @@ const emit = defineEmits<{
 const newNextLink = ref<string>('')
 const newErrorLink = ref<string>('')
 
-const hasNext = computed(() => props.nextList.length > 0)
-const hasError = computed(() => props.onErrorList.length > 0)
+const hasNext = computed(() => nextList.value.length > 0)
+const hasError = computed(() => onErrorList.value.length > 0)
 
 const addNext = () => emit('add-link', { key: 'next', value: newNextLink })
 const addError = () => emit('add-link', { key: 'on_error', value: newErrorLink })

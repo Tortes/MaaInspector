@@ -1,7 +1,7 @@
 import { ref } from 'vue'
-import { deviceApi, debugApi } from '../services/api'
-import { withCache } from '../services/cache'
-import type { ScreenshotResponse } from '../services/api'
+import { deviceApi, debugApi } from '@/services/api'
+import { withCache } from '@/services/cache'
+import type { ScreenshotResponse } from '@/services/api'
 import { usePanelResize } from './usePanelResize'
 
 export interface NextChild {

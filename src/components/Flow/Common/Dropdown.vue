@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ChevronDown, Check } from 'lucide-vue-next'
-
-export interface DropdownOption {
-  label: string
-  value: PropertyKey
-  disabled?: boolean
-}
+import type { DropdownOption } from './types'
 
 const props = withDefaults(defineProps<{
   modelValue: PropertyKey

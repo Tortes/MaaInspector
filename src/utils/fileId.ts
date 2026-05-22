@@ -1,4 +1,4 @@
-import type { ResourceFileInfo } from '../services/api'
+import type { ResourceFileInfo } from '@/services/api'
 
 /**
  * Generate a unique file ID from source and filename.

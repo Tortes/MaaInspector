@@ -1,8 +1,8 @@
 import { onBeforeUnmount } from 'vue'
-import { saveWorkspaceState } from '../utils/flowWorkspaceStorage'
-import { perfLog, perfNow } from '../utils/perfTrace'
+import { saveWorkspaceState } from '@/utils/flowWorkspaceStorage'
+import { perfLog, perfNow } from '@/utils/perfTrace'
 import type { Ref } from 'vue'
-import type { FlowAppSettings, FlowEditorSnapshot, FlowWorkspaceState } from '../utils/flowWorkspaceTypes'
+import type { FlowAppSettings, FlowEditorSnapshot, FlowWorkspaceState } from '@/utils/flowWorkspaceTypes'
 
 interface UseWorkspacePersistenceOptions {
   appSettings: Ref<FlowAppSettings>

@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useTabManager } from '../composables/useTabManager'
-import type { FlowEditorSnapshot, FlowWorkspaceState } from '../utils/flowWorkspaceTypes'
+import { useTabManager } from '@/composables/useTabManager'
+import type { FlowEditorSnapshot, FlowWorkspaceState } from '@/utils/flowWorkspaceTypes'
 
-vi.mock('../utils/flowWorkspaceStorage', () => ({
+vi.mock('@/utils/flowWorkspaceStorage', () => ({
   loadWorkspaceState: vi.fn(),
   saveWorkspaceState: vi.fn(),
   clearWorkspaceState: vi.fn()
 }))
 
-import { loadWorkspaceState, saveWorkspaceState, clearWorkspaceState } from '../utils/flowWorkspaceStorage'
+import { loadWorkspaceState, saveWorkspaceState, clearWorkspaceState } from '@/utils/flowWorkspaceStorage'
 
 describe('useTabManager', () => {
   const mockLoadWorkspaceState = vi.mocked(loadWorkspaceState)

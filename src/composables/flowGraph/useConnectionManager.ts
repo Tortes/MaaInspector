@@ -1,6 +1,6 @@
 import { MarkerType } from '@vue-flow/core'
-import type { FlowEdge, FlowNode, FlowBusinessData, FlowNodeMeta, FlowConnection } from '../../utils/flowTypes'
-import type { EdgeType } from '../../utils/flowOptions'
+import type { FlowEdge, FlowNode, FlowBusinessData, FlowNodeMeta, FlowConnection } from '@/utils/flowTypes'
+import type { EdgeType } from '@/utils/flowOptions'
 
 type EdgeStyleResult = Pick<FlowEdge, 'style' | 'animated' | 'type' | 'markerEnd' | 'data'>
 

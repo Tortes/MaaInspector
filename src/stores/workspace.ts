@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { FlowEditorSnapshot } from '../utils/flowWorkspaceTypes'
+import type { FlowEditorSnapshot } from '@/utils/flowWorkspaceTypes'
 
 export interface FlowTab {
   id: string

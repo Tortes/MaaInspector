@@ -1,7 +1,7 @@
 import { inject, reactive, ref } from 'vue'
-import type { useImageManager } from '../composables/useImageManager'
-import type { TemplateImage } from '../utils/flowTypes'
-import { normalizeTemplateList } from '../utils/templateUtils'
+import type { useImageManager } from '@/composables/useImageManager'
+import type { TemplateImage } from '@/utils/flowTypes'
+import { normalizeTemplateList } from '@/utils/templateUtils'
 
 export type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
 

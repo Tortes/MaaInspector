@@ -3,10 +3,10 @@ import { computed, ref, inject, watch, type Ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { Anchor as AnchorIcon } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
-import LazyImage from '../Common/LazyImage.vue'
-import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic'
-import type { useImageManager } from '../../composables/useImageManager'
-import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload, LayoutDirection } from '../../utils/flowTypes'
+import LazyImage from '@/components/Common/LazyImage.vue'
+import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '@/utils/node-config'
+import type { useImageManager } from '@/composables/useImageManager'
+import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload, LayoutDirection } from '@/utils/flowTypes'
 
 const props = defineProps<{
   id: string

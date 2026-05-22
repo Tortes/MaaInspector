@@ -16,7 +16,8 @@
     "lint": "eslint . --fix",
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "format": "prettier --write \"src/**/*.{vue,ts,js}\""
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -44,6 +45,7 @@
     "eslint-plugin-vue": "^10.9.1",
     "jsdom": "^29.0.2",
     "postcss": "^8.5.6",
+    "prettier": "^3.4.0",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "~5.6.2",

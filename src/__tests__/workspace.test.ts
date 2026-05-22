@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useWorkspaceStore } from '../stores/workspace'
-import type { FlowEditorSnapshot } from '../utils/flowWorkspaceTypes'
+import { useWorkspaceStore } from '@/stores/workspace'
+import type { FlowEditorSnapshot } from '@/utils/flowWorkspaceTypes'
 
 describe('useWorkspaceStore', () => {
   beforeEach(() => {

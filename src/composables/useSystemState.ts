@@ -1,10 +1,10 @@
 import { ref, computed, watch, type ComputedRef } from 'vue'
 import { ElMessage } from 'element-plus'
-import { systemApi } from '../services/api'
-import { makeFileId, parseFileId } from '../utils/fileId'
-import type { ApiDeviceInfo, ResourceProfile } from '../services/api'
-import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../utils/flowTypes'
-import type { EdgeType } from '../utils/flowOptions'
+import { systemApi } from '@/services/api'
+import { makeFileId, parseFileId } from '@/utils/fileId'
+import type { ApiDeviceInfo, ResourceProfile } from '@/services/api'
+import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
+import type { EdgeType } from '@/utils/flowOptions'
 
 interface DeviceManagerRef {
   currentDevice?: ApiDeviceInfo | null

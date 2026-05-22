@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { Settings, Save, RotateCcw, Terminal } from 'lucide-vue-next'
-import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '../../../utils/flowOptions'
-import type { EdgeType } from '../../../utils/flowOptions'
-import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '../../../utils/flowTypes'
+import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '@/utils/flowOptions'
+import type { EdgeType } from '@/utils/flowOptions'
+import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 
 export type PipelineVersion = 'V1' | 'V2'
 

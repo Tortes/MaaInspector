@@ -3,14 +3,14 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import {
   X, Bug, PlayCircle, PauseCircle, Activity, Terminal
 } from 'lucide-vue-next'
-import { debugApi } from '../../services/api.ts'
-import type { FlowNode } from '../../utils/flowTypes'
+import { debugApi } from '@/services/api'
+import type { FlowNode } from '@/utils/flowTypes'
 import DebugNodeSelector from './DebugPanel/DebugNodeSelector.vue'
 import DebugEventTimeline from './DebugPanel/DebugEventTimeline.vue'
 import DebugDetailPanel from './DebugPanel/DebugDetailPanel.vue'
 import ImagePreviewOverlay from './DebugPanel/ImagePreviewOverlay.vue'
-import { useDebugPanelState } from '../../composables/useDebugPanelState'
-import type { NextChild, DebugEventRecord, NodeStatusPayload } from '../../composables/useDebugPanelState'
+import { useDebugPanelState } from '@/composables/useDebugPanelState'
+import type { NextChild, DebugEventRecord, NodeStatusPayload } from '@/composables/useDebugPanelState'
 
 const props = defineProps<{
   visible?: boolean

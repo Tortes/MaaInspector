@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { changelogContent } from '../changelog'
+import { changelogContent } from '@/changelog'
 
 describe('changelog', () => {
   it('should have content', () => {

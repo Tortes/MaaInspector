@@ -3,12 +3,12 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import {
   Smartphone, Power, Search, Loader2
 } from 'lucide-vue-next'
-import { deviceApi, systemApi } from '../../../services/api'
+import { deviceApi, systemApi } from '@/services/api'
 import { ElMessage } from 'element-plus'
-import Dropdown from '../Common/Dropdown.vue'
-import StatusIndicator from '../Common/StatusIndicator.vue'
-import type { DropdownOption } from '../Common/Dropdown.vue'
-import type { ApiDeviceInfo } from '../../../services/api'
+import Dropdown from '@/components/Common/Dropdown.vue'
+import StatusIndicator from '@/components/Common/StatusIndicator.vue'
+import type { DropdownOption } from '@/components/Flow/Common/types'
+import type { ApiDeviceInfo } from '@/services/api'
 
 defineProps<{
   isConnected: boolean

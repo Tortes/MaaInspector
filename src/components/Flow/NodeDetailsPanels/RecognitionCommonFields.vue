@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Crop, Crosshair, ChevronDown } from 'lucide-vue-next'
-import { orderByOptions } from '../../../utils/nodeLogic'
-import type { NodeFormMethods } from '../../../utils/nodeLogic'
+import { orderByOptions } from '@/utils/node-config'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
 
 const props = defineProps<{
   form: NodeFormMethods

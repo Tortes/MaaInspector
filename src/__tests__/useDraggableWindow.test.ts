@@ -14,7 +14,7 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock
 })
 
-import { useDraggableWindow } from '../composables/useDraggableWindow'
+import { useDraggableWindow } from '@/composables/useDraggableWindow'
 
 describe('useDraggableWindow', () => {
   beforeEach(() => {

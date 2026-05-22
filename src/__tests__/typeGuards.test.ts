@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '../utils/typeGuards'
+import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '@/utils/typeGuards'
 
 describe('type guards', () => {
   describe('isEdgeType', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useImageManager } from '../composables/useImageManager'
-import type { TemplateImage } from '../utils/flowTypes'
+import { useImageManager } from '@/composables/useImageManager'
+import type { TemplateImage } from '@/utils/flowTypes'
 
 vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: vi.fn((path: string) => `tauri://localhost${path}`)

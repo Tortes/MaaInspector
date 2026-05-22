@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { toPipelineV2Node, toPipelineV1Node, isPipelineV2Node, isPipelineV2Nodes, toPipelineV2Nodes, toPipelineV1Nodes } from '../utils/pipelineTransform'
-import type { FlowBusinessData } from '../utils/flowTypes'
+import { toPipelineV2Node, toPipelineV1Node, isPipelineV2Node, isPipelineV2Nodes, toPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
+import type { FlowBusinessData } from '@/utils/flowTypes'
 
 describe('pipelineTransform', () => {
   describe('toPipelineV2Node', () => {

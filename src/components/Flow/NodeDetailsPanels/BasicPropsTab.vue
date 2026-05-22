@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown, Check, Settings } from 'lucide-vue-next'
-import type { ActionType, NodeFormMethods, RecognitionType, SelectOption } from '../../../utils/nodeLogic'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
+import type { ActionType, RecognitionType, SelectOption } from '@/utils/node-config'
 
 type DropdownKey = 'recognition' | 'action' | string
 

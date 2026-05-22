@@ -4,12 +4,12 @@ import { ElMessage } from 'element-plus'
 import {
   Database, HardDrive, Settings, RefreshCw, FilePlus,
 } from 'lucide-vue-next'
-import { resourceApi } from '../../../services/api'
-import { makeFileId, parseFileId, getFileObjById } from '../../../utils/fileId'
-import Dropdown from '../Common/Dropdown.vue'
-import StatusIndicator from '../Common/StatusIndicator.vue'
-import type { DropdownOption } from '../Common/Dropdown.vue'
-import type { ResourceProfile, ResourceFileInfo } from '../../../services/api'
+import { resourceApi } from '@/services/api'
+import { makeFileId, parseFileId, getFileObjById } from '@/utils/fileId'
+import Dropdown from '@/components/Common/Dropdown.vue'
+import StatusIndicator from '@/components/Common/StatusIndicator.vue'
+import type { DropdownOption } from '@/components/Flow/Common/types'
+import type { ResourceProfile, ResourceFileInfo } from '@/services/api'
 
 type EditableProfile = ResourceProfile & { paths: string[] }
 

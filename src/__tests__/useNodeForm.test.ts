@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { useNodeForm } from '../composables/useNodeForm'
+import { useNodeForm } from '@/composables/useNodeForm'
 import {
   DEFAULTS,
   NODE_CONFIG_MAP,
@@ -11,7 +11,7 @@ import {
   orderByOptions,
   detectorOptions,
   focusEventTypes,
-} from '../utils/node-config'
+} from '@/utils/node-config'
 
 function createMocks() {
   const emit = vi.fn()

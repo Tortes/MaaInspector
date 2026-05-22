@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
-import { detectorOptions } from '../../../utils/nodeLogic'
-import type { NodeFormMethods } from '../../../utils/nodeLogic'
+import { detectorOptions } from '@/utils/node-config'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
 
 const props = defineProps<{
   form: NodeFormMethods

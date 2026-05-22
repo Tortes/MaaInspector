@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { Database, Plus, ArrowUp, ArrowDown, Trash2, X, Save } from 'lucide-vue-next'
-import type { ResourceProfile } from '../../../services/api'
+import type { ResourceProfile } from '@/services/api'
 
 type EditableProfile = ResourceProfile & { paths: string[] }
 

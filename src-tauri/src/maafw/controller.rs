@@ -8,7 +8,7 @@ const CONNECTION_TIMEOUT_MS: u64 = 60000;
 const STATUS_POLL_INTERVAL_MS: u64 = 50;
 
 /// Wait for controller operation with timeout
-fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
+pub(crate) fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
     use std::time::{Duration, Instant};
 
     let start = Instant::now();

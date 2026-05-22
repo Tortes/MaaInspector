@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Plus, Radar, Loader2, Edit3, X, Save, PlusCircle } from 'lucide-vue-next'
-import { systemApi } from '../../../services/api'
+import { systemApi } from '@/services/api'
 import { ElMessage } from 'element-plus'
-import type { ApiResponse, ApiDeviceInfo } from '../../../services/api'
+import type { ApiResponse, ApiDeviceInfo } from '@/services/api'
 
 type DeviceType = 'adb' | 'win32control' | string
 
@@ -104,7 +104,6 @@ const handleSearch = async (type: DeviceType) => {
     const res = await systemApi.searchDevices(type) as ApiResponse<{ devices?: ApiDeviceInfo[] }> & { devices?: ApiDeviceInfo[] }
     const found = (res.data?.devices ?? res.devices ?? []) as ApiDeviceInfo[]
     if (found.length) {
-      let added = 0
       found.forEach((d) => {
         const address = typeof (d as any).address === 'string' ? (d as any).address : ''
         const config = typeof (d as any).config === 'object' && (d as any).config !== null ? (d as any).config as Record<string, unknown> : {}
@@ -117,7 +116,6 @@ const handleSearch = async (type: DeviceType) => {
         const existsFound = discoveredDevices.value.find((ed) => isSameDevice(ed, candidate))
         if (!existsSaved && !existsFound) {
           discoveredDevices.value.push(candidate)
-          added++
         }
       })
     }
@@ -160,7 +158,7 @@ const handleRemoveDevice = () => {
 }
 
 const save = () => {
-  const sanitized = editingDevices.value.map(({ source, ...rest }) => rest)
+  const sanitized = editingDevices.value.map(({ source: _source, ...rest }) => rest)
   emit('save', { devices: sanitized, index: editDevIndex.value })
 }
 

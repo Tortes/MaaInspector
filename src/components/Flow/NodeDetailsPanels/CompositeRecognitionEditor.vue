@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Crop, Crosshair, ChevronDown, Plus, Trash2, ImageIcon } from 'lucide-vue-next'
-import { orderByOptions, detectorOptions, recognitionTypes } from '../../../utils/nodeLogic'
-import type { NodeFormMethods } from '../../../utils/nodeLogic'
+import { orderByOptions, detectorOptions, recognitionTypes } from '@/utils/node-config'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
 
 type CompositeItem = Record<string, unknown> & { recognition: string }
 
@@ -120,7 +120,7 @@ const setChildJsonValue = (index: number, key: string, rawVal: string, forceStri
       const num = Number(rawVal)
       setChildValue(index, key, isNaN(num) ? rawVal : num)
     }
-  } catch (e) { setChildValue(index, key, rawVal) }
+  } catch (_e) { setChildValue(index, key, rawVal) }
 }
 
 const getChildTemplateList = (item: CompositeItem): string[] => {

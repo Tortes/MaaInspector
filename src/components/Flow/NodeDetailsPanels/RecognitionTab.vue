@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { NodeFormMethods, RecognitionType, SelectOption } from '../../../utils/nodeLogic'
+import type { NodeFormMethods } from '@/composables/useNodeForm'
+import type { RecognitionType, SelectOption } from '@/utils/node-config'
 import RecognitionCommonFields from './RecognitionCommonFields.vue'
 import CompositeRecognitionEditor from './CompositeRecognitionEditor.vue'
 import TemplateMatchFields from './TemplateMatchFields.vue'

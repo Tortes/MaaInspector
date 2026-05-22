@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { perfNow, perfLog, perfMark } from '../utils/perfTrace'
+import { perfNow, perfLog, perfMark } from '@/utils/perfTrace'
 
 describe('perfTrace utilities', () => {
   describe('perfNow', () => {

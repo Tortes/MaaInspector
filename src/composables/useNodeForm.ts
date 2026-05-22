@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue'
-import type { FlowBusinessData, FlowNodeMeta } from '../utils/flowTypes'
-import { toPipelineV1Node, toPipelineV2Node } from '../utils/pipelineTransform'
-import { DEFAULTS, focusEventTypes } from '../utils/node-config'
+import type { FlowBusinessData, FlowNodeMeta } from '@/utils/flowTypes'
+import { toPipelineV1Node, toPipelineV2Node } from '@/utils/pipelineTransform'
+import { DEFAULTS, focusEventTypes } from '@/utils/node-config'
 
 interface UseNodeFormProps {
   visible: boolean
@@ -27,7 +27,7 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
         : formData.value
       jsonStr.value = JSON.stringify(previewData, null, 2)
       jsonError.value = ''
-    } catch (e) { jsonError.value = 'JSON serialization failed' }
+    } catch (_e) { jsonError.value = 'JSON serialization failed' }
   }
 
   const emitUpdateData = () => {
@@ -90,7 +90,7 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
         if (forceString) { setValue(key, rawVal); return }
         const num = Number(rawVal); setValue(key, isNaN(num) ? rawVal : num)
       }
-    } catch (e) { setValue(key, rawVal) }
+    } catch (_e) { setValue(key, rawVal) }
   }
 
   const getTargetValue = (key: string) => {

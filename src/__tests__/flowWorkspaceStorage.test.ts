@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { loadWorkspaceState, saveWorkspaceState, clearWorkspaceState } from '../utils/flowWorkspaceStorage'
-import type { FlowWorkspaceState } from '../utils/flowWorkspaceTypes'
+import { loadWorkspaceState, saveWorkspaceState, clearWorkspaceState } from '@/utils/flowWorkspaceStorage'
+import type { FlowWorkspaceState } from '@/utils/flowWorkspaceTypes'
 
 describe('flowWorkspaceStorage', () => {
   const STORAGE_KEY = 'maainspector.flow.workspace.v1'

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { RefreshCw, Crosshair, Check, ZoomIn, Mouse } from 'lucide-vue-next'
-import { deviceApi, debugApi } from '../../services/api.ts'
+import { deviceApi, debugApi } from '@/services/api'
 import DeviceScreenCanvas from './DeviceScreensModals/DeviceScreenCanvas.vue'
 import DeviceScreenSidebar from './DeviceScreensModals/DeviceScreenSidebar.vue'
-import type { TemplateImage } from '../../utils/flowTypes'
+import type { TemplateImage } from '@/utils/flowTypes'
 
 type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 

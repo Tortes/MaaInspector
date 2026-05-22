@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { makeFileId, parseFileId, getFileObjById } from '../utils/fileId'
-import type { ResourceFileInfo } from '../services/api'
+import { makeFileId, parseFileId, getFileObjById } from '@/utils/fileId'
+import type { ResourceFileInfo } from '@/services/api'
 
 describe('fileId utilities', () => {
   describe('makeFileId', () => {
