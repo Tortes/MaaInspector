@@ -11,7 +11,7 @@ const props = defineProps<{
 const containerRef = ref<HTMLElement | null>(null)
 const { hasBeenVisible } = useLazyLoad(containerRef, { rootMargin: '100px' })
 
-const shouldLoad = computed(() => hasBeenVisible.value && props.src)
+const shouldLoad = computed(() => props.src && (hasBeenVisible.value || true))
 </script>
 
 <template>
@@ -21,7 +21,6 @@ const shouldLoad = computed(() => hasBeenVisible.value && props.src)
       :src="src"
       :alt="alt"
       :class="className"
-      loading="lazy"
     />
     <slot v-else name="placeholder">
       <div class="lazy-placeholder"></div>
