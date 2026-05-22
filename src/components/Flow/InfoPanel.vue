@@ -13,6 +13,7 @@ import { makeFileId, parseFileId } from '../../utils/fileId'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, TemplateImage, SpacingKey } from '../../utils/flowTypes'
 import type { EdgeType } from '../../utils/flowOptions'
+import type { FlowTab } from '../../stores/workspace'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
 import AppSettingsModal from './Modals/AppSettingsModal.vue'
@@ -20,9 +21,11 @@ import AnnouncementModal from './Modals/AnnouncementModal.vue'
 import DeviceManager from './InfoPanel/DeviceManager.vue'
 import ResourceManager from './InfoPanel/ResourceManager.vue'
 import AgentManager from './InfoPanel/AgentManager.vue'
+import Dropdown from './Common/Dropdown.vue'
 
 // --- Props & Emits ---
 const props = defineProps<{
+  tabs?: FlowTab[]
   nodeCount?: number
   edgeCount?: number
   isDirty?: boolean
@@ -50,6 +53,80 @@ const emit = defineEmits<{
   'update-low-memory': [payload: boolean]
   'open-debug-panel': []
 }>()
+
+// --- 预加载数据缓存 ---
+const preloadCache = new Map<string, { nodes: Record<string, FlowBusinessData>; images: Record<string, TemplateImage[]>; fileVersion?: 'V1' | 'V2' }>()
+
+const preloadAllTabFiles = async () => {
+  console.log('[预加载] preloadAllTabFiles 被调用')
+  console.log('[预加载] props.tabs:', props.tabs)
+  console.log('[预加载] props.tabs.length:', props.tabs?.length)
+  
+  if (!props.tabs || props.tabs.length === 0) {
+    console.log('[预加载] 跳过: 没有标签页')
+    return
+  }
+  
+  const rm = resourceManagerRef.value
+  if (!rm) {
+    console.log('[预加载] 跳过: ResourceManager 未就绪')
+    return
+  }
+  
+  const filesToPreload = new Set<string>()
+  // selectedResourceFile 已经是 source|filename 格式
+  const currentFileKey = selectedResourceFile.value
+  console.log('[预加载] 当前文件 key:', currentFileKey)
+  
+  for (const tab of props.tabs) {
+    const snapshot = tab.snapshot
+    console.log('[预加载] 检查标签页:', tab.id, 'filename:', snapshot.flowState?.currentFilename, 'source:', snapshot.flowState?.currentSource)
+    if (snapshot.flowState?.currentFilename && snapshot.flowState?.currentSource) {
+      const fileKey = `${snapshot.flowState.currentSource}|${snapshot.flowState.currentFilename}`
+      console.log('[预加载] 文件 key:', fileKey, '是否缓存:', preloadCache.has(fileKey), '是否当前文件:', fileKey === currentFileKey)
+      if (fileKey !== currentFileKey && !preloadCache.has(fileKey)) {
+        filesToPreload.add(fileKey)
+        console.log('[预加载] 添加到预加载队列:', fileKey)
+      }
+    }
+  }
+  
+  console.log('[预加载] 待预加载文件数量:', filesToPreload.size)
+  if (filesToPreload.size === 0) {
+    console.log('[预加载] 跳过: 没有需要预加载的文件')
+    return
+  }
+  
+  const preloadPromises = Array.from(filesToPreload).map(async (fileKey) => {
+    const [source, filename] = fileKey.split('|')
+    if (!source || !filename) return
+    
+    console.log('[预加载] 开始预加载:', filename, 'source:', source)
+    try {
+      const [nodesRes, imagesRes] = await Promise.all([
+        resourceApi.getFileNodes<Record<string, FlowBusinessData>>(source, filename),
+        resourceApi.getTemplateImages(source, filename)
+      ])
+      
+      console.log('[预加载] 预加载成功:', filename, '节点数:', Object.keys(nodesRes.nodes || {}).length)
+      const nodes = nodesRes.nodes || {}
+      const fileVersion = isPipelineV2Nodes(nodes) ? 'V2' : 'V1'
+      const normalizedNodes = fileVersion === 'V2' ? toPipelineV1Nodes(nodes) : nodes
+      
+      preloadCache.set(fileKey, {
+        nodes: normalizedNodes,
+        images: imagesRes.results as Record<string, TemplateImage[]> || {},
+        fileVersion
+      })
+      console.log('[预加载] 缓存已设置:', fileKey, '缓存大小:', preloadCache.size)
+    } catch (e) {
+      console.warn(`[预加载] 预加载文件失败: ${filename}`, e)
+    }
+  })
+  
+  await Promise.allSettled(preloadPromises)
+  console.log('[预加载] 所有预加载完成, 缓存大小:', preloadCache.size)
+}
 
 // --- 内部组件 ---
 const StatusIndicator = defineComponent({
@@ -181,7 +258,22 @@ const executeFileSwitch = async (filename: string, source?: string) => {
   }
 }
 
-defineExpose({executeFileSwitch, handleSaveNodes})
+const triggerLoadFromCache = (config: { filename: string; source: string; tabId: string }) => {
+  const fileKey = `${config.source}|${config.filename}`
+  const cached = preloadCache.get(fileKey)
+  
+  if (!cached) {
+    console.log('[缓存加载] 未命中缓存:', fileKey)
+    return
+  }
+  
+  console.log('[缓存加载] 从缓存加载到标签页:', config.tabId, '文件:', config.filename, '节点数:', Object.keys(cached.nodes).length)
+  emit('load-nodes', { filename: config.filename, source: config.source, nodes: cached.nodes, fileVersion: cached.fileVersion })
+  emit('load-images', cached.images)
+  preloadCache.delete(fileKey)
+}
+
+defineExpose({executeFileSwitch, handleSaveNodes, triggerLoadFromCache})
 
 // --- 子组件事件处理 ---
 const handleDeviceConnected = (status: boolean) => {
@@ -189,17 +281,39 @@ const handleDeviceConnected = (status: boolean) => {
 }
 
 const handleFileSelected = (payload: { filename: string; source: string }) => {
+  console.log('[文件选择] handleFileSelected 被调用:', payload)
+  
   const rm = resourceManagerRef.value
-  if (!rm) return
+  if (!rm) {
+    console.log('[文件选择] 跳过: ResourceManager 未就绪')
+    return
+  }
   const fileId = makeFileId(payload.source, payload.filename)
   const fileObj = rm.findFileById(fileId)
-  if (!fileObj || !fileObj.value) return
+  if (!fileObj || !fileObj.value) {
+    console.log('[文件选择] 跳过: 找不到文件对象')
+    return
+  }
 
   const src = fileObj.source
   const fname = fileObj.value
+  const fileKey = `${src}|${fname}`
+  console.log('[文件选择] 文件 key:', fileKey, '缓存大小:', preloadCache.size)
 
+  // 检查预加载缓存
+  const cached = preloadCache.get(fileKey)
+  if (cached) {
+    console.log('[文件选择] 使用缓存数据:', fileKey, '节点数:', Object.keys(cached.nodes).length)
+    emit('load-nodes', { filename: fname, source: src, nodes: cached.nodes, fileVersion: cached.fileVersion })
+    emit('load-images', cached.images)
+    preloadCache.delete(fileKey)
+    rm.setMessage(`已加载: ${Object.keys(cached.nodes).length} 节点 (从缓存)`)
+    return
+  }
+
+  console.log('[文件选择] 未命中缓存, 开始正常加载')
   const totalStart = perfNow()
-  rm.message = '加载节点中...'
+  rm.setMessage('加载节点中...')
   resourceApi.getFileNodes<Record<string, FlowBusinessData>>(src, fname, {
     context: { feature: 'resource', action: 'get_nodes', component: 'InfoPanel' }
   }).then(res => {
@@ -216,7 +330,7 @@ const handleFileSelected = (payload: { filename: string; source: string }) => {
     const emitStart = perfNow()
     emit('load-nodes', {filename: fname, source: src, nodes: normalizedNodes, fileVersion})
     perfLog('InfoPanel.emitLoadNodes', emitStart, { nodeCount: Object.keys(normalizedNodes).length })
-    rm.message = `已加载: ${Object.keys(nodes).length} 节点`
+    rm.setMessage(`已加载: ${Object.keys(nodes).length} 节点`)
 
     resourceApi.getTemplateImages(src, fname, {
       context: { feature: 'resource', action: 'get_templates', component: 'InfoPanel' }
@@ -232,9 +346,13 @@ const handleFileSelected = (payload: { filename: string; source: string }) => {
     })
 
     perfLog('InfoPanel.fetchAndEmitNodes.total', totalStart, { filename: fname })
+    
+    // 当前文件加载完成后，预加载其他标签页的文件
+    console.log('[文件选择] 触发预加载其他标签页文件')
+    preloadAllTabFiles()
   }).catch(e => {
     console.error("加载节点失败", e)
-    rm.message = '节点加载失败'
+    rm.setMessage('节点加载失败')
   })
 }
 
@@ -246,7 +364,7 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
   const rm = resourceManagerRef.value
   if (!rm) return
   try {
-    rm.message = '创建文件中...'
+    rm.setMessage('创建文件中...')
     await resourceApi.createFile(path, filename, {
       context: { feature: 'resource', action: 'create_file', component: 'InfoPanel' }
     })
@@ -261,12 +379,12 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
     )
     if (newFileObj && newFileObj.value) {
       await executeFileSwitch(newFileObj.value, newFileObj.source)
-      rm.message = '新建成功并已加载'
+      rm.setMessage('新建成功并已加载')
     }
   } catch (e: unknown) {
     console.error(e)
     ElMessage.error(`创建失败: ${e instanceof Error ? e.message : '未知错误'}`)
-    rm.message = '创建失败'
+    rm.setMessage('创建失败')
   }
 }
 

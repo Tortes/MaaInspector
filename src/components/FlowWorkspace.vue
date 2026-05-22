@@ -32,6 +32,7 @@ type FlowEditorExpose = {
 type InfoPanelExpose = {
   executeFileSwitch: (filename: string, source?: string) => Promise<void>
   handleSaveNodes: () => Promise<void>
+  triggerLoadFromCache: (config: { filename: string; source: string; tabId: string }) => void
 }
 
 interface DebugPanelState {
@@ -143,6 +144,18 @@ const selectTab = (tabId: string) => {
   snapshotCurrentEditor()
   workspaceStore.setActiveTabId(tabId)
   schedulePersistWorkspaceState()
+  
+  const targetTab = workspaceStore.tabs.find(t => t.id === tabId)
+  if (!targetTab?.snapshot?.flowState?.currentFilename) return
+  
+  const infoPanel = infoPanelRef.value
+  if (infoPanel?.triggerLoadFromCache) {
+    infoPanel.triggerLoadFromCache({
+      filename: targetTab.snapshot.flowState.currentFilename,
+      source: targetTab.snapshot.flowState.currentSource,
+      tabId
+    })
+  }
 }
 
 const addTab = () => {
@@ -449,6 +462,7 @@ onBeforeUnmount(() => {
       <div class="absolute top-3 right-3 z-50 pointer-events-none">
         <InfoPanel
           ref="infoPanelRef"
+          :tabs="workspaceStore.tabs"
           :node-count="workspaceStore.activeTab!.snapshot.flowState?.nodes?.length || 0"
           :edge-count="workspaceStore.activeTab!.snapshot.flowState?.edges?.length || 0"
           :is-dirty="workspaceStore.activeTab!.snapshot.flowState?.dataSnapshot !== workspaceStore.activeTab!.snapshot.flowState?.originalDataSnapshot"

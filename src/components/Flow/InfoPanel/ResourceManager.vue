@@ -202,6 +202,10 @@ const setProfileIndex = (index: number) => {
   emit('update:profileIndex', index)
 }
 
+const setMessage = (msg: string) => {
+  internalMessage.value = msg
+}
+
 // 暴露方法
 defineExpose({
   handleResourceLoad,
@@ -214,6 +218,7 @@ defineExpose({
   findFileById,
   status,
   message,
+  setMessage,
   fileOptions,
   currentProfile,
   availableFiles,
