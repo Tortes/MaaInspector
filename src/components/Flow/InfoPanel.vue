@@ -41,6 +41,13 @@ const props = defineProps<{
   lowMemoryMode?: boolean
 }>()
 
+const openedFileIds = computed(() => {
+  if (!props.tabs) return []
+  return props.tabs
+    .filter(tab => tab.snapshot.flowState?.currentFilename && tab.snapshot.flowState?.currentSource)
+    .map(tab => `${tab.snapshot.flowState!.currentSource}|${tab.snapshot.flowState!.currentFilename}`)
+})
+
 const emit = defineEmits<{
   'load-nodes': [payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }]
   'load-images': [payload: Record<string, TemplateImage[]>, basePath?: string]
@@ -743,6 +750,7 @@ const handleAnnouncementClose = () => {
             :profiles="resourceProfiles"
             :profile-index="selectedProfileIndex"
             :selected-file="selectedResourceFile"
+            :opened-file-ids="openedFileIds"
             @file-selected="handleFileSelected"
             @config-changed="handleConfigChanged"
             @update:profile-index="(v) => { selectedProfileIndex = v }"

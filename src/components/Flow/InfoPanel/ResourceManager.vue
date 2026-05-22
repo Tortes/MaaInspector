@@ -31,6 +31,7 @@ const props = defineProps<{
   profiles?: EditableProfile[]
   profileIndex?: number
   selectedFile?: string
+  openedFileIds?: string[]
 }>()
 
 const emit = defineEmits([
@@ -83,10 +84,15 @@ const fileOptions = computed<DropdownOption[]>(() => {
   if (availableFiles.value.length === 0) {
     return [{ label: '配置路径下无文件', value: '', disabled: true }]
   }
-  return availableFiles.value.map((file) => ({
-    label: file.label,
-    value: makeFileId(file.source, file.value)
-  }))
+  const openedIds = new Set(props.openedFileIds || [])
+  return availableFiles.value.map((file) => {
+    const fileId = makeFileId(file.source, file.value)
+    return {
+      label: file.label,
+      value: fileId,
+      disabled: openedIds.has(fileId)
+    }
+  })
 })
 
 const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
