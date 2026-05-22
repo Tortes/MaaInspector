@@ -409,26 +409,7 @@ impl ResourcesManager {
         self.get_image_dir(&path)
     }
 
-    pub fn encode_image_to_base64(&self, fullpath: &Path) -> Option<String> {
-        if !fullpath.exists() {
-            return None;
-        }
-
-        let mime = mime_guess::from_path(fullpath)
-            .first()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "application/octet-stream".to_string());
-
-        if let Ok(data) = fs::read(fullpath) {
-            let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
-            return Some(format!("data:{};base64,{}", mime, encoded));
-        }
-
-        None
-    }
-
     pub fn save_image(&self, resource_path: &str, relative_path: &str, base64_data: &str) -> bool {
-        let _path = PathBuf::from(resource_path);
         let full_path = self.get_image_full_path(resource_path, relative_path);
 
         // Ensure parent directory exists
