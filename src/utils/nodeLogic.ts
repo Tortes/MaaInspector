@@ -225,11 +225,14 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
     return (val === null || val === undefined) ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val))
   }
 
-  const setJsonValue = (key: string, rawVal: string) => {
+  const setJsonValue = (key: string, rawVal: string, forceString = false) => {
     if (!rawVal || !rawVal.trim()) { setValue(key, null); return }
     try {
       if (rawVal.startsWith('[') || rawVal.startsWith('{')) setValue(key, JSON.parse(rawVal))
-      else { const num = Number(rawVal); setValue(key, isNaN(num) ? rawVal : num) }
+      else {
+        if (forceString) { setValue(key, rawVal); return }
+        const num = Number(rawVal); setValue(key, isNaN(num) ? rawVal : num)
+      }
     } catch (e) { setValue(key, rawVal) }
   }
 

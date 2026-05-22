@@ -132,12 +132,13 @@ const getChildJsonValue = (item: CompositeItem, key: string) => {
   const val = getChildValue<unknown>(item, key, null)
   return (val === null || val === undefined) ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val))
 }
-const setChildJsonValue = (index: number, key: string, rawVal: string) => {
+const setChildJsonValue = (index: number, key: string, rawVal: string, forceString = false) => {
   if (!isCompositeRecognition.value) return
   if (!rawVal || !rawVal.trim()) { setChildValue(index, key, null); return }
   try {
     if (rawVal.startsWith('[') || rawVal.startsWith('{')) setChildValue(index, key, JSON.parse(rawVal))
     else {
+      if (forceString) { setChildValue(index, key, rawVal); return }
       const num = Number(rawVal)
       setChildValue(index, key, isNaN(num) ? rawVal : num)
     }
@@ -738,7 +739,7 @@ const updateChildTemplate = (itemIndex: number, templateIndex: number, value: st
                       :value="getChildJsonValue(item, 'expected')"
                       class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                       placeholder="期望文本或正则"
-                      @input="setChildJsonValue(idx, 'expected', getInputValue($event))"
+                      @input="setChildJsonValue(idx, 'expected', getInputValue($event), true)"
                     >
                   </div>
                   <div class="grid grid-cols-2 gap-2">
@@ -801,7 +802,7 @@ const updateChildTemplate = (itemIndex: number, templateIndex: number, value: st
                         :value="getChildJsonValue(item, 'expected')"
                         class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                         placeholder="0 或 [0,1,2]"
-                        @input="setChildJsonValue(idx, 'expected', getInputValue($event))"
+                        @input="setChildJsonValue(idx, 'expected', getInputValue($event), true)"
                       >
                     </div>
                     <div
@@ -1057,7 +1058,7 @@ const updateChildTemplate = (itemIndex: number, templateIndex: number, value: st
                 :value="getJsonValue('expected')"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 placeholder="期望文本或正则"
-                @input="setJsonValue('expected', getInputValue($event))"
+                @input="setJsonValue('expected', getInputValue($event), true)"
               >
               <button
                 class="px-2 bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 rounded-lg flex items-center justify-center"
@@ -1128,7 +1129,7 @@ const updateChildTemplate = (itemIndex: number, templateIndex: number, value: st
                 :value="getJsonValue('expected')"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="0 或 [0,1,2]"
-                @input="setJsonValue('expected', getInputValue($event))"
+                @input="setJsonValue('expected', getInputValue($event), true)"
               >
             </div>
             <div
