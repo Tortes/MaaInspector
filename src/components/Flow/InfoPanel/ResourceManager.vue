@@ -6,8 +6,8 @@ import {
 } from 'lucide-vue-next'
 import { resourceApi } from '@/services/api'
 import { makeFileId, parseFileId, getFileObjById } from '@/utils/fileId'
-import Dropdown from '@/components/Common/Dropdown.vue'
-import StatusIndicator from '@/components/Common/StatusIndicator.vue'
+import Dropdown from '@/components/Flow/Common/Dropdown.vue'
+import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 import type { DropdownOption } from '@/components/Flow/Common/types'
 import type { ResourceProfile, ResourceFileInfo } from '@/services/api'
 

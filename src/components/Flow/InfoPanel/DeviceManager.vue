@@ -5,8 +5,8 @@ import {
 } from 'lucide-vue-next'
 import { deviceApi, systemApi } from '@/services/api'
 import { ElMessage } from 'element-plus'
-import Dropdown from '@/components/Common/Dropdown.vue'
-import StatusIndicator from '@/components/Common/StatusIndicator.vue'
+import Dropdown from '@/components/Flow/Common/Dropdown.vue'
+import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 import type { DropdownOption } from '@/components/Flow/Common/types'
 import type { ApiDeviceInfo } from '@/services/api'
 
