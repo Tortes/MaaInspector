@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import {
-  X, Bug, PlayCircle, PauseCircle, Activity, Terminal
+  X, Bug, PlayCircle, PauseCircle
 } from 'lucide-vue-next'
 import { debugApi } from '@/services/api'
 import type { FlowNode } from '@/utils/flowTypes'
@@ -69,7 +69,6 @@ const nodeOptions = computed(() => (props.nodes || []).map(node => ({
 })))
 
 const showPreviewPanel = computed(() => !selectedDetail.value)
-const actionButtonText = computed(() => '开始调试')
 
 const handleOptionSelect = (opt: { id: string }) => {
   searchValue.value = opt.id
@@ -87,15 +86,6 @@ const handleLocate = (id: string) => {
   if (targetId) emit('locate-node', targetId)
 }
 
-const handleStartStream = () => {
-  if (!isStreamRunning.value) {
-    startRealtimeStream(
-      (payload: NodeStatusPayload) => emit('update-node-status', payload),
-      props.nodes
-    )
-  }
-}
-
 const handleResetStream = () => {
   clearEvents()
   selectedDetail.value = null
@@ -108,7 +98,6 @@ const handleResetStream = () => {
 }
 
 const handleActionButton = async () => {
-  handleStartStream()
   handleDebugNow()
 }
 
@@ -335,118 +324,79 @@ onUnmounted(() => {
         @mousedown.stop="startWidthResize"
       />
       <div
-        class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200 shrink-0"
+        class="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0"
       >
         <div class="flex items-center gap-2">
-          <div class="p-1.5 rounded-lg bg-white shadow-sm border border-amber-100">
-            <Bug
-              :size="16"
-              class="text-amber-600"
-            />
-          </div>
-          <div class="flex flex-col leading-tight">
-            <span class="font-bold text-slate-800 text-sm">调试窗口</span>
-            <span class="text-[11px] text-slate-500 font-mono">文件：{{ currentFilename || '未选择' }}</span>
-          </div>
+          <Bug
+            :size="15"
+            class="text-slate-600"
+          />
+          <span class="font-medium text-slate-700 text-sm">调试</span>
+          <span
+            v-if="currentFilename"
+            class="text-xs text-slate-400 truncate max-w-[200px]"
+          >{{ currentFilename }}</span>
         </div>
-        <div class="flex items-center gap-2">
-          <button
-            class="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
-            @click.stop="$emit('close')"
-          >
-            <X :size="16" />
-          </button>
-        </div>
+        <button
+          class="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
+          @click.stop="$emit('close')"
+        >
+          <X :size="15" />
+        </button>
       </div>
 
       <div class="flex flex-1 min-h-0">
         <div
           v-if="showPreviewPanel"
-          class="w-[260px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3 shrink-0"
+          class="w-[220px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0"
         >
-          <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
-            <Terminal
-              :size="14"
-              class="text-amber-500"
-            /> 设备预览
-          </div>
-          <div class="relative w-full aspect-[4/5] bg-white border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center">
-            <img
-              v-if="previewUrl"
-              :src="previewUrl"
-              alt="preview"
-              class="w-full h-full object-contain"
-            >
-            <div
-              v-else
-              class="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center text-slate-400 text-xs gap-1"
-            >
-              <Bug
-                :size="20"
-                class="text-amber-500"
-              />
-              <span>等待截图或使用占位图</span>
+          <div class="p-2 border-b border-slate-200">
+            <div class="relative w-full aspect-[4/5] bg-white border border-slate-200 rounded overflow-hidden">
+              <img
+                v-if="previewUrl"
+                :src="previewUrl"
+                alt="preview"
+                class="w-full h-full object-contain"
+              >
+              <div
+                v-else
+                class="w-full h-full flex items-center justify-center text-slate-400 text-xs"
+              >
+                无预览
+              </div>
             </div>
-          </div>
-          <div class="text-[10px] text-slate-400 leading-relaxed">
-            右侧调试面板实时接收后端推送的调试事件，JumpBack 节点会被单独标记。
           </div>
         </div>
 
         <div class="flex-1 flex flex-col min-h-0 w-0">
-          <div class="p-4 border-b border-slate-100 bg-white flex flex-col gap-3 shrink-0">
-            <div class="flex gap-3 items-center">
-              <DebugNodeSelector
-                v-model="searchValue"
-                :options="nodeOptions"
-                placeholder="输入或选择节点 ID..."
-                @select="handleOptionSelect"
-                @submit="handleDebugNow"
-              />
-              <div class="flex items-center gap-2">
-                <button
-                  class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
-                  :class="isStreamRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'"
-                  @click="handleActionButton"
-                >
-                  <PlayCircle :size="16" />
-                  <span>{{ actionButtonText }}</span>
-                </button>
-                <button
-                  class="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold shadow transition-colors border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
-                  @click="handlePauseDebug"
-                >
-                  <PauseCircle
-                    :size="16"
-                    class="text-amber-600"
-                  />
-                  <span>暂停调试</span>
-                </button>
-              </div>
-            </div>
-            <div class="flex items-center gap-3 text-[11px] text-slate-500">
-              <div class="flex items-center gap-1">
-                <Activity
-                  :size="14"
-                  class="text-amber-500"
-                />
-                <span>实时事件数量：{{ events.length }}</span>
-              </div>
-              <div class="flex items-center gap-3 text-[11px] text-slate-500 ml-auto">
-                <div class="flex items-center gap-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-blue-400" />
-                  <span>顺序</span>
-                  <span class="w-2.5 h-2.5 rounded-full bg-purple-400" />
-                  <span>JumpBack</span>
-                </div>
-                <button
-                  class="px-2 py-1 rounded border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
-                  @click="handleResetStream"
-                >
-                  清空调试记录
-                </button>
-              </div>
-            </div>
+          <div class="p-2 border-b border-slate-200 bg-white flex items-center gap-2 shrink-0">
+            <DebugNodeSelector
+              v-model="searchValue"
+              :options="nodeOptions"
+              placeholder="节点 ID..."
+              @select="handleOptionSelect"
+              @submit="handleDebugNow"
+            />
+            <button
+              class="flex items-center gap-1 px-2.5 py-1.5 rounded text-white text-xs font-medium bg-slate-700 hover:bg-slate-800 transition-colors shrink-0"
+              @click="handleActionButton"
+            >
+              <PlayCircle :size="14" />
+              <span>调试</span>
+            </button>
+            <button
+              class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0"
+              @click="handlePauseDebug"
+            >
+              <PauseCircle :size="14" />
+              <span>暂停</span>
+            </button>
+            <button
+              class="px-2 py-1.5 rounded text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 ml-auto shrink-0"
+              @click="handleResetStream"
+            >
+              清空
+            </button>
           </div>
 
           <DebugEventTimeline

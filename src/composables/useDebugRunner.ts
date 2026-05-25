@@ -22,21 +22,38 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
     if (!node || !node.data) return
     node.data._result = null
 
+    let matchedTaskId: string | number | null = null
+    let resolved = false
+    let streamCleanup: (() => void) | null = null
+
     const taskComplete = new Promise<void>((resolve, reject) => {
-      let cleanup: (() => void) | null = null
       const timeout = setTimeout(() => {
-        if (cleanup) cleanup()
-        reject(new Error('Task timeout after 30s'))
+        if (!resolved) {
+          resolved = true
+          if (streamCleanup) streamCleanup()
+          reject(new Error('Task timeout after 30s'))
+        }
       }, 30000)
 
-      cleanup = debugApi.subscribeNodeStream((data: unknown) => {
+      streamCleanup = debugApi.subscribeNodeStream((data: unknown) => {
         const payload = data as DebugStreamPayload
-        if (payload?.type === 'node_recognition' &&
-            payload?.name === nodeId &&
-            (payload?.status === 'succeeded' || payload?.status === 'failed')) {
-          clearTimeout(timeout)
-          if (cleanup) cleanup()
-          resolve()
+        if (payload?.type === 'node_recognition' && payload?.name === nodeId) {
+          if (matchedTaskId === null && payload.task_id != null) {
+            matchedTaskId = payload.task_id
+          }
+
+          if (matchedTaskId !== null && payload.task_id !== matchedTaskId) {
+            return
+          }
+
+          if (payload?.status === 'succeeded' || payload?.status === 'failed') {
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              if (streamCleanup) streamCleanup()
+              resolve()
+            }
+          }
         }
       })
     })
@@ -55,6 +72,9 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
       console.error('Debug failed:', error)
       node.data._result = { success: false, error: err?.message || 'Network/Server Error' }
     } finally {
+      if (streamCleanup && !resolved) {
+        (streamCleanup as () => void)()
+      }
       nodes.value = [...nodes.value]
       onSnapshotState()
     }

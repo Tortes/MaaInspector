@@ -47,18 +47,18 @@ const handleChildClick = (child: NextChild, item: DebugEventRecord) => {
 const getChildStatusClass = (child: NextChild) => {
   const STATUS = props.statusConstants
   const baseClasses = child.jump_back
-    ? 'bg-purple-50 text-purple-600 border-purple-100'
-    : 'bg-blue-50 text-blue-600 border-blue-100'
+    ? 'bg-purple-50 text-purple-700 border-purple-200'
+    : 'bg-slate-50 text-slate-700 border-slate-200'
 
   let statusClass = ''
   if (child.status === STATUS.UNKNOWN) {
-    statusClass = 'opacity-60'
+    statusClass = 'opacity-50'
   } else if (child.status === STATUS.STARTING) {
-    statusClass = 'ring-1 ring-amber-200'
+    statusClass = 'border-amber-300'
   } else if (child.status === STATUS.SUCCEEDED) {
-    statusClass = child.jump_back ? 'ring-1 ring-purple-200' : 'ring-1 ring-blue-200'
+    statusClass = child.jump_back ? 'border-purple-300' : 'border-emerald-300'
   } else {
-    statusClass = 'ring-1 ring-rose-200'
+    statusClass = 'border-rose-300'
   }
 
   return `${baseClasses} ${statusClass}`
@@ -67,65 +67,62 @@ const getChildStatusClass = (child: NextChild) => {
 const getStatusIcon = (child: NextChild) => {
   const STATUS = props.statusConstants
   if (child.status === STATUS.UNKNOWN) {
-    return { component: Activity, size: 14, class: 'text-slate-400' }
+    return { component: Activity, size: 12, class: 'text-slate-400' }
   }
   if (child.status === STATUS.STARTING) {
-    return { component: Loader2, size: 12, class: 'animate-spin text-amber-600' }
+    return { component: Loader2, size: 11, class: 'animate-spin text-amber-500' }
   }
   if (child.status === STATUS.SUCCEEDED) {
-    return { component: CheckCircle2, size: 14, class: 'text-emerald-600' }
+    return { component: CheckCircle2, size: 12, class: 'text-emerald-500' }
   }
-  return { component: XCircle, size: 14, class: 'text-rose-600' }
+  return { component: XCircle, size: 12, class: 'text-rose-500' }
 }
 </script>
 
 <template>
-  <div class="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-3 custom-scrollbar min-h-0">
+  <div class="flex-1 overflow-y-auto bg-slate-50 p-3 space-y-2 custom-scrollbar min-h-0">
     <div
       v-if="sortedEvents.length === 0"
-      class="h-full w-full flex items-center justify-center text-slate-400 text-sm"
+      class="h-full flex items-center justify-center text-slate-400 text-sm"
     >
-      等待调试结果流入...
+      等待调试事件...
     </div>
 
     <div
       v-for="item in sortedEvents"
       :key="item.recordId || `${item.taskId}-${item.timestamp}`"
-      class="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-2"
+      class="bg-white rounded border border-slate-200 p-2.5 space-y-2"
     >
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="px-2 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-semibold border border-amber-100">
-            任务 #{{ item.taskId }}
+          <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-medium">
+            #{{ item.taskId }}
           </span>
-          <span class="text-sm font-mono text-slate-700">主节点：{{ item.name }}</span>
-          <span class="text-[11px] text-slate-400">时间 {{ formatTime(item.timestamp) }}</span>
+          <span class="text-sm font-mono text-slate-700">{{ item.name }}</span>
+          <span class="text-xs text-slate-400">{{ formatTime(item.timestamp) }}</span>
         </div>
-        <div class="flex items-center gap-2">
-          <button
-            class="px-2 py-1 text-[12px] rounded bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 flex items-center gap-1"
-            @click="handleLocate(item.name)"
-          >
-            <MapPin :size="14" /> 定位节点
-          </button>
-        </div>
+        <button
+          class="px-2 py-1 text-xs rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex items-center gap-1"
+          @click="handleLocate(item.name)"
+        >
+          <MapPin :size="12" />
+          定位
+        </button>
       </div>
-      <div class="flex flex-wrap gap-2">
+      <div class="flex flex-wrap gap-1.5">
         <button
           v-for="(child, idx) in item.nextList"
           :key="child.name + idx"
-          class="px-2 py-1 rounded-full text-[12px] font-mono border transition-colors flex items-center gap-2"
+          class="px-2 py-1 rounded text-xs font-mono border transition-colors flex items-center gap-1.5"
           :class="getChildStatusClass(child)"
           @click="handleChildClick(child, item)"
         >
           <span>{{ child.name }}</span>
-          <span class="text-[11px] flex items-center gap-1">
-            <component
-              :is="getStatusIcon(child).component"
-              :size="getStatusIcon(child).size"
-              :class="getStatusIcon(child).class"
-            />
-          </span>
+          <component
+            :is="getStatusIcon(child).component"
+            :size="getStatusIcon(child).size"
+            :class="getStatusIcon(child).class"
+          />
         </button>
       </div>
     </div>
