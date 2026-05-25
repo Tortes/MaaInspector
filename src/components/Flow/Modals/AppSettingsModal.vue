@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { Settings, Save, RotateCcw, Terminal } from 'lucide-vue-next'
 import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '@/utils/flowOptions'
 import type { EdgeType } from '@/utils/flowOptions'
@@ -86,7 +87,6 @@ const handleReset = () => {
 
 const handleOpenDevTools = async () => {
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
     await invoke('devtools_open')
   } catch (e) {
     console.error('Failed to open DevTools:', e)

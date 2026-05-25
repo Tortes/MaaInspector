@@ -63,8 +63,10 @@ export default defineConfig(async () => ({
           "elk-vendor": ["elkjs"],
           "ui-vendor": ["element-plus"],
           "icons-vendor": ["lucide-vue-next"],
+          "tauri-vendor": ["@tauri-apps/api"],
         },
       },
     },
+    chunkSizeWarningLimit: 1000,
   },
 }));
