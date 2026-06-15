@@ -267,7 +267,7 @@ const handleOpenDevTools = async () => {
                     : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'"
                   @click="restoreWorkspaceOnStart = !restoreWorkspaceOnStart"
                 >
-                  {{ restoreWorkspaceOnStart ? '已开启：启动时恢复标签页与快照' : '已关闭：仅恢复应用默认设置' }}
+                  {{ restoreWorkspaceOnStart ? '已开启：加载同一资源后恢复标签页' : '已关闭：加载资源后保持空白工作区' }}
                 </button>
               </div>
 

@@ -1,111 +1,111 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useSettingsStore } from '@/stores/settings'
+import { useAppConfigStore } from '@/stores/appConfig'
 
-describe('useSettingsStore', () => {
+describe('useAppConfigStore canvas settings', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
   describe('default values', () => {
     it('should have default edgeType', () => {
-      const store = useSettingsStore()
-      expect(store.edgeType).toBe('smoothstep')
+      const store = useAppConfigStore()
+      expect(store.canvas.edgeType).toBe('smoothstep')
     })
 
     it('should have default spacing', () => {
-      const store = useSettingsStore()
-      expect(store.spacing).toBe('normal')
+      const store = useAppConfigStore()
+      expect(store.canvas.spacing).toBe('normal')
     })
 
     it('should have default layoutAlgorithm', () => {
-      const store = useSettingsStore()
-      expect(store.layoutAlgorithm).toBe('layered')
+      const store = useAppConfigStore()
+      expect(store.canvas.layoutAlgorithm).toBe('layered')
     })
 
     it('should have default layoutDirection', () => {
-      const store = useSettingsStore()
-      expect(store.layoutDirection).toBe('TB')
+      const store = useAppConfigStore()
+      expect(store.canvas.layoutDirection).toBe('TB')
     })
 
     it('should have default pipelineVersion', () => {
-      const store = useSettingsStore()
-      expect(store.pipelineVersion).toBe('V1')
+      const store = useAppConfigStore()
+      expect(store.canvas.pipelineVersion).toBe('V1')
     })
 
     it('should have default restoreWorkspaceOnStart', () => {
-      const store = useSettingsStore()
-      expect(store.restoreWorkspaceOnStart).toBe(true)
+      const store = useAppConfigStore()
+      expect(store.canvas.restoreWorkspaceOnStart).toBe(true)
     })
 
     it('should have default lowMemoryMode', () => {
-      const store = useSettingsStore()
-      expect(store.lowMemoryMode).toBe(false)
+      const store = useAppConfigStore()
+      expect(store.canvas.lowMemoryMode).toBe(false)
     })
   })
 
-  describe('updateSettings', () => {
+  describe('updateCanvasSettings', () => {
     it('should update edgeType', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ edgeType: 'default' })
-      expect(store.edgeType).toBe('default')
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ edgeType: 'default' })
+      expect(store.canvas.edgeType).toBe('default')
     })
 
     it('should update spacing', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ spacing: 'compact' })
-      expect(store.spacing).toBe('compact')
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ spacing: 'compact' })
+      expect(store.canvas.spacing).toBe('compact')
     })
 
     it('should update layoutAlgorithm', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ layoutAlgorithm: 'stress' })
-      expect(store.layoutAlgorithm).toBe('stress')
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ layoutAlgorithm: 'stress' })
+      expect(store.canvas.layoutAlgorithm).toBe('stress')
     })
 
     it('should update layoutDirection', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ layoutDirection: 'LR' })
-      expect(store.layoutDirection).toBe('LR')
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ layoutDirection: 'LR' })
+      expect(store.canvas.layoutDirection).toBe('LR')
     })
 
     it('should update pipelineVersion', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ pipelineVersion: 'V2' })
-      expect(store.pipelineVersion).toBe('V2')
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ pipelineVersion: 'V2' })
+      expect(store.canvas.pipelineVersion).toBe('V2')
     })
 
     it('should update restoreWorkspaceOnStart', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ restoreWorkspaceOnStart: false })
-      expect(store.restoreWorkspaceOnStart).toBe(false)
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ restoreWorkspaceOnStart: false })
+      expect(store.canvas.restoreWorkspaceOnStart).toBe(false)
     })
 
     it('should update lowMemoryMode', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ lowMemoryMode: true })
-      expect(store.lowMemoryMode).toBe(true)
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ lowMemoryMode: true })
+      expect(store.canvas.lowMemoryMode).toBe(true)
     })
 
     it('should update multiple settings at once', () => {
-      const store = useSettingsStore()
-      store.updateSettings({
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({
         edgeType: 'default',
         spacing: 'compact',
         layoutAlgorithm: 'stress',
         layoutDirection: 'LR'
       })
-      expect(store.edgeType).toBe('default')
-      expect(store.spacing).toBe('compact')
-      expect(store.layoutAlgorithm).toBe('stress')
-      expect(store.layoutDirection).toBe('LR')
+      expect(store.canvas.edgeType).toBe('default')
+      expect(store.canvas.spacing).toBe('compact')
+      expect(store.canvas.layoutAlgorithm).toBe('stress')
+      expect(store.canvas.layoutDirection).toBe('LR')
     })
 
     it('should not update undefined fields', () => {
-      const store = useSettingsStore()
-      store.updateSettings({ edgeType: 'default' })
-      expect(store.spacing).toBe('normal')
-      expect(store.layoutAlgorithm).toBe('layered')
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ edgeType: 'default' })
+      expect(store.canvas.spacing).toBe('normal')
+      expect(store.canvas.layoutAlgorithm).toBe('layered')
     })
   })
 })

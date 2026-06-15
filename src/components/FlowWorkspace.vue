@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref } from 'vue'
 import { FileJson, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import { useTabManager } from '@/composables/useTabManager'
-import { useWorkspacePersistence } from '@/composables/useWorkspacePersistence'
-import type { FlowEditorSnapshot } from '@/utils/flowWorkspaceTypes'
-import type { EdgeType } from '@/utils/flowOptions'
-import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
-import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
-import { useSettingsStore } from '@/stores/settings'
+import { useMainAppState } from '@/composables/useMainAppState'
+import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
+import type { FlowBusinessData } from '@/utils/flowTypes'
 
 const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
 
-type FlowEditorExpose = any
+type FlowEditorExpose = {
+  loadResourceFile: (fileId: string) => Promise<void>
+  handleLoadNodesWrapper: (payload: { filename: string; source: string; nodes: Record<string, unknown>; fileVersion?: 'V1' | 'V2' }) => Promise<void>
+  handleLoadImages: (imageDataMap: Record<string, unknown>, basePath?: string) => void
+  handleSaveNodes: (payload: { source: string; filename: string }) => Promise<void>
+  handleDeviceConnected: (val: boolean) => void
+  handleUpdateCanvasConfig: (payload: { edgeType?: string; spacing?: string; layoutAlgorithm?: string; layoutDirection?: string }) => void
+  handleUpdatePipelineVersion: (val: 'V1' | 'V2') => void
+  handleLocateNode: (nodeId: string) => void
+  handleDebugNodeFromPanel: (nodeId: string) => void
+  handleUpdateNodeStatus: (payload: { nodeId: string; status: unknown }) => void
+}
 
 type InfoPanelExpose = {
   executeFileSwitch: (filename: string, source?: string) => Promise<void>
@@ -27,53 +35,40 @@ interface DebugPanelState {
 }
 
 const {
-  tabs: tabManagerTabs,
-  activeTabId: tabManagerActiveTabId,
+  tabs,
+  activeTabId,
   appSettings,
   editorRefs,
-  activeTab: tabManagerActiveTab,
   makeTabTitle,
   selectTab: tabManagerSelectTab,
   addTab: tabManagerAddTab,
   closeTab: tabManagerCloseTab,
-  updateTabSnapshot: tabManagerUpdateTabSnapshot,
-  handleUpdateCanvasConfig: tabManagerHandleUpdateCanvasConfig,
-  handleUpdatePipelineVersion: tabManagerHandleUpdatePipelineVersion,
-  handleUpdateRestoreWorkspace: tabManagerHandleUpdateRestoreWorkspace,
-  handleUpdateLowMemory: tabManagerHandleUpdateLowMemory,
-  getWorkspaceState,
-  snapshotAllEditors,
-  snapshotCurrentEditor
+  updateTabResourceFile,
+  restoreTabsFromResource,
+  resetToInitialState,
+  ensureWorkspaceTab
 } = useTabManager()
 
-const { schedulePersistWorkspaceState } = useWorkspacePersistence({
-  appSettings,
-  tabs: tabManagerTabs,
-  activeTabId: tabManagerActiveTabId,
-  getWorkspaceState,
-  snapshotAllEditors
-})
-
-const settingsStore = useSettingsStore()
+const { updateTabs, clearTabs: clearMainTabs } = useMainAppState()
 
 const infoPanelRef = ref<InfoPanelExpose | null>(null)
 const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
 
-const activeEditorRef = computed(() => editorRefs.value.get(tabManagerActiveTabId.value) || null)
+const activeTab = computed(() => tabs.value.items.find(t => t.id === activeTabId.value) || tabs.value.items[0] || null)
+const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
 
 const selectTab = (tabId: string) => {
-  snapshotCurrentEditor()
   tabManagerSelectTab(tabId)
-  schedulePersistWorkspaceState()
 
-  const targetTab = tabManagerTabs.value.find(t => t.id === tabId)
-  if (!targetTab?.snapshot?.flowState?.currentFilename) return
+  const targetTab = tabs.value.items.find(t => t.id === tabId)
+  if (!targetTab?.resourceFile) return
 
   const infoPanel = infoPanelRef.value
   if (infoPanel?.triggerLoadFromCache) {
+    const [source, filename] = targetTab.resourceFile.split('|')
     infoPanel.triggerLoadFromCache({
-      filename: targetTab.snapshot.flowState.currentFilename,
-      source: targetTab.snapshot.flowState.currentSource,
+      filename,
+      source,
       tabId
     })
   }
@@ -81,33 +76,10 @@ const selectTab = (tabId: string) => {
 
 const addTab = () => {
   tabManagerAddTab()
-  schedulePersistWorkspaceState()
 }
 
 const closeTab = (tabId: string) => {
   tabManagerCloseTab(tabId)
-  schedulePersistWorkspaceState()
-}
-
-const updateTabSnapshot = (tabId: string, snapshot: FlowEditorSnapshot) => {
-  const start = perfNow()
-  const tab = tabManagerTabs.value.find(item => item.id === tabId)
-  if (!tab) return
-  const hadLoadedFile = !!tab.snapshot.flowState?.currentFilename || !!tab.snapshot.selectedResourceFile
-  const nextHasLoadedFile = !!snapshot.flowState?.currentFilename || !!snapshot.selectedResourceFile
-  if (hadLoadedFile && !nextHasLoadedFile) return
-  tabManagerUpdateTabSnapshot(tabId, snapshot)
-  schedulePersistWorkspaceState()
-  perfLog('FlowWorkspace.updateTabSnapshot', start, {
-    tabId,
-    filename: snapshot.flowState?.currentFilename,
-    nodeCount: snapshot.flowState?.nodes?.length || 0,
-    edgeCount: snapshot.flowState?.edges?.length || 0
-  })
-}
-
-const updateActiveSnapshot = (snapshot: FlowEditorSnapshot, tabId?: string) => {
-  updateTabSnapshot(tabId || tabManagerActiveTabId.value, snapshot)
 }
 
 const handleRequestSwitchFile = async (payload: { filename: string; source: string }) => {
@@ -126,71 +98,61 @@ const closeDebugPanel = () => {
 }
 
 const handleLoadNodes = async (payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }) => {
-  const start = perfNow()
-  perfMark('FlowWorkspace.handleLoadNodes.start', {
-    tabId: tabManagerActiveTabId.value,
-    filename: payload.filename,
-    nodeCount: Object.keys(payload.nodes).length
-  })
-  const targetTabId = tabManagerActiveTabId.value
-  const targetEditor = editorRefs.value.get(targetTabId)
+  const tab = ensureWorkspaceTab()
+  await nextTick()
+  const targetEditor = editorRefs.value.get(tab.id)
   if (!targetEditor) return
   await targetEditor.handleLoadNodesWrapper(payload)
-  if (targetTabId !== tabManagerActiveTabId.value) return
-  const snapshot = targetEditor.getSnapshot()
-  if (snapshot) updateTabSnapshot(targetTabId, snapshot)
-  perfLog('FlowWorkspace.handleLoadNodes.total', start, { targetTabId, filename: payload.filename })
+  const resourceFile = `${payload.source}|${payload.filename}`
+  updateTabResourceFile(tab.id, resourceFile, payload.filename)
 }
 
 const handleLoadImages = (payload: Record<string, unknown>, basePath?: string) => {
-  const start = perfNow()
-
   activeEditorRef.value?.handleLoadImages(payload, basePath)
-  perfLog('FlowWorkspace.handleLoadImages', start, { imageEntryCount: Object.keys(payload || {}).length })
-}
-
-const updateActiveSelectedResourceFile = (value: string) => {
-  const currentSnapshot = tabManagerActiveTab.value.snapshot
-  if (!currentSnapshot) return
-  updateTabSnapshot(tabManagerActiveTabId.value, {
-    ...currentSnapshot,
-    selectedResourceFile: value
-  })
 }
 
 const handleUpdateCanvasConfig = (payload: {
-  edgeType?: EdgeType
-  spacing?: SpacingKey
-  layoutAlgorithm?: LayoutAlgorithm
-  layoutDirection?: LayoutDirection
+  edgeType?: string
+  spacing?: string
+  layoutAlgorithm?: string
+  layoutDirection?: string
 }) => {
-  settingsStore.updateSettings({
-    edgeType: payload.edgeType,
-    spacing: payload.spacing,
-    layoutAlgorithm: payload.layoutAlgorithm,
-    layoutDirection: payload.layoutDirection
-  })
-  tabManagerHandleUpdateCanvasConfig(payload)
-  schedulePersistWorkspaceState()
   activeEditorRef.value?.handleUpdateCanvasConfig(payload)
 }
 
 const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {
-  settingsStore.updateSettings({ pipelineVersion: val })
-  tabManagerHandleUpdatePipelineVersion(val)
-  schedulePersistWorkspaceState()
   activeEditorRef.value?.handleUpdatePipelineVersion(val)
 }
 
-const handleUpdateRestoreWorkspace = (value: boolean) => {
-  settingsStore.updateSettings({ restoreWorkspaceOnStart: value })
-  tabManagerHandleUpdateRestoreWorkspace(value)
+const handleRestoreTabs = async (lastTabs: TabResourceInfo[]) => {
+  restoreTabsFromResource(lastTabs)
+
+  await nextTick()
+  for (let i = 0; i < lastTabs.length; i++) {
+    const tab = tabs.value.items[i]
+    if (tab && lastTabs[i].resourceFile) {
+      const editor = editorRefs.value.get(tab.id)
+      if (editor) {
+        try {
+          await editor.loadResourceFile(lastTabs[i].resourceFile)
+        } catch (error) {
+          console.warn(`Failed to load resource for tab ${tab.title}`, error)
+          tabManagerCloseTab(tab.id)
+        }
+      }
+    }
+  }
+
+  updateTabs(tabs.value.items, activeTabId.value)
 }
 
-const handleUpdateLowMemory = (value: boolean) => {
-  settingsStore.updateSettings({ lowMemoryMode: value })
-  tabManagerHandleUpdateLowMemory(value)
-  schedulePersistWorkspaceState()
+const handleClearTabs = () => {
+  resetToInitialState()
+  clearMainTabs()
+}
+
+const handleDeviceConnected = (val: boolean) => {
+  activeEditorRef.value?.handleDeviceConnected(val)
 }
 </script>
 
@@ -199,11 +161,11 @@ const handleUpdateLowMemory = (value: boolean) => {
     <div class="shrink-0 border-b border-slate-200 bg-white px-2 py-1.5">
       <div class="flex items-end gap-1 overflow-x-auto overflow-y-hidden">
         <button
-          v-for="(tab, index) in tabManagerTabs"
+          v-for="(tab, index) in tabs.items"
           :key="tab.id"
           type="button"
           class="group h-9 min-w-0 max-w-[220px] px-3 flex items-center gap-2 border border-b-0 text-xs font-medium transition-colors"
-          :class="tabManagerActiveTab?.id === tab.id
+          :class="activeTab?.id === tab.id
             ? 'bg-slate-50 border-slate-200 text-slate-900 rounded-t-lg shadow-sm'
             : 'bg-white border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-t-lg'"
           @click="selectTab(tab.id)"
@@ -214,11 +176,7 @@ const handleUpdateLowMemory = (value: boolean) => {
           />
           <span class="truncate">{{ makeTabTitle(tab, index) }}</span>
           <span
-            v-if="tab.snapshot.flowState?.dataSnapshot !== tab.snapshot.flowState?.originalDataSnapshot"
-            class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
-          />
-          <span
-            v-if="tabManagerTabs.length > 1"
+            v-if="tabs.items.length > 1"
             class="ml-auto p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700"
             title="关闭标签页"
             @click.stop="closeTab(tab.id)"
@@ -241,84 +199,79 @@ const handleUpdateLowMemory = (value: boolean) => {
     </div>
 
     <div class="relative flex-1 min-h-0">
-      <!-- 低消耗模式: 单实例 + key 强制重建 -->
       <FlowEditor
-        v-if="appSettings.lowMemoryMode"
-        :key="tabManagerActiveTab!.id"
-        :ref="(el: any) => { if (el) editorRefs.set(tabManagerActiveTabId, el as FlowEditorExpose); else editorRefs.delete(tabManagerActiveTabId) }"
-        :tab-id="tabManagerActiveTab!.id"
-        :snapshot="tabManagerActiveTab!.snapshot"
-        :default-edge-type="appSettings.edgeType"
-        :default-spacing="appSettings.spacing"
-        :default-layout-algorithm="appSettings.layoutAlgorithm"
-        :default-layout-direction="appSettings.layoutDirection"
-        :default-pipeline-version="appSettings.pipelineVersion"
+        v-if="appSettings.lowMemoryMode && activeTab"
+        :key="activeTab.id"
+        :ref="(el: any) => { if (el) editorRefs.set(activeTabId, el as FlowEditorExpose); else editorRefs.delete(activeTabId) }"
+        :tab-id="activeTab.id"
         :debug-panel-visible="debugPanel.visible"
-        @snapshot-change="updateActiveSnapshot"
         @request-switch-file="handleRequestSwitchFile"
         @open-debug-panel="openDebugPanel"
         @close-debug-panel="closeDebugPanel"
       />
 
-      <!-- 快速模式: 多实例 + v-show 切换 -->
       <div
-        v-else
+        v-else-if="activeTab"
         class="absolute inset-0"
       >
         <FlowEditor
-          v-for="tab in tabManagerTabs"
-          v-show="tab.id === tabManagerActiveTabId"
+          v-for="tab in tabs.items"
+          v-show="tab.id === activeTabId"
           :key="tab.id"
           :ref="(el: any) => { if (el) editorRefs.set(tab.id, el as FlowEditorExpose); else editorRefs.delete(tab.id) }"
           :tab-id="tab.id"
-          :snapshot="tab.snapshot"
-          :default-edge-type="appSettings.edgeType"
-          :default-spacing="appSettings.spacing"
-          :default-layout-algorithm="appSettings.layoutAlgorithm"
-          :default-layout-direction="appSettings.layoutDirection"
-          :default-pipeline-version="appSettings.pipelineVersion"
           :debug-panel-visible="debugPanel.visible"
-          @snapshot-change="updateActiveSnapshot"
           @request-switch-file="handleRequestSwitchFile"
           @open-debug-panel="openDebugPanel"
           @close-debug-panel="closeDebugPanel"
         />
       </div>
 
+      <div
+        v-else
+        class="absolute inset-0 flex items-center justify-center bg-slate-100"
+      >
+        <div class="text-center text-slate-500">
+          <FileJson
+            :size="40"
+            class="mx-auto mb-3 text-slate-300"
+          />
+          <div class="text-sm font-semibold text-slate-600">
+            未打开标签页
+          </div>
+          <div class="mt-1 text-xs">
+            请在右上角控制台加载资源后选择文件
+          </div>
+        </div>
+      </div>
+
       <div class="absolute top-3 right-3 z-50 pointer-events-none">
         <InfoPanel
           ref="infoPanelRef"
-          :tabs="tabManagerTabs"
-          :node-count="tabManagerActiveTab!.snapshot.flowState?.nodes?.length || 0"
-          :edge-count="tabManagerActiveTab!.snapshot.flowState?.edges?.length || 0"
-          :is-dirty="tabManagerActiveTab!.snapshot.flowState?.dataSnapshot !== tabManagerActiveTab!.snapshot.flowState?.originalDataSnapshot"
-          :current-filename="tabManagerActiveTab!.snapshot.flowState?.currentFilename || ''"
-          :selected-resource-file="tabManagerActiveTab!.snapshot.selectedResourceFile || ''"
-          :zoom="tabManagerActiveTab!.snapshot.viewport?.zoom || 1"
+          :tabs="tabs.items"
+          :current-filename="activeTab?.title || ''"
+          :selected-resource-file="activeTab?.resourceFile || ''"
           :edge-type="appSettings.edgeType"
           :spacing="appSettings.spacing"
           :layout-algorithm="appSettings.layoutAlgorithm"
           :layout-direction="appSettings.layoutDirection"
           :pipeline-version="appSettings.pipelineVersion"
           :restore-workspace-on-start="appSettings.restoreWorkspaceOnStart"
-          @update:selected-resource-file="updateActiveSelectedResourceFile"
+          @update:selected-resource-file="() => {}"
           @load-nodes="handleLoadNodes"
           @load-images="handleLoadImages"
           @save-nodes="(payload) => activeEditorRef?.handleSaveNodes(payload)"
-          @device-connected="(val) => activeEditorRef?.handleDeviceConnected(val)"
+          @device-connected="handleDeviceConnected"
           @update-canvas-config="handleUpdateCanvasConfig"
           @update-pipeline-version="handleUpdatePipelineVersion"
-          @update-restore-workspace="handleUpdateRestoreWorkspace"
-          @update-low-memory="handleUpdateLowMemory"
+          @restore-tabs="handleRestoreTabs"
+          @clear-tabs="handleClearTabs"
           @open-debug-panel="openDebugPanel"
         />
       </div>
 
       <NodeDebugPanel
         :visible="debugPanel.visible"
-        :nodes="tabManagerActiveTab!.snapshot.flowState?.nodes || []"
-        :current-filename="tabManagerActiveTab!.snapshot.flowState?.currentFilename || ''"
-        :current-source="tabManagerActiveTab!.snapshot.flowState?.currentSource || ''"
         :initial-node-id="debugPanel.nodeId"
         @close="closeDebugPanel"
         @locate-node="(nodeId) => activeEditorRef?.handleLocateNode(nodeId)"

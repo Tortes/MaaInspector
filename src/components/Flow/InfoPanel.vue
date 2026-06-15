@@ -7,10 +7,12 @@ import {
   Save, Bell, Settings as SettingsIcon, Bug
 } from 'lucide-vue-next'
 import {resourceApi} from '@/services/api'
+import { useAppConfigStore } from '@/stores/appConfig'
 import type { ResourceProfile, ResourceFileInfo } from '@/services/api'
-import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, TemplateImage, SpacingKey } from '@/utils/flowTypes'
+import type { FlowBusinessData, TemplateImage } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
-import type { FlowTab } from '@/stores/workspace'
+import type { SpacingKey, LayoutAlgorithm, LayoutDirection } from '@/utils/flowTypes'
+import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
 import { usePreloadCache } from '@/composables/usePreloadCache'
 import { useSystemState } from '@/composables/useSystemState'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
@@ -37,15 +39,21 @@ const props = defineProps<{
   layoutAlgorithm?: LayoutAlgorithm
   layoutDirection?: LayoutDirection
   pipelineVersion?: 'V1' | 'V2'
-  restoreWorkspaceOnStart?: boolean
   lowMemoryMode?: boolean
+  restoreWorkspaceOnStart?: boolean
 }>()
+
+interface FlowTab {
+  id: string
+  title: string
+  resourceFile: string
+}
 
 const openedFileIds = computed(() => {
   if (!props.tabs) return []
   return props.tabs
-    .filter(tab => tab.snapshot.flowState?.currentFilename && tab.snapshot.flowState?.currentSource)
-    .map(tab => `${tab.snapshot.flowState!.currentSource}|${tab.snapshot.flowState!.currentFilename}`)
+    .filter(tab => tab.resourceFile)
+    .map(tab => tab.resourceFile)
 })
 
 const emit = defineEmits<{
@@ -56,17 +64,17 @@ const emit = defineEmits<{
   'update:selected-resource-file': [value: string]
   'update-canvas-config': [payload: { edgeType?: EdgeType; spacing?: SpacingKey; layoutAlgorithm?: LayoutAlgorithm; layoutDirection?: LayoutDirection }]
   'update-pipeline-version': [payload: 'V1' | 'V2']
-  'update-restore-workspace': [payload: boolean]
   'update-low-memory': [payload: boolean]
+  'restore-tabs': [tabs: TabResourceInfo[]]
+  'clear-tabs': []
   'open-debug-panel': []
 }>()
 
-// --- Composables ---
-const systemState = useSystemState({
-  initialSelectedResourceFile: props.selectedResourceFile || '',
-  initialPipelineVersion: props.pipelineVersion || 'V1',
-  props,
-  emit
+// --- Store & Composables ---
+const appConfig = useAppConfigStore()
+
+const systemState = useSystemState((e, payload) => {
+  if (e === 'save-nodes') emit('save-nodes', payload)
 })
 
 const {
@@ -79,8 +87,7 @@ const {
   emit
 })
 
-// --- 视图状态 ---
-const zoomPercentage = computed(() => Math.round((props.zoom || 1) * 100) + '%')
+// --- View state ---
 const isCollapsed = ref(false)
 const showResourceSettings = ref(false)
 const showCreateFileModal = ref(false)
@@ -88,12 +95,12 @@ const showAppSettings = ref(false)
 const showAnnouncement = ref(false)
 const hasUnreadAnnouncement = ref(true)
 
-// --- 子组件 refs ---
+// --- Child component refs ---
 const deviceManagerRef = ref<InstanceType<typeof DeviceManager> | null>(null)
 const resourceManagerRef = ref<InstanceType<typeof ResourceManager> | null>(null)
 const agentManagerRef = ref<InstanceType<typeof AgentManager> | null>(null)
 
-// --- 同步子组件状态到本地 (用于 collapsed 模板显示) ---
+// --- Sync child state for collapsed template ---
 const dmStatus = ref('disconnected')
 const dmMessage = ref('设备未连接')
 const rmStatus = ref('disconnected')
@@ -124,7 +131,7 @@ const syncChildState = () => {
   }
 }
 
-// --- 包装 composable 方法 ---
+// --- Wrapped composable methods ---
 const handleSaveNodes = async () => {
   await systemState.handleSaveNodes(resourceManagerRef.value)
 }
@@ -143,13 +150,13 @@ const handleFileSelected = (payload: { filename: string; source: string }) => {
 
 defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: triggerLoadFromCacheWrapper })
 
-// --- 子组件事件处理 ---
+// --- Child component event handlers ---
 const handleDeviceConnected = (status: boolean) => {
   emit('device-connected', status)
 }
 
 const handleConfigChanged = () => {
-  void systemState.saveAllConfig(deviceManagerRef.value, agentManagerRef.value)
+  void appConfig.saveToBackend()
 }
 
 const handleCreateFile = async ({path, filename}: { path: string; filename: string }) => {
@@ -165,7 +172,7 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
     const availFiles = rm.availableFiles as ResourceFileInfo[]
     const newFileObj = availFiles.find(f =>
       f.value === simpleName &&
-      f.source.replace(/\\/g, '/').toLowerCase() === normalizedPath
+      f.source?.replace(/\\/g, '/').toLowerCase() === normalizedPath
     )
     if (newFileObj && newFileObj.value) {
       await executeFileSwitch(newFileObj.value, newFileObj.source)
@@ -178,33 +185,35 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
   }
 }
 
-// --- 初始化 ---
+// --- Initialization ---
 const handleFetchSystemState = async () => {
-  await systemState.fetchSystemState(deviceManagerRef.value, agentManagerRef.value)
+  await systemState.fetchSystemState()
 }
 
-onMounted(() => {
-  handleFetchSystemState()
+onMounted(async () => {
+  await handleFetchSystemState()
   setTimeout(() => {
     syncChildState()
     syncTimer = setInterval(syncChildState, 200)
   }, 100)
-
-  systemState.setupAutoSave(deviceManagerRef.value, agentManagerRef.value)
 })
 
 onUnmounted(() => {
   if (syncTimer) { clearInterval(syncTimer); syncTimer = null }
 })
 
-const saveResourceSettings = (data: { profiles: ResourceProfile[]; index?: number }) => {
-  systemState.resourceProfiles.value = systemState.normalizeProfiles(data.profiles)
-  if (systemState.selectedProfileIndex.value >= systemState.resourceProfiles.value.length) {
-    systemState.selectedProfileIndex.value = 0
-  }
-  if (data.index !== undefined) systemState.selectedProfileIndex.value = data.index
+type EditableProfile = ResourceProfile & { paths: string[] }
+
+const editableProfiles = computed<EditableProfile[]>(() =>
+  appConfig.resource.profiles.map(p => ({
+    ...p,
+    paths: p.paths || []
+  }))
+)
+
+const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: number }) => {
+  void appConfig.updateResourceProfiles(data.profiles, data.index)
   showResourceSettings.value = false
-  void systemState.saveAllConfig(deviceManagerRef.value, agentManagerRef.value)
 }
 
 const handleAppSettingsSave = (payload: {
@@ -213,20 +222,17 @@ const handleAppSettingsSave = (payload: {
   layoutAlgorithm: LayoutAlgorithm
   layoutDirection: LayoutDirection
   pipelineVersion: 'V1' | 'V2'
-  restoreWorkspaceOnStart: boolean
   lowMemoryMode: boolean
 }) => {
-  systemState.pipelineVersion.value = payload.pipelineVersion
-  emit('update-canvas-config', {
+  appConfig.updateCanvasSettings({
     edgeType: payload.edgeType,
     spacing: payload.spacing,
     layoutAlgorithm: payload.layoutAlgorithm,
-    layoutDirection: payload.layoutDirection
+    layoutDirection: payload.layoutDirection,
+    pipelineVersion: payload.pipelineVersion,
+    lowMemoryMode: payload.lowMemoryMode
   })
-  emit('update-restore-workspace', payload.restoreWorkspaceOnStart)
-  emit('update-low-memory', payload.lowMemoryMode)
   showAppSettings.value = false
-  void systemState.saveAllConfig(deviceManagerRef.value, agentManagerRef.value)
 }
 
 const handleAnnouncementClose = () => {
@@ -284,7 +290,6 @@ const handleAnnouncementClose = () => {
                   if (!rm) return
                   const fileObj = rm.findFileById(fileId)
                   if (!fileObj || !fileObj.value) return
-                  systemState.selectedResourceFile.value = fileId
                   emit('update:selected-resource-file', fileId)
                   void executeFileSwitch(fileObj.value, fileObj.source)
                 }"
@@ -361,14 +366,14 @@ const handleAnnouncementClose = () => {
             <span class="font-bold text-slate-700 text-sm">系统控制台</span>
             <div
               class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors ml-1"
-              :class="{'bg-emerald-50 border-emerald-100 text-emerald-600': systemState.systemStatus.value === 'connected', 'bg-red-50 border-red-100 text-red-500': systemState.systemStatus.value === 'error', 'bg-blue-50 border-blue-100 text-blue-500': systemState.systemStatus.value === 'loading', 'bg-slate-100 border-slate-200 text-slate-400': systemState.systemStatus.value === 'disconnected'}"
+              :class="{'bg-emerald-50 border-emerald-100 text-emerald-600': appConfig.system.status === 'connected', 'bg-red-50 border-red-100 text-red-500': appConfig.system.status === 'error', 'bg-blue-50 border-blue-100 text-blue-500': appConfig.system.status === 'loading', 'bg-slate-100 border-slate-200 text-slate-400': appConfig.system.status === 'disconnected'}"
             >
               <div
                 class="w-1.5 h-1.5 rounded-full"
-                :class="{'bg-emerald-500': systemState.systemStatus.value === 'connected', 'bg-red-500': systemState.systemStatus.value === 'error', 'bg-blue-500': systemState.systemStatus.value === 'loading', 'bg-slate-400': systemState.systemStatus.value === 'disconnected'}"
+                :class="{'bg-emerald-500': appConfig.system.status === 'connected', 'bg-red-500': appConfig.system.status === 'error', 'bg-blue-500': appConfig.system.status === 'loading', 'bg-slate-400': appConfig.system.status === 'disconnected'}"
               />
               <span class="font-bold">{{
-                systemState.systemStatus.value === 'connected' ? 'ON' : (systemState.systemStatus.value === 'error' ? 'ERR' : (systemState.systemStatus.value === 'loading' ? '...' : 'OFF'))
+                appConfig.system.status === 'connected' ? 'ON' : (appConfig.system.status === 'error' ? 'ERR' : (appConfig.system.status === 'loading' ? '...' : 'OFF'))
               }}</span>
             </div>
             <button
@@ -377,7 +382,7 @@ const handleAnnouncementClose = () => {
             >
               <RefreshCw
                 :size="12"
-                :class="{'animate-spin': systemState.systemStatus.value === 'loading'}"
+                :class="{'animate-spin': appConfig.system.status === 'loading'}"
               />
             </button>
           </div>
@@ -418,27 +423,29 @@ const handleAnnouncementClose = () => {
         <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
           <DeviceManager
             ref="deviceManagerRef"
-            :is-connected="systemState.systemStatus.value === 'connected'"
+            :is-connected="appConfig.system.status === 'connected'"
             @device-connected="handleDeviceConnected"
           />
 
           <ResourceManager
             ref="resourceManagerRef"
-            :profiles="systemState.resourceProfiles.value"
-            :profile-index="systemState.selectedProfileIndex.value"
-            :selected-file="systemState.selectedResourceFile.value"
+            :profiles="editableProfiles"
+            :profile-index="appConfig.resource.profileIndex"
+            :selected-file="appConfig.resource.selectedFileId"
             :opened-file-ids="openedFileIds"
+            :restore-workspace-on-start="props.restoreWorkspaceOnStart"
             @file-selected="handleFileSelected"
             @config-changed="handleConfigChanged"
-            @update:profile-index="(v) => { systemState.selectedProfileIndex.value = v }"
-            @update:selected-file="(v) => { systemState.selectedResourceFile.value = v }"
+            @update:profile-index="(v) => appConfig.switchResourceProfile(v)"
+            @update:selected-file="(v) => appConfig.selectResourceFile(v)"
             @open-settings="showResourceSettings = true"
             @open-create-file="showCreateFileModal = true"
+            @restore-tabs="(tabs) => emit('restore-tabs', tabs)"
+            @clear-tabs="emit('clear-tabs')"
           />
 
           <AgentManager ref="agentManagerRef" />
 
-          <!-- 调试模块 -->
           <section class="space-y-2">
             <div class="flex items-center justify-between text-xs mb-1">
               <div class="flex items-center gap-1.5 font-bold text-slate-700">
@@ -489,7 +496,7 @@ const handleAnnouncementClose = () => {
               />
               {{ systemState.isSaving.value ? '保存中...' : '保存' }}
             </button>
-            <span class="font-mono font-bold text-slate-300">{{ zoomPercentage }}</span>
+            <span class="font-mono font-bold text-slate-300">{{ Math.round((props.zoom || 1) * 100) }}%</span>
           </div>
         </div>
       </div>
@@ -497,14 +504,14 @@ const handleAnnouncementClose = () => {
 
     <ResourceSettingsModal
       :visible="showResourceSettings"
-      :profiles="systemState.resourceProfiles.value"
-      :current-index="systemState.selectedProfileIndex.value"
+      :profiles="editableProfiles"
+      :current-index="appConfig.resource.profileIndex"
       @close="showResourceSettings = false"
       @save="saveResourceSettings"
     />
     <CreateResourceModal
       :visible="showCreateFileModal"
-      :paths="systemState.currentProfile.value.paths"
+      :paths="appConfig.currentProfile.paths ?? []"
       @close="showCreateFileModal = false"
       @create="handleCreateFile"
     />
@@ -514,8 +521,7 @@ const handleAnnouncementClose = () => {
       :default-spacing="props.spacing"
       :default-layout-algorithm="props.layoutAlgorithm"
       :default-layout-direction="props.layoutDirection"
-      :default-pipeline-version="systemState.pipelineVersion.value"
-      :default-restore-workspace-on-start="props.restoreWorkspaceOnStart"
+      :default-pipeline-version="appConfig.canvas.pipelineVersion"
       :default-low-memory-mode="props.lowMemoryMode"
       @close="showAppSettings = false"
       @save="handleAppSettingsSave"

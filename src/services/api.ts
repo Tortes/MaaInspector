@@ -60,19 +60,52 @@ export interface SystemState {
   restore_workspace_on_start?: boolean;
 }
 
+export interface CanvasSettings {
+  edge_type?: string;
+  spacing?: string;
+  layout_algorithm?: string;
+  layout_direction?: string;
+  pipeline_version?: string;
+}
+
+export interface TabResourceInfo {
+  id?: string;
+  title?: string;
+  resource_file?: string;
+}
+
+export interface WorkspaceState {
+  resource_index?: number;
+  resource_signature?: string;
+  tabs?: TabResourceInfo[];
+  active_tab_id?: string;
+  restore_workspace_on_start?: boolean;
+}
+
+export interface LastTabsState {
+  resource_index: number;
+  tabs: TabResourceInfo[];
+  active_tab_id?: string;
+}
+
 export interface SystemInitResponse {
-  devices?: ApiDeviceInfo[];
   resource_profiles?: ResourceProfile[];
+  current_resource_index?: number;
   agent_socket_id?: string;
-  current_state?: SystemState;
-  last_connected_device?: ApiDeviceInfo;
+  canvas_settings?: CanvasSettings;
+  restore_workspace_on_start?: boolean;
+  workspace_state?: WorkspaceState;
+  last_tabs?: LastTabsState;
 }
 
 export interface DeviceConfigPayload {
-  devices: ApiDeviceInfo[];
   resource_profiles: ResourceProfile[];
+  current_resource_index?: number;
   agent_socket_id?: string;
-  current_state: SystemState;
+  canvas_settings?: CanvasSettings;
+  restore_workspace_on_start?: boolean;
+  workspace_state?: WorkspaceState;
+  last_tabs?: LastTabsState;
 }
 
 export interface FileNodesResponse<TNodes = Record<string, unknown>> {

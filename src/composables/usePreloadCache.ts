@@ -1,7 +1,7 @@
 import { resourceApi } from '@/services/api'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import type { FlowBusinessData, TemplateImage } from '@/utils/flowTypes'
-import type { FlowTab } from '@/stores/workspace'
+import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
 
 interface ResourceFileInfo {
   source?: string | null
@@ -25,7 +25,7 @@ interface CachedFileData {
 }
 
 interface UsePreloadCacheOptions {
-  tabs: () => FlowTab[] | undefined
+  tabs: () => TabResourceInfo[] | undefined
   selectedResourceFile: () => string
   resourceManagerRef: () => ResourceManagerRef | null
   emit: PreloadCacheEmit
@@ -45,11 +45,14 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
     const currentFileKey = options.selectedResourceFile()
 
     for (const tab of tabs) {
-      const snapshot = tab.snapshot
-      if (snapshot.flowState?.currentFilename && snapshot.flowState?.currentSource) {
-        const fileKey = `${snapshot.flowState.currentSource}|${snapshot.flowState.currentFilename}`
-        if (fileKey !== currentFileKey && !preloadCache.has(fileKey)) {
-          filesToPreload.add(fileKey)
+      const resourceFile = tab.resourceFile
+      if (resourceFile) {
+        const [source, filename] = resourceFile.split('|')
+        if (source && filename) {
+          const fileKey = resourceFile
+          if (fileKey !== currentFileKey && !preloadCache.has(fileKey)) {
+            filesToPreload.add(fileKey)
+          }
         }
       }
     }

@@ -27,16 +27,41 @@ export interface FlowAppSettings {
   layoutAlgorithm: LayoutAlgorithm
   layoutDirection: LayoutDirection
   pipelineVersion: 'V1' | 'V2'
-  restoreWorkspaceOnStart: boolean
   lowMemoryMode: boolean
 }
 
+export interface TabResourceInfo {
+  id: string
+  title: string
+  resourceFile: string
+}
+
+export interface DeviceState {
+  connected: boolean
+  type: 'adb' | 'win32' | ''
+  config: Record<string, unknown>
+}
+
+export interface AgentState {
+  connected: boolean
+  socketId: string
+}
+
+export interface ResourceState {
+  profileIndex: number
+  loaded: boolean
+}
+
+export interface MainAppState {
+  device: DeviceState
+  agent: AgentState
+  resource: ResourceState
+  tabs: TabResourceInfo[]
+  activeTabId: string
+}
+
 export interface FlowWorkspaceState {
-  tabs: Array<{
-    id: string
-    title: string
-    snapshot: FlowEditorSnapshot
-  }>
+  tabs: TabResourceInfo[]
   activeTabId: string
   appSettings: FlowAppSettings
 }

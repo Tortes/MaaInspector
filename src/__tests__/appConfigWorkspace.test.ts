@@ -1,0 +1,113 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { useAppConfigStore } from '@/stores/appConfig'
+import { buildResourceSignature } from '@/utils/workspaceState'
+import { systemApi } from '@/services/api'
+
+vi.mock('@/services/api', async () => {
+  return {
+    systemApi: {
+      getInitialState: vi.fn(),
+      saveDeviceConfig: vi.fn()
+    },
+    resourceApi: {
+      load: vi.fn()
+    },
+    deviceApi: {
+      connectAdb: vi.fn(),
+      connectWin32: vi.fn()
+    },
+    agentApi: {
+      connect: vi.fn()
+    }
+  }
+})
+
+describe('appConfig workspace state', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('starts with no tabs after backend load', async () => {
+    vi.mocked(systemApi.getInitialState).mockResolvedValue({
+      resource_profiles: [{ name: 'default', paths: ['D:/maa'] }],
+      workspace_state: {
+        resource_index: 0,
+        resource_signature: buildResourceSignature({ name: 'default', paths: ['D:/maa'] }),
+        tabs: [{ id: 'tab-1', title: 'pipeline.json', resource_file: 'D:/maa|pipeline.json' }],
+        active_tab_id: 'tab-1'
+      }
+    })
+
+    const store = useAppConfigStore()
+    await store.loadFromBackend()
+
+    expect(store.tabs.items).toEqual([])
+    expect(store.tabs.activeTabId).toBe('')
+  })
+
+  it('restores tabs only for the same resource profile', async () => {
+    const profile = { name: 'default', paths: ['D:/maa'] }
+    vi.mocked(systemApi.getInitialState).mockResolvedValue({
+      resource_profiles: [profile],
+      workspace_state: {
+        resource_index: 0,
+        resource_signature: buildResourceSignature(profile),
+        tabs: [{ id: 'tab-1', title: 'pipeline.json', resource_file: 'D:/maa|pipeline.json' }],
+        active_tab_id: 'tab-1'
+      }
+    })
+
+    const store = useAppConfigStore()
+    await store.loadFromBackend()
+    store.markResourceLoaded()
+    const restoredTabs = store.restoreLastWorkspace(new Set(['D:/maa|pipeline.json']))
+
+    expect(restoredTabs).toHaveLength(1)
+    expect(store.tabs.items[0].resourceFile).toBe('D:/maa|pipeline.json')
+  })
+
+  it('does not restore tabs for a different resource profile', async () => {
+    vi.mocked(systemApi.getInitialState).mockResolvedValue({
+      resource_profiles: [{ name: 'other', paths: ['D:/other'] }],
+      workspace_state: {
+        resource_index: 0,
+        resource_signature: buildResourceSignature({ name: 'default', paths: ['D:/maa'] }),
+        tabs: [{ id: 'tab-1', title: 'pipeline.json', resource_file: 'D:/maa|pipeline.json' }],
+        active_tab_id: 'tab-1'
+      }
+    })
+
+    const store = useAppConfigStore()
+    await store.loadFromBackend()
+    store.markResourceLoaded()
+    const restoredTabs = store.restoreLastWorkspace(new Set(['D:/maa|pipeline.json']))
+
+    expect(restoredTabs).toEqual([])
+    expect(store.tabs.items).toEqual([])
+  })
+
+  it('saves only lightweight tab metadata in workspace_state', async () => {
+    vi.mocked(systemApi.getInitialState).mockResolvedValue({
+      resource_profiles: [{ name: 'default', paths: ['D:/maa'] }]
+    })
+
+    const store = useAppConfigStore()
+    await store.loadFromBackend()
+    store.markResourceLoaded()
+    const tab = store.ensureWorkspaceTab()
+    store.updateTabResourceFile(tab.id, 'D:/maa|pipeline.json', 'pipeline.json')
+
+    expect(systemApi.saveDeviceConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+      workspace_state: expect.objectContaining({
+        tabs: [{
+          id: tab.id,
+          title: 'pipeline.json',
+          resource_file: 'D:/maa|pipeline.json'
+        }]
+      })
+    }))
+  })
+})
+

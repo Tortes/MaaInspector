@@ -5,11 +5,14 @@ import {
   Database, HardDrive, Settings, RefreshCw, FilePlus,
 } from 'lucide-vue-next'
 import { resourceApi } from '@/services/api'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { makeFileId, parseFileId, getFileObjById } from '@/utils/fileId'
 import Dropdown from '@/components/Flow/Common/Dropdown.vue'
 import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 import type { DropdownOption } from '@/components/Flow/Common/types'
 import type { ResourceProfile, ResourceFileInfo } from '@/services/api'
+
+const appConfig = useAppConfigStore()
 
 type EditableProfile = ResourceProfile & { paths: string[] }
 
@@ -19,6 +22,7 @@ const props = defineProps<{
   profileIndex?: number
   selectedFile?: string
   openedFileIds?: string[]
+  restoreWorkspaceOnStart?: boolean
 }>()
 
 const emit = defineEmits([
@@ -28,7 +32,9 @@ const emit = defineEmits([
   'update:profileIndex',
   'update:selectedFile',
   'open-settings',
-  'open-create-file'
+  'open-create-file',
+  'restore-tabs',
+  'clear-tabs'
 ])
 
 // 内部状态 (当 props 未提供时使用)
@@ -108,35 +114,22 @@ const handleResourceLoad = async () => {
 
     if ((res as any).list) {
       availableFiles.value = (res.list || []) as ResourceFileInfo[]
-      const curFile = props.selectedFile ?? localSelectedFile.value
-      let fileStillExists = curFile ? findFileById(curFile) : null
+      
+      appConfig.markResourceLoaded()
 
-      if (!fileStillExists && curFile && !curFile.includes('|')) {
-        const matchByName = availableFiles.value.find(f => f.value === curFile)
-        if (matchByName) {
-          const newId = makeFileId(matchByName.source, matchByName.value)
-          localSelectedFile.value = newId
-          emit('update:selectedFile', newId)
-          fileStillExists = matchByName
-        }
+      const validFileIds = new Set(
+        availableFiles.value
+          .filter(file => file.value)
+          .map(file => makeFileId(file.source, file.value))
+      )
+      const restoredTabs = appConfig.restoreLastWorkspace(validFileIds)
+      if (restoredTabs.length > 0) {
+        emit('restore-tabs', restoredTabs)
+        return
       }
 
-      if (!curFile || !fileStillExists) {
-        if (availableFiles.value.length > 0) {
-          const firstFile = availableFiles.value[0]
-          if (firstFile.value) {
-            const newId = makeFileId(firstFile.source, firstFile.value)
-            localSelectedFile.value = newId
-            emit('update:selectedFile', newId)
-            emit('file-selected', { filename: firstFile.value, source: firstFile.source })
-          }
-        } else {
-          localSelectedFile.value = ''
-          emit('update:selectedFile', '')
-        }
-      } else {
-        emit('file-selected', { filename: fileStillExists.value, source: fileStillExists.source })
-      }
+      emit('clear-tabs')
+      emit('update:selectedFile', '')
     }
   } catch (e: unknown) {
     console.error("资源加载流程异常", e)
@@ -158,6 +151,7 @@ const executeFileSwitch = async (filename: string, source?: string) => {
 
   if (target) {
     const newId = makeFileId(target.source, target.value)
+    appConfig.hydrateWorkspaceFromResource(newId)
     localSelectedFile.value = newId
     emit('update:selectedFile', newId)
     emit('file-selected', { filename: target.value, source: target.source })
@@ -175,6 +169,7 @@ const handleFileSelectChange = (newFileId: PropertyKey) => {
   if (!fileObj || !fileObj.value) return
 
   localSelectedFile.value = fileId
+  appConfig.hydrateWorkspaceFromResource(fileId)
   emit('update:selectedFile', fileId)
   emit('file-selected', {
     filename: fileObj.value,
@@ -222,7 +217,7 @@ defineExpose({
 watch(selectedProfileIndex, (nv, ov) => {
   if (nv === ov) return
   emit('config-changed')
-  handleResourceLoad()
+  void handleResourceLoad()
 })
 </script>
 

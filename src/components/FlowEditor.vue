@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, provide, onMounted, onBeforeUnmount, computed, defineAsyncComponent, watch, nextTick } from 'vue'
+import { ref, provide, onMounted, onBeforeUnmount, computed, defineAsyncComponent } from 'vue'
 import { VueFlow, useVueFlow, type NodeTypesObject } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -10,11 +10,10 @@ import { useFlowGraph } from '@/composables/useFlowGraph'
 import { useEditorActions } from '@/composables/useEditorActions'
 import { useSaveManager } from '@/composables/useSaveManager'
 import { useDebugRunner } from '@/composables/useDebugRunner'
-import type { FlowEditorSnapshot } from '@/utils/flowWorkspaceTypes'
-import type { SpacingKey, LayoutAlgorithm, LayoutDirection, LoadNodesPayload, FlowNode, FlowEdge } from '@/utils/flowTypes'
-import type { EdgeType } from '@/utils/flowOptions'
+import { resourceApi } from '@/services/api'
+import { parseFileId } from '@/utils/fileId'
+import type { LoadNodesPayload, FlowNode, FlowEdge } from '@/utils/flowTypes'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
-import { throttle } from '@/utils/throttle'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
@@ -22,17 +21,10 @@ const DeleteImagesConfirmModal = defineAsyncComponent(() => import('./Flow/Modal
 
 const props = defineProps<{
   tabId?: string
-  snapshot?: FlowEditorSnapshot
-  defaultEdgeType?: EdgeType
-  defaultSpacing?: SpacingKey
-  defaultLayoutAlgorithm?: LayoutAlgorithm
-  defaultLayoutDirection?: LayoutDirection
-  defaultPipelineVersion?: 'V1' | 'V2'
   debugPanelVisible?: boolean
 }>()
 
 const emit = defineEmits<{
-  snapshotChange: [snapshot: FlowEditorSnapshot, tabId?: string]
   'request-switch-file': [payload: { filename: string; source: string }]
   'open-debug-panel': [payload?: { nodeId?: string }]
   'close-debug-panel': []
@@ -50,11 +42,10 @@ const {
   restoreState
 } = useFlowGraph()
 const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
-const { fitView, removeEdges, findNode, screenToFlowCoordinate, viewport, setViewport, onInit, getSelectedNodes, getSelectedEdges } = useVueFlow()
+const { fitView, removeEdges, findNode, screenToFlowCoordinate, getSelectedNodes, getSelectedEdges } = useVueFlow()
 const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
 
 const closeAllDetailsSignal = ref<number>(0)
-const isRestoringViewport = ref(false)
 const isBulkLoading = ref(false)
 const pendingFocusNodeId = ref<string | null>(null)
 
@@ -68,28 +59,10 @@ const saveManager = useSaveManager({
   currentFilename, currentSource, isDirty,
   exportState, restoreState, getNodesData, getImageData, clearTempImageData, clearDirty,
   imageManager: imageManager as unknown as { setNodeImages: (nodeId: string, images: unknown[]) => void },
-  tabId: props.tabId,
-  snapshot: props.snapshot,
-  defaultEdgeType: props.defaultEdgeType,
-  defaultSpacing: props.defaultSpacing,
-  defaultLayoutAlgorithm: props.defaultLayoutAlgorithm,
-  defaultLayoutDirection: props.defaultLayoutDirection,
-  defaultPipelineVersion: props.defaultPipelineVersion
+  tabId: props.tabId
 })
 
-provide('pipelineVersion', saveManager.pipelineVersion)
-
-const snapshotState = () => {
-  const start = perfNow()
-  emit('snapshotChange', saveManager.buildSnapshot({
-    x: viewport.value.x || 0,
-    y: viewport.value.y || 0,
-    zoom: viewport.value.zoom || 1
-  }), props.tabId)
-  perfLog('FlowEditor.snapshotState', start, { tabId: props.tabId, filename: currentFilename.value })
-}
-
-const throttledSnapshot = throttle(snapshotState, 200)
+provide('pipelineVersion', saveManager.loadedFileVersion)
 
 const debugRunner = useDebugRunner({
   findNode,
@@ -97,7 +70,7 @@ const debugRunner = useDebugRunner({
   currentSource,
   currentFilename,
   onSaveNodes: saveManager.handleSaveNodes,
-  onSnapshotState: snapshotState,
+  onSnapshotState: () => {},
   setNodeStatus
 })
 
@@ -105,7 +78,7 @@ const editorActions = useEditorActions({
   nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
   isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
   layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
-  snapshotState,
+  snapshotState: () => {},
   onDebugNode: debugRunner.handleDebugNode,
   onOpenDebugPanel: (payload) => emit('open-debug-panel', payload),
   onCloseDebugPanel: () => emit('close-debug-panel'),
@@ -114,10 +87,10 @@ const editorActions = useEditorActions({
 
 const { menu, searchVisible, closeMenu, onPaneContextMenu, onNodeContextMenu, onEdgeContextMenu, handleMenuAction } = editorActions
 const {
-  pipelineVersion: _pipelineVersion, loadedFileVersion, isDeviceConnected: _isDeviceConnected, isFormatDirty: _isFormatDirty, isDirtyCombined,
+  loadedFileVersion, isDeviceConnected: _isDeviceConnected, isFormatDirty: _isFormatDirty, isDirtyCombined,
   showSaveModal, isSavingModal, pendingSwitchConfig, showDeleteImagesModal,
   isProcessingImages, unusedImages, usedImages, pendingSaveConfig: _pendingSaveConfig,
-  restoreSnapshotState, applyDefaultSettings, handleLoadImages,
+  handleLoadImages,
   handleSaveNodes, handleConfirmDeleteImages, handleSkipDeleteImages, handleCancelDeleteImages,
   handleUpdateCanvasConfig, handleUpdatePipelineVersion, handleDeviceConnected, handleBeforeUnload
 } = saveManager
@@ -125,87 +98,15 @@ const { handleDebugNodeFromPanel, handleUpdateNodeStatus } = debugRunner
 
 const handleNodeUpdateAndSnapshot = (payload: Parameters<typeof handleNodeUpdate>[0]) => {
   handleNodeUpdate(payload)
-  snapshotState()
 }
 
 provide('updateNode', handleNodeUpdateAndSnapshot)
 
 const handleNodesChange = () => {
   if (isBulkLoading.value) {
-    perfMark('FlowEditor.handleNodesChange.skippedDuringBulkLoad', { tabId: props.tabId, filename: currentFilename.value })
     return
   }
-  const start = perfNow()
-  throttledSnapshot()
-  perfLog('FlowEditor.handleNodesChange', start, { tabId: props.tabId, filename: currentFilename.value })
 }
-
-const handleMoveEnd = () => {
-  if (isBulkLoading.value) return
-  if (isRestoringViewport.value) return
-  const start = perfNow()
-  throttledSnapshot()
-  perfLog('FlowEditor.moveEndSnapshot', start, { tabId: props.tabId, zoom: viewport.value.zoom })
-}
-
-const hasRestoredSnapshot = ref(false)
-const hasAppliedInitialViewport = ref(false)
-const isInitialized = ref(false)
-const isSameViewport = (next?: { x: number; y: number; zoom: number }) => {
-  if (!next) return false
-  const threshold = 0.001
-  return Math.abs((viewport.value.x || 0) - next.x) < threshold &&
-    Math.abs((viewport.value.y || 0) - next.y) < threshold &&
-    Math.abs((viewport.value.zoom || 1) - next.zoom) < threshold
-}
-
-onInit(async () => {
-  isInitialized.value = true
-  if (props.snapshot?.flowState) {
-    await restoreSnapshotState(props.snapshot)
-    hasRestoredSnapshot.value = true
-    if (props.snapshot.viewport) {
-      isRestoringViewport.value = true
-      await nextTick()
-      await setViewport({ x: props.snapshot.viewport.x, y: props.snapshot.viewport.y, zoom: props.snapshot.viewport.zoom }, { duration: 0 })
-      isRestoringViewport.value = false
-    }
-  } else {
-    applyDefaultSettings()
-    await nextTick()
-    fitView({ padding: 0.2, duration: 0 })
-    snapshotState()
-  }
-  hasAppliedInitialViewport.value = true
-})
-
-let isRestoringExternalSnapshot = false
-watch(() => props.snapshot?.flowState?.dataSnapshot, (newSnapshot) => {
-  if (!newSnapshot || isRestoringExternalSnapshot) return
-  isRestoringExternalSnapshot = true
-  restoreSnapshotState(props.snapshot!)
-  nextTick(() => { isRestoringExternalSnapshot = false })
-})
-
-watch(() => props.snapshot?.flowState?.currentFilename, (newFilename) => {
-  if (newFilename && newFilename !== currentFilename.value) {
-    isRestoringExternalSnapshot = true
-    restoreSnapshotState(props.snapshot!)
-    nextTick(() => { isRestoringExternalSnapshot = false })
-  }
-})
-
-watch(() => props.snapshot?.viewport, async (nextViewport) => {
-  if (!nextViewport) return
-  if (!hasRestoredSnapshot.value) return
-  if (!hasAppliedInitialViewport.value) return
-  if (isRestoringExternalSnapshot) return
-  if (isSameViewport(nextViewport)) return
-  isRestoringViewport.value = true
-  await nextTick()
-  await setViewport({ x: nextViewport.x, y: nextViewport.y, zoom: nextViewport.zoom }, { duration: 0 })
-  isRestoringViewport.value = false
-}, { deep: true })
 
 const handleRequestSwitch = (config: { filename: string; source: string; nodeId?: string }) => {
   if (!isDirtyCombined.value) {
@@ -235,7 +136,7 @@ const handleDiscardChanges = () => {
 const handleSaveAndSwitch = async () => {
   isSavingModal.value = true
   try {
-    await handleSaveNodes({ source: currentSource.value, filename: currentFilename.value }, snapshotState)
+    await handleSaveNodes({ source: currentSource.value, filename: currentFilename.value }, () => {})
     showSaveModal.value = false
     if (pendingSwitchConfig.value) {
       executeSwitch(pendingSwitchConfig.value)
@@ -265,7 +166,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
   if (isMod && e.key === 's') {
     e.preventDefault()
     if (isFileLoaded.value && currentFilename.value) {
-      handleSaveNodes({ source: currentSource.value, filename: currentFilename.value }, snapshotState)
+      handleSaveNodes({ source: currentSource.value, filename: currentFilename.value }, () => {})
         .then(() => ElMessage.success('保存成功'))
         .catch(() => ElMessage.error('保存失败'))
     }
@@ -285,11 +186,9 @@ const handleKeyDown = (e: KeyboardEvent) => {
         })
         nodes.value = nodes.value.filter((n: FlowNode) => !selectedNodes.find((sn: FlowNode) => sn.id === n.id))
         markDataChanged()
-        snapshotState()
       } else if (selectedEdges.length > 0) {
         removeEdges(selectedEdges.map((e: FlowEdge) => e.id))
         markDataChanged()
-        snapshotState()
       }
     }
     return
@@ -339,19 +238,71 @@ const handleLoadNodesWrapper = async (payload: LoadNodesPayload) => {
   } finally {
     isBulkLoading.value = false
   }
-  snapshotState()
   perfLog('FlowEditor.handleLoadNodesWrapper.total', start, { tabId: props.tabId, filename: payload.filename })
 }
 
+const loadResourceFile = async (fileId: string) => {
+  const { source, filename } = parseFileId(fileId)
+  if (!source || !filename) {
+    ElMessage.error('无效的资源文件标识')
+    return
+  }
+  
+  try {
+    const res = await resourceApi.getFileNodes(source, filename)
+    const nodesRes = res?.nodes
+    if (nodesRes) {
+      const isPipelineV2Nodes = (nodes: Record<string, unknown>) => {
+        const first = Object.values(nodes)[0] as Record<string, unknown> | undefined
+        return first && 'pipeline' in first
+      }
+      const toPipelineV1Nodes = (nodes: Record<string, unknown>) => {
+        const result: Record<string, unknown> = {}
+        for (const [key, value] of Object.entries(nodes)) {
+          const node = value as Record<string, unknown>
+          if (node.pipeline) {
+            result[key] = { ...node, ...node.pipeline }
+            delete (result[key] as Record<string, unknown>).pipeline
+          } else {
+            result[key] = value
+          }
+        }
+        return result
+      }
+      
+      let fileVersion: 'V1' | 'V2' = 'V1'
+      let processedNodes = nodesRes as Record<string, unknown>
+      if (isPipelineV2Nodes(nodesRes as Record<string, unknown>)) {
+        fileVersion = 'V2'
+        processedNodes = toPipelineV1Nodes(nodesRes as Record<string, unknown>)
+      }
+      
+      await handleLoadNodesWrapper({
+        filename,
+        source,
+        nodes: processedNodes as Record<string, import('@/utils/flowTypes').FlowBusinessData>,
+        fileVersion
+      })
+      
+      const imgRes = await resourceApi.getTemplateImages(source, filename)
+      if (imgRes?.results) {
+        handleLoadImages(imgRes.results as Record<string, unknown>)
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load resource file:', e)
+    throw e
+  }
+}
+
 defineExpose({
-  snapshotState,
-  getSnapshot: () => saveManager.buildSnapshot({ x: viewport.value.x || 0, y: viewport.value.y || 0, zoom: viewport.value.zoom || 1 }),
+  loadResourceFile,
   handleLoadNodesWrapper,
   handleLoadImages,
-  handleSaveNodes: (config: { source: string; filename: string }) => handleSaveNodes(config, snapshotState),
-  handleDeviceConnected: (val: boolean) => handleDeviceConnected(val, snapshotState),
-  handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) => handleUpdateCanvasConfig(config, snapshotState),
-  handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val, snapshotState),
+  handleSaveNodes: (config: { source: string; filename: string }) => handleSaveNodes(config, () => {}),
+  handleDeviceConnected: (val: boolean) => handleDeviceConnected(val, () => {}),
+  handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) => handleUpdateCanvasConfig(config, () => {}),
+  handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val, () => {}),
   handleRequestSwitch,
   handleLocateNode,
   handleDebugNodeFromPanel,
@@ -374,8 +325,8 @@ defineExpose({
       :nodes-connectable="isFileLoaded"
       :elements-selectable="isFileLoaded"
       :pan-on-drag="true"
-      @connect="(params) => { handleConnect(params); throttledSnapshot() }"
-      @edges-change="(changes) => { handleEdgesChange(changes); throttledSnapshot() }"
+      @connect="(params) => { handleConnect(params) }"
+      @edges-change="(changes) => { handleEdgesChange(changes) }"
       @nodes-change="handleNodesChange"
       @node-drag-stop="handleNodesChange"
       @pane-context-menu="onPaneContextMenu"
@@ -385,7 +336,6 @@ defineExpose({
       @node-click="closeMenu"
       @edge-click="closeMenu"
       @move-start="closeMenu"
-      @move-end="handleMoveEnd"
     >
       <Background
         pattern-color="#cbd5e1"
@@ -446,8 +396,8 @@ defineExpose({
       :used-images="usedImages"
       :is-processing="isProcessingImages"
       @cancel="handleCancelDeleteImages"
-      @confirm="() => handleConfirmDeleteImages(snapshotState)"
-      @skip="() => handleSkipDeleteImages(snapshotState)"
+      @confirm="() => handleConfirmDeleteImages(() => {})"
+      @skip="() => handleSkipDeleteImages(() => {})"
     />
   </div>
 </template>

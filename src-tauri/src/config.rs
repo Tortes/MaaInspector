@@ -27,36 +27,53 @@ pub struct ResourceProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CurrentState {
-    pub device_index: Option<i32>,
-    pub resource_profile_index: Option<i32>,
-    pub resource_file: Option<String>,
-    pub resource_source: Option<String>,
-    pub agent_socket_id: Option<String>,
+pub struct CanvasSettings {
     pub edge_type: Option<String>,
     pub spacing: Option<String>,
     pub layout_algorithm: Option<String>,
     pub layout_direction: Option<String>,
     pub pipeline_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TabResourceInfo {
+    pub id: Option<String>,
+    pub title: Option<String>,
+    pub resource_file: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LastTabsState {
+    pub resource_index: i32,
+    pub tabs: Vec<TabResourceInfo>,
+    pub active_tab_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorkspaceState {
+    pub resource_index: Option<i32>,
+    pub resource_signature: Option<String>,
+    pub tabs: Vec<TabResourceInfo>,
+    pub active_tab_id: Option<String>,
     pub restore_workspace_on_start: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
-    pub devices: Vec<DeviceInfo>,
-    #[serde(default)]
     pub resource_profiles: Vec<ResourceProfile>,
     #[serde(default)]
-    pub current_state: CurrentState,
-    #[serde(default)]
-    pub default_resource_path: Option<String>,
-    #[serde(default)]
-    pub default_socket_id: Option<String>,
+    pub current_resource_index: Option<i32>,
     #[serde(default)]
     pub agent_socket_id: Option<String>,
     #[serde(default)]
-    pub last_connected_device: Option<DeviceInfo>,
+    pub canvas_settings: CanvasSettings,
+    #[serde(default)]
+    pub restore_workspace_on_start: Option<bool>,
+    #[serde(default)]
+    pub workspace_state: Option<WorkspaceState>,
+    #[serde(default)]
+    pub last_tabs: Option<LastTabsState>,
 }
 
 impl AppConfig {
@@ -102,34 +119,34 @@ impl AppConfig {
         if let Some(obj) = other.as_object() {
             for (key, value) in obj {
                 match key.as_str() {
-                    "devices" => {
-                        if let Ok(v) = serde_json::from_value::<Vec<DeviceInfo>>(value.clone()) {
-                            self.devices = v;
-                        }
-                    }
                     "resource_profiles" => {
                         if let Ok(v) = serde_json::from_value::<Vec<ResourceProfile>>(value.clone())
                         {
                             self.resource_profiles = v;
                         }
                     }
-                    "current_state" => {
-                        if let Ok(v) = serde_json::from_value::<CurrentState>(value.clone()) {
-                            self.current_state = v;
-                        }
-                    }
-                    "default_resource_path" => {
-                        self.default_resource_path = value.as_str().map(|s| s.to_string());
-                    }
-                    "default_socket_id" => {
-                        self.default_socket_id = value.as_str().map(|s| s.to_string());
+                    "current_resource_index" => {
+                        self.current_resource_index = value.as_i64().map(|v| v as i32);
                     }
                     "agent_socket_id" => {
                         self.agent_socket_id = value.as_str().map(|s| s.to_string());
                     }
-                    "last_connected_device" => {
-                        if let Ok(v) = serde_json::from_value::<DeviceInfo>(value.clone()) {
-                            self.last_connected_device = Some(v);
+                    "canvas_settings" => {
+                        if let Ok(v) = serde_json::from_value::<CanvasSettings>(value.clone()) {
+                            self.canvas_settings = v;
+                        }
+                    }
+                    "restore_workspace_on_start" => {
+                        self.restore_workspace_on_start = value.as_bool();
+                    }
+                    "workspace_state" => {
+                        if let Ok(v) = serde_json::from_value::<WorkspaceState>(value.clone()) {
+                            self.workspace_state = Some(v);
+                        }
+                    }
+                    "last_tabs" => {
+                        if let Ok(v) = serde_json::from_value::<LastTabsState>(value.clone()) {
+                            self.last_tabs = Some(v);
                         }
                     }
                     _ => {}
