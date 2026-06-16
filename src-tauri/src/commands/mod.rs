@@ -1,6 +1,7 @@
 mod agent;
 mod debug;
 mod device;
+mod log;
 mod resource;
 mod system;
 
@@ -10,6 +11,7 @@ use tokio::sync::{Mutex, MutexGuard};
 pub use agent::*;
 pub use debug::*;
 pub use device::*;
+pub use log::*;
 pub use resource::*;
 pub use system::*;
 

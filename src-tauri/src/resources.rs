@@ -252,7 +252,7 @@ impl ResourcesManager {
         if let Some(parent) = full_path.parent()
             && let Err(e) = fs::create_dir_all(parent)
         {
-            eprintln!("Failed to create pipeline directory: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to create pipeline directory: {}", e);
             return 0;
         }
 
@@ -266,7 +266,7 @@ impl ResourcesManager {
         if let Ok(json_str) = serde_json::to_string_pretty(&json_value)
             && let Err(e) = fs::write(&full_path, json_str)
         {
-            eprintln!("Failed to write file: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to write file: {}", e);
             return 0;
         }
 
@@ -297,13 +297,13 @@ impl ResourcesManager {
         }
 
         if let Err(e) = fs::create_dir_all(&pipeline_path) {
-            eprintln!("Failed to create pipeline directory: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to create pipeline directory: {}", e);
             return false;
         }
 
         // Write empty JSON object
         if let Err(e) = fs::write(&full_path, "{}") {
-            eprintln!("Failed to write file: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to write file: {}", e);
             return false;
         }
 
@@ -417,7 +417,7 @@ impl ResourcesManager {
         if let Some(p) = parent
             && let Err(e) = fs::create_dir_all(p)
         {
-            eprintln!("Failed to create image directory: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to create image directory: {}", e);
             return false;
         }
 
@@ -437,7 +437,7 @@ impl ResourcesManager {
             base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
         {
             if let Err(e) = fs::write(&full_path, decoded) {
-                eprintln!("Failed to write image: {}", e);
+                crate::backend_log_debug!("stderr", "Failed to write image: {}", e);
                 return false;
             }
             return true;
@@ -455,7 +455,7 @@ impl ResourcesManager {
         }
 
         if let Err(e) = fs::remove_file(&full_path) {
-            eprintln!("Failed to delete image: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to delete image: {}", e);
             return false;
         }
 

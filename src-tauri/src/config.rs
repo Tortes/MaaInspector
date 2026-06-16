@@ -87,12 +87,12 @@ impl AppConfig {
             Ok(content) => match serde_json::from_str(&content) {
                 Ok(config) => config,
                 Err(e) => {
-                    eprintln!("Failed to parse config.json: {}", e);
+                    crate::backend_log_error!("config", "Failed to parse config.json: {}", e);
                     Self::default()
                 }
             },
             Err(e) => {
-                eprintln!("Failed to read config.json: {}", e);
+                crate::backend_log_error!("config", "Failed to read config.json: {}", e);
                 Self::default()
             }
         }
@@ -104,12 +104,12 @@ impl AppConfig {
             Ok(content) => match fs::write(&config_path, content) {
                 Ok(_) => true,
                 Err(e) => {
-                    eprintln!("Failed to write config.json: {}", e);
+                    crate::backend_log_error!("config", "Failed to write config.json: {}", e);
                     false
                 }
             },
             Err(e) => {
-                eprintln!("Failed to serialize config: {}", e);
+                crate::backend_log_error!("config", "Failed to serialize config: {}", e);
                 false
             }
         }

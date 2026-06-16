@@ -53,24 +53,29 @@ impl DebugEventBroker {
                 ..Default::default()
             };
 
-            eprintln!(
+            crate::backend_log_debug!(
+                "stderr",
                 "[ContextSink] Emitting frontend event \"{}\" with payload: {}",
                 EVENT_NODE_NEXT_LIST,
                 serde_json::to_string_pretty(&payload).unwrap_or_else(|_| format!("{:?}", payload))
             );
             if let Err(e) = handle.emit(EVENT_NODE_NEXT_LIST, payload) {
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Failed to emit frontend event \"{}\": {}",
-                    EVENT_NODE_NEXT_LIST, e
+                    EVENT_NODE_NEXT_LIST,
+                    e
                 );
             } else {
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Frontend event \"{}\" emitted successfully",
                     EVENT_NODE_NEXT_LIST
                 );
             }
         } else {
-            eprintln!(
+            crate::backend_log_debug!(
+                "stderr",
                 "[ContextSink] Skipped frontend event \"{}\" because AppHandle is not available",
                 EVENT_NODE_NEXT_LIST
             );
@@ -102,24 +107,29 @@ impl DebugEventBroker {
                 ..Default::default()
             };
 
-            eprintln!(
+            crate::backend_log_debug!(
+                "stderr",
                 "[ContextSink] Emitting frontend event \"{}\" with payload: {}",
                 EVENT_NODE_RECOGNITION,
                 serde_json::to_string_pretty(&payload).unwrap_or_else(|_| format!("{:?}", payload))
             );
             if let Err(e) = handle.emit(EVENT_NODE_RECOGNITION, payload) {
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Failed to emit frontend event \"{}\": {}",
-                    EVENT_NODE_RECOGNITION, e
+                    EVENT_NODE_RECOGNITION,
+                    e
                 );
             } else {
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Frontend event \"{}\" emitted successfully",
                     EVENT_NODE_RECOGNITION
                 );
             }
         } else {
-            eprintln!(
+            crate::backend_log_debug!(
+                "stderr",
                 "[ContextSink] Skipped frontend event \"{}\" because AppHandle is not available",
                 EVENT_NODE_RECOGNITION
             );

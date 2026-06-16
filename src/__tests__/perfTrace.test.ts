@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { perfNow, perfLog, perfMark } from '@/utils/perfTrace'
 
+const logDebugMock = vi.fn()
+
+vi.mock('@/utils/logger', () => ({
+  logDebug: (...args: unknown[]) => logDebugMock(...args)
+}))
+
 describe('perfTrace utilities', () => {
   describe('perfNow', () => {
     it('should return a number', () => {
@@ -48,41 +54,61 @@ describe('perfTrace utilities', () => {
 
   describe('perfLog', () => {
     beforeEach(() => {
-      vi.spyOn(console, 'info').mockImplementation(() => {})
+      logDebugMock.mockClear()
+      localStorage.clear()
     })
 
     afterEach(() => {
       vi.restoreAllMocks()
+      localStorage.clear()
     })
 
     it('should not log when perf trace is disabled', () => {
       perfLog('test', 0)
-      expect(console.info).not.toHaveBeenCalled()
+      expect(logDebugMock).not.toHaveBeenCalled()
     })
 
     it('should not log with meta when disabled', () => {
       perfLog('test', 0, { key: 'value' })
-      expect(console.info).not.toHaveBeenCalled()
+      expect(logDebugMock).not.toHaveBeenCalled()
+    })
+
+    it('should write perf log when enabled', () => {
+      localStorage.setItem('maainspector.perfTrace', 'on')
+      perfLog('test', perfNow(), { key: 'value' })
+      expect(logDebugMock).toHaveBeenCalledWith(
+        'perf',
+        expect.stringContaining('[perf] test:'),
+        expect.objectContaining({ key: 'value' })
+      )
     })
   })
 
   describe('perfMark', () => {
     beforeEach(() => {
-      vi.spyOn(console, 'info').mockImplementation(() => {})
+      logDebugMock.mockClear()
+      localStorage.clear()
     })
 
     afterEach(() => {
       vi.restoreAllMocks()
+      localStorage.clear()
     })
 
     it('should not log when perf trace is disabled', () => {
       perfMark('my-mark')
-      expect(console.info).not.toHaveBeenCalled()
+      expect(logDebugMock).not.toHaveBeenCalled()
     })
 
     it('should not log with meta when disabled', () => {
       perfMark('my-mark', { detail: 'info' })
-      expect(console.info).not.toHaveBeenCalled()
+      expect(logDebugMock).not.toHaveBeenCalled()
+    })
+
+    it('should write perf mark when enabled', () => {
+      localStorage.setItem('maainspector.perfTrace', 'on')
+      perfMark('my-mark', { detail: 'info' })
+      expect(logDebugMock).toHaveBeenCalledWith('perf', '[perf] my-mark', { detail: 'info' })
     })
   })
 })

@@ -50,9 +50,9 @@ const CONTROLLER_TIMEOUT_MS: u64 = 30000;
 /// Async wait for controller operation with timeout using spawn_blocking
 async fn wait_with_timeout_async(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
     let ctrl_clone = controller.clone();
-    tokio::task::spawn_blocking(move || {
-        wait_with_timeout(&ctrl_clone, id, timeout_ms)
-    }).await.unwrap_or(false)
+    tokio::task::spawn_blocking(move || wait_with_timeout(&ctrl_clone, id, timeout_ms))
+        .await
+        .unwrap_or(false)
 }
 
 /// Async wait with default timeout
@@ -116,12 +116,9 @@ impl MaaFrameworkWrapper {
         mouse_method: Option<i32>,
         keyboard_method: Option<i32>,
     ) -> (bool, Option<String>) {
-        let (success, error, ctrl) = controller::connect_win32_async(
-            hwnd,
-            screencap_method,
-            mouse_method,
-            keyboard_method,
-        ).await;
+        let (success, error, ctrl) =
+            controller::connect_win32_async(hwnd, screencap_method, mouse_method, keyboard_method)
+                .await;
         if success {
             self.controller = ctrl;
         }
@@ -163,24 +160,20 @@ impl MaaFrameworkWrapper {
 
         let success = wait_with_default_timeout_async(&ctrl_clone, id).await;
         if !success {
-            eprintln!("Screencap timeout or failed");
+            crate::backend_log_debug!("stderr", "Screencap timeout or failed");
             return None;
         }
 
         match ctrl_clone.cached_image() {
-            Ok(img_buffer) => {
-                match img_buffer.to_vec() {
-                    Some(raw_data) => {
-                        image::encode_image_as_base64(&raw_data).map(|image| {
-                            let size = image::detect_image_size(&raw_data).unwrap_or(vec![1280, 720]);
-                            (image, size)
-                        })
-                    }
-                    None => None,
-                }
-            }
+            Ok(img_buffer) => match img_buffer.to_vec() {
+                Some(raw_data) => image::encode_image_as_base64(&raw_data).map(|image| {
+                    let size = image::detect_image_size(&raw_data).unwrap_or(vec![1280, 720]);
+                    (image, size)
+                }),
+                None => None,
+            },
             Err(e) => {
-                eprintln!("Failed to get cached image: {}", e);
+                crate::backend_log_debug!("stderr", "Failed to get cached image: {}", e);
                 None
             }
         }
@@ -193,61 +186,59 @@ impl MaaFrameworkWrapper {
         let tasker = self.tasker.as_ref()?;
 
         match tasker.get_recognition_detail(reco_id as sys::MaaId) {
-            Ok(Some(detail)) => {
-                Some(RecognitionDetail {
-                    reco_id: Some(reco_id),
-                    name: Some(detail.node_name.clone()),
-                    algorithm: Some(format!("{:?}", detail.algorithm)),
-                    hit: detail.hit,
-                    bbox: Some(vec![
-                        detail.box_rect.x,
-                        detail.box_rect.y,
-                        detail.box_rect.width,
-                        detail.box_rect.height,
-                    ]),
-                    all_results: Some(
-                        detail
-                            .sub_details
-                            .iter()
-                            .map(|sub| BoxScore {
-                                bbox: Some(vec![
-                                    sub.box_rect.x,
-                                    sub.box_rect.y,
-                                    sub.box_rect.width,
-                                    sub.box_rect.height,
-                                ]),
-                                score: None,
-                            })
-                            .collect(),
-                    ),
-                    filtered_results: None,
-                    best_result: if detail.hit {
-                        Some(BoxScore {
+            Ok(Some(detail)) => Some(RecognitionDetail {
+                reco_id: Some(reco_id),
+                name: Some(detail.node_name.clone()),
+                algorithm: Some(format!("{:?}", detail.algorithm)),
+                hit: detail.hit,
+                bbox: Some(vec![
+                    detail.box_rect.x,
+                    detail.box_rect.y,
+                    detail.box_rect.width,
+                    detail.box_rect.height,
+                ]),
+                all_results: Some(
+                    detail
+                        .sub_details
+                        .iter()
+                        .map(|sub| BoxScore {
                             bbox: Some(vec![
-                                detail.box_rect.x,
-                                detail.box_rect.y,
-                                detail.box_rect.width,
-                                detail.box_rect.height,
+                                sub.box_rect.x,
+                                sub.box_rect.y,
+                                sub.box_rect.width,
+                                sub.box_rect.height,
                             ]),
                             score: None,
                         })
-                    } else {
-                        None
-                    },
-                    raw_detail: Some(detail.detail.clone()),
-                    raw_image: detail
-                        .raw_image
-                        .as_ref()
-                        .and_then(|v| image::encode_raw_image(v)),
-                    draw_images: Some(
-                        detail
-                            .draw_images
-                            .iter()
-                            .filter_map(|img| image::encode_raw_image(img))
-                            .collect(),
-                    ),
-                })
-            }
+                        .collect(),
+                ),
+                filtered_results: None,
+                best_result: if detail.hit {
+                    Some(BoxScore {
+                        bbox: Some(vec![
+                            detail.box_rect.x,
+                            detail.box_rect.y,
+                            detail.box_rect.width,
+                            detail.box_rect.height,
+                        ]),
+                        score: None,
+                    })
+                } else {
+                    None
+                },
+                raw_detail: Some(detail.detail.clone()),
+                raw_image: detail
+                    .raw_image
+                    .as_ref()
+                    .and_then(|v| image::encode_raw_image(v)),
+                draw_images: Some(
+                    detail
+                        .draw_images
+                        .iter()
+                        .filter_map(|img| image::encode_raw_image(img))
+                        .collect(),
+                ),
+            }),
             _ => None,
         }
     }
@@ -260,45 +251,55 @@ impl MaaFrameworkWrapper {
 
     /// Load resource from paths (async version)
     pub async fn load_resource_async(&mut self, paths: &[String]) -> (bool, Option<String>) {
-        let (success, message, new_resource) = resource::load_resource_async(
-            self.resource.take(),
-            paths,
-        ).await;
+        let (success, message, new_resource) =
+            resource::load_resource_async(self.resource.take(), paths).await;
 
         self.resource = new_resource;
         (success, message)
     }
 
     /// OCR text recognition with roi (async)
-    pub async fn ocr_text_async(&mut self, roi: [i32; 4]) -> Result<OcrRecognitionResponse, String> {
-        eprintln!(
+    pub async fn ocr_text_async(
+        &mut self,
+        roi: [i32; 4],
+    ) -> Result<OcrRecognitionResponse, String> {
+        crate::backend_log_debug!(
+            "stderr",
             "[OCR] start roi={:?}, resource_bound={}, tasker_ready={}",
             roi,
             self.resource.is_some(),
             self.tasker.as_ref().map(|t| t.inited()).unwrap_or(false)
         );
 
-        let controller = self.controller.as_ref()
+        let controller = self
+            .controller
+            .as_ref()
             .ok_or("Controller not initialized. Please connect a device first.")?;
-        
+
         let ctrl_clone = controller.clone();
-        let id = ctrl_clone.post_screencap()
+        let id = ctrl_clone
+            .post_screencap()
             .map_err(|e| format!("Failed to post screencap: {}", e))?;
-        
+
         let success = wait_with_default_timeout_async(&ctrl_clone, id).await;
         if !success {
             return Err("Screencap timeout or failed".to_string());
         }
-        
-        let img_buffer = ctrl_clone.cached_image()
+
+        let img_buffer = ctrl_clone
+            .cached_image()
             .map_err(|e| format!("Failed to get cached image: {}", e))?;
-        
+
         let tasker = match self.tasker.as_ref() {
             Some(t) => t.clone(),
             None => {
-                let new_tasker = Tasker::new()
-                    .map_err(|e| format!("Failed to create tasker for OCR: {}", e))?;
-                new_tasker.bind(self.resource.as_ref().ok_or("Resource not initialized")?, controller)
+                let new_tasker =
+                    Tasker::new().map_err(|e| format!("Failed to create tasker for OCR: {}", e))?;
+                new_tasker
+                    .bind(
+                        self.resource.as_ref().ok_or("Resource not initialized")?,
+                        controller,
+                    )
                     .map_err(|e| format!("Failed to bind tasker: {}", e))?;
                 if !new_tasker.inited() {
                     return Err("Tasker initialization failed".to_string());
@@ -322,11 +323,12 @@ impl MaaFrameworkWrapper {
         match tasker.post_task_json("__OCRDebug", &ocr_pipeline) {
             Ok(job) => {
                 let wait_status = job.wait();
-                eprintln!("[OCR] task wait status: {}", wait_status);
+                crate::backend_log_debug!("stderr", "[OCR] task wait status: {}", wait_status);
 
                 match job.get(false) {
                     Ok(Some(task_detail)) => {
-                        eprintln!(
+                        crate::backend_log_debug!(
+                            "stderr",
                             "[OCR] task detail: entry={}, status={}, node_id_list={:?}, nodes={}",
                             task_detail.entry,
                             task_detail.status,
@@ -336,11 +338,12 @@ impl MaaFrameworkWrapper {
 
                         for (idx, node_opt) in task_detail.nodes.iter().enumerate() {
                             let Some(node_detail) = node_opt.as_ref() else {
-                                eprintln!("[OCR] node[{}]: None", idx);
+                                crate::backend_log_debug!("stderr", "[OCR] node[{}]: None", idx);
                                 continue;
                             };
 
-                            eprintln!(
+                            crate::backend_log_debug!(
+                                "stderr",
                                 "[OCR] node[{}]: name={}, reco_id={}, act_id={}, completed={}",
                                 idx,
                                 node_detail.node_name,
@@ -350,7 +353,8 @@ impl MaaFrameworkWrapper {
                             );
 
                             if let Some(recognition) = &node_detail.recognition {
-                                eprintln!(
+                                crate::backend_log_debug!(
+                                    "stderr",
                                     "[OCR] node[{}].recognition: node={}, algo={:?}, hit={}, box={:?}, sub_details={}, raw_image_bytes={}, draw_images={}",
                                     idx,
                                     recognition.node_name,
@@ -361,7 +365,8 @@ impl MaaFrameworkWrapper {
                                     recognition.raw_image.as_ref().map(|v| v.len()).unwrap_or(0),
                                     recognition.draw_images.len()
                                 );
-                                eprintln!(
+                                crate::backend_log_debug!(
+                                    "stderr",
                                     "[OCR] node[{}].recognition raw detail: {}",
                                     idx,
                                     serde_json::to_string_pretty(&recognition.detail)
@@ -369,17 +374,19 @@ impl MaaFrameworkWrapper {
                                 );
 
                                 if let Ok(ocr_bundle) = serde_json::from_value::<OcrDetailBundle>(
-                                    recognition.detail.clone()
+                                    recognition.detail.clone(),
                                 ) {
-                                    eprintln!(
-                                    "[OCR] node[{}].ocr_bundle: all={}, filtered={}, best={}",
+                                    crate::backend_log_debug!(
+                                        "stderr",
+                                        "[OCR] node[{}].ocr_bundle: all={}, filtered={}, best={}",
                                         idx,
                                         ocr_bundle.all.len(),
                                         ocr_bundle.filtered.len(),
                                         ocr_bundle.best.is_some()
                                     );
                                     for (res_idx, item) in ocr_bundle.all.iter().enumerate() {
-                                        eprintln!(
+                                        crate::backend_log_debug!(
+                                            "stderr",
                                             "[OCR] node[{}].all[{}]: box={:?}, score={:.4}, text={:?}",
                                             idx,
                                             res_idx,
@@ -389,7 +396,8 @@ impl MaaFrameworkWrapper {
                                         );
                                     }
                                     for (res_idx, item) in ocr_bundle.filtered.iter().enumerate() {
-                                        eprintln!(
+                                        crate::backend_log_debug!(
+                                            "stderr",
                                             "[OCR] node[{}].filtered[{}]: box={:?}, score={:.4}, text={:?}",
                                             idx,
                                             res_idx,
@@ -399,7 +407,8 @@ impl MaaFrameworkWrapper {
                                         );
                                     }
                                     if let Some(best) = ocr_bundle.best.as_ref() {
-                                        eprintln!(
+                                        crate::backend_log_debug!(
+                                            "stderr",
                                             "[OCR] node[{}].best: box={:?}, score={:.4}, text_len={}, text={:?}",
                                             idx,
                                             best.bbox,
@@ -410,7 +419,8 @@ impl MaaFrameworkWrapper {
                                     }
                                     return Ok(ocr_bundle_to_response(ocr_bundle));
                                 } else if let Some(ocr_result) = recognition.as_ocr_result() {
-                                    eprintln!(
+                                    crate::backend_log_debug!(
+                                        "stderr",
                                         "[OCR] node[{}].ocr_result: box={:?}, score={:.4}, text_len={}, text={:?}",
                                         idx,
                                         ocr_result.base.box_rect,
@@ -428,27 +438,46 @@ impl MaaFrameworkWrapper {
                                         score: ocr_result.base.score,
                                         text: ocr_result.text.clone(),
                                     };
-                                    return Ok(ocr_result_to_response(ocr_result.text.clone(), candidate));
+                                    return Ok(ocr_result_to_response(
+                                        ocr_result.text.clone(),
+                                        candidate,
+                                    ));
                                 } else {
-                                    eprintln!("[OCR] node[{}].recognition is not OCR detail", idx);
+                                    crate::backend_log_debug!(
+                                        "stderr",
+                                        "[OCR] node[{}].recognition is not OCR detail",
+                                        idx
+                                    );
                                 }
                             } else {
-                                eprintln!("[OCR] node[{}].recognition: None", idx);
+                                crate::backend_log_debug!(
+                                    "stderr",
+                                    "[OCR] node[{}].recognition: None",
+                                    idx
+                                );
                             }
                         }
 
-                        eprintln!("[OCR] task route produced OCR detail bundle");
+                        crate::backend_log_debug!(
+                            "stderr",
+                            "[OCR] task route produced OCR detail bundle"
+                        );
                     }
                     Ok(None) => {
-                        eprintln!("[OCR] task.get returned None");
+                        crate::backend_log_debug!("stderr", "[OCR] task.get returned None");
                     }
                     Err(e) => {
-                        eprintln!("[OCR] task.get failed: {:?} | {}", e, e);
+                        crate::backend_log_debug!(
+                            "stderr",
+                            "[OCR] task.get failed: {:?} | {}",
+                            e,
+                            e
+                        );
                     }
                 }
             }
             Err(e) => {
-                eprintln!("[OCR] task post failed: {}", e);
+                crate::backend_log_debug!("stderr", "[OCR] task post failed: {}", e);
             }
         }
 
@@ -457,26 +486,30 @@ impl MaaFrameworkWrapper {
             "roi": roi
         });
 
-        let job = tasker.post_recognition(
-            "OCR",
-            &ocr_params.to_string(),
-            &img_buffer
-        ).map_err(|e| format!("OCR recognition failed: {}", e))?;
+        let job = tasker
+            .post_recognition("OCR", &ocr_params.to_string(), &img_buffer)
+            .map_err(|e| format!("OCR recognition failed: {}", e))?;
 
         let wait_status = job.wait();
-        eprintln!("[OCR] direct wait status: {}", wait_status);
+        crate::backend_log_debug!("stderr", "[OCR] direct wait status: {}", wait_status);
 
         match job.get(false) {
             Ok(Some(detail)) => {
-                eprintln!("[OCR] direct recognition detail: {:#?}", detail);
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
+                    "[OCR] direct recognition detail: {:#?}",
+                    detail
+                );
+                crate::backend_log_debug!(
+                    "stderr",
                     "[OCR] direct raw detail json: {}",
                     serde_json::to_string_pretty(&detail.detail)
                         .unwrap_or_else(|_| detail.detail.to_string())
                 );
 
                 if let Some(ocr_result) = detail.as_ocr_result() {
-                    eprintln!(
+                    crate::backend_log_debug!(
+                        "stderr",
                         "[OCR] direct parsed result: box={:?}, score={:.4}, text_len={}, text={:?}",
                         ocr_result.base.box_rect,
                         ocr_result.base.score,
@@ -496,9 +529,12 @@ impl MaaFrameworkWrapper {
                     return Ok(ocr_result_to_response(ocr_result.text.clone(), candidate));
                 }
 
-                if let Ok(ocr_bundle) = serde_json::from_value::<OcrDetailBundle>(detail.detail.clone()) {
+                if let Ok(ocr_bundle) =
+                    serde_json::from_value::<OcrDetailBundle>(detail.detail.clone())
+                {
                     if let Some(best) = ocr_bundle.best.as_ref() {
-                        eprintln!(
+                        crate::backend_log_debug!(
+                            "stderr",
                             "[OCR] direct best: box={:?}, score={:.4}, text_len={}, text={:?}",
                             best.bbox,
                             best.score,
@@ -509,17 +545,20 @@ impl MaaFrameworkWrapper {
                     }
                 }
 
-                eprintln!("[OCR] direct detail could not be parsed as OCRResult or OcrDetailBundle");
+                crate::backend_log_debug!(
+                    "stderr",
+                    "[OCR] direct detail could not be parsed as OCRResult or OcrDetailBundle"
+                );
             }
             Ok(None) => {
-                eprintln!("[OCR] direct job.get returned None");
+                crate::backend_log_debug!("stderr", "[OCR] direct job.get returned None");
             }
             Err(e) => {
-                eprintln!("[OCR] direct job.get failed: {:?} | {}", e, e);
+                crate::backend_log_debug!("stderr", "[OCR] direct job.get failed: {:?} | {}", e, e);
             }
         }
 
-        eprintln!("[OCR] no recognition result");
+        crate::backend_log_debug!("stderr", "[OCR] no recognition result");
 
         Ok(OcrRecognitionResponse {
             text: None,

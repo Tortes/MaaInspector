@@ -43,14 +43,20 @@ pub fn run_task(
     if let Some(broker) = event_broker {
         let broker_clone = Arc::clone(broker);
 
-        eprintln!("[ContextSink] Clearing existing context sinks before registering debug sink");
+        crate::backend_log_debug!(
+            "stderr",
+            "[ContextSink] Clearing existing context sinks before registering debug sink"
+        );
         tasker_ref.clear_context_sinks();
 
-        eprintln!("[ContextSink] Registering MaaFramework context sink for debug events");
+        crate::backend_log_debug!(
+            "stderr",
+            "[ContextSink] Registering MaaFramework context sink for debug events"
+        );
         if let Err(e) = tasker_ref.add_context_sink(move |msg, details| {
-            eprintln!("[ContextSink] ===== MaaFramework context signal received =====");
-            eprintln!("[ContextSink] Raw msg: {}", msg);
-            eprintln!("[ContextSink] Raw details: {}", details);
+            crate::backend_log_debug!("stderr", "[ContextSink] ===== MaaFramework context signal received =====");
+            crate::backend_log_debug!("stderr", "[ContextSink] Raw msg: {}", msg);
+            crate::backend_log_debug!("stderr", "[ContextSink] Raw details: {}", details);
 
             let noti_type = if msg.ends_with(".Starting") {
                 "starting"
@@ -61,7 +67,8 @@ pub fn run_task(
             } else {
                 "unknown"
             };
-            eprintln!(
+            crate::backend_log_debug!(
+                "stderr",
                 "[ContextSink] Notification type resolved from msg suffix: {}",
                 noti_type
             );
@@ -71,11 +78,12 @@ pub fn run_task(
                 Ok(value) => {
                     let pretty = serde_json::to_string_pretty::<serde_json::Value>(&value)
                         .unwrap_or_else(|_| value.to_string());
-                    eprintln!("[ContextSink] Details parsed as JSON:\n{}", pretty);
+                    crate::backend_log_debug!("stderr", "[ContextSink] Details parsed as JSON:\n{}", pretty);
                     value
                 }
                 Err(e) => {
-                    eprintln!(
+                    crate::backend_log_debug!(
+                        "stderr",
                         "[ContextSink] Failed to parse details as JSON: {}. Using null detail",
                         e
                     );
@@ -84,7 +92,7 @@ pub fn run_task(
             };
 
             if msg.starts_with("Node.NextList") {
-                eprintln!("[ContextSink] Trigger type matched: Node.NextList");
+                crate::backend_log_debug!("stderr", "[ContextSink] Trigger type matched: Node.NextList");
                 let task_id =
                     detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let name = detail
@@ -116,7 +124,8 @@ pub fn run_task(
                     .unwrap_or_default();
 
                 let focus = detail.get("focus").cloned();
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Node.NextList extracted fields: task_id={}, name=\"{}\", next_list_len={}, has_focus={}",
                     task_id,
                     name,
@@ -124,7 +133,8 @@ pub fn run_task(
                     focus.is_some()
                 );
                 for (idx, (next_name, jump_back, anchor)) in next_list.iter().enumerate() {
-                    eprintln!(
+                    crate::backend_log_debug!(
+                        "stderr",
                         "[ContextSink] Node.NextList item[{}]: name=\"{}\", jump_back={}, anchor={}",
                         idx,
                         next_name,
@@ -136,14 +146,15 @@ pub fn run_task(
                     let focus_pretty =
                         serde_json::to_string_pretty::<serde_json::Value>(focus_value)
                         .unwrap_or_else(|_| focus_value.to_string());
-                    eprintln!("[ContextSink] Node.NextList focus:\n{}", focus_pretty);
+                    crate::backend_log_debug!("stderr", "[ContextSink] Node.NextList focus:\n{}", focus_pretty);
                 }
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Dispatching Node.NextList to DebugEventBroker for frontend emit"
                 );
                 broker_clone.emit_node_next_list(task_id, name, next_list, focus);
             } else if msg.starts_with("Node.Recognition") {
-                eprintln!("[ContextSink] Trigger type matched: Node.Recognition");
+                crate::backend_log_debug!("stderr", "[ContextSink] Trigger type matched: Node.Recognition");
                 let task_id =
                     detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let reco_id =
@@ -155,7 +166,8 @@ pub fn run_task(
                     .to_string();
                 let focus = detail.get("focus").cloned();
 
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Node.Recognition extracted fields: task_id={}, reco_id={}, name=\"{}\", status={}, has_focus={}",
                     task_id,
                     reco_id,
@@ -167,9 +179,10 @@ pub fn run_task(
                     let focus_pretty =
                         serde_json::to_string_pretty::<serde_json::Value>(focus_value)
                         .unwrap_or_else(|_| focus_value.to_string());
-                    eprintln!("[ContextSink] Node.Recognition focus:\n{}", focus_pretty);
+                    crate::backend_log_debug!("stderr", "[ContextSink] Node.Recognition focus:\n{}", focus_pretty);
                 }
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Dispatching Node.Recognition to DebugEventBroker for frontend emit"
                 );
                 broker_clone.emit_node_recognition(
@@ -180,19 +193,23 @@ pub fn run_task(
                     focus,
                 );
             } else {
-                eprintln!(
+                crate::backend_log_debug!(
+                    "stderr",
                     "[ContextSink] Trigger type unmatched. No frontend event emitted for msg: {}",
                     msg
                 );
             }
-            eprintln!("[ContextSink] ===== MaaFramework context signal handling finished =====");
+            crate::backend_log_debug!("stderr", "[ContextSink] ===== MaaFramework context signal handling finished =====");
         }) {
-            eprintln!("[ContextSink] Failed to register MaaFramework context sink: {}", e);
+            crate::backend_log_debug!("stderr", "[ContextSink] Failed to register MaaFramework context sink: {}", e);
         } else {
-            eprintln!("[ContextSink] MaaFramework context sink registered successfully");
+            crate::backend_log_debug!("stderr", "[ContextSink] MaaFramework context sink registered successfully");
         }
     } else {
-        eprintln!("[ContextSink] DebugEventBroker is not initialized; context sink not registered");
+        crate::backend_log_debug!(
+            "stderr",
+            "[ContextSink] DebugEventBroker is not initialized; context sink not registered"
+        );
     }
 
     match tasker_ref.post_task_json(entry, &pipeline_override) {

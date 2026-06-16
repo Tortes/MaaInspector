@@ -22,12 +22,13 @@ pub(crate) fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout
             return true;
         }
         if status.failed() {
-            eprintln!("Controller operation failed");
+            crate::backend_log_debug!("stderr", "Controller operation failed");
             return false;
         }
 
         if start.elapsed() > timeout {
-            eprintln!(
+            crate::backend_log_debug!(
+                "stderr",
                 "Controller operation timeout after {}ms",
                 timeout_ms
             );
@@ -60,7 +61,7 @@ pub fn find_adb_devices() -> Vec<DeviceInfo> {
             })
             .collect(),
         Err(e) => {
-            eprintln!("Failed to find ADB devices: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to find ADB devices: {}", e);
             Vec::new()
         }
     }
@@ -83,7 +84,7 @@ pub fn find_desktop_windows() -> Vec<DeviceInfo> {
             })
             .collect(),
         Err(e) => {
-            eprintln!("Failed to find desktop windows: {}", e);
+            crate::backend_log_debug!("stderr", "Failed to find desktop windows: {}", e);
             Vec::new()
         }
     }
@@ -104,21 +105,23 @@ pub async fn connect_adb_async(
             Ok(ctrl) => match ctrl.post_connection() {
                 Ok(id) => {
                     let success = wait_for_connection(&ctrl, id);
-                    if success {
-                        Some(ctrl)
-                    } else {
-                        None
-                    }
+                    if success { Some(ctrl) } else { None }
                 }
                 Err(_) => None,
             },
             Err(_) => None,
         }
-    }).await.unwrap_or(None);
+    })
+    .await
+    .unwrap_or(None);
 
     match result {
         Some(ctrl) => (true, None, Some(ctrl)),
-        None => (false, Some(format!("Connection timeout or failed for {}", address)), None)
+        None => (
+            false,
+            Some(format!("Connection timeout or failed for {}", address)),
+            None,
+        ),
     }
 }
 
@@ -129,31 +132,34 @@ pub async fn connect_win32_async(
     mouse_method: Option<i32>,
     keyboard_method: Option<i32>,
 ) -> (bool, Option<String>, Option<Controller>) {
-    let screencap = screencap_method.unwrap_or(sys::MaaWin32ScreencapMethod_GDI as i32) as sys::MaaWin32ScreencapMethod;
-    let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as sys::MaaWin32InputMethod;
-    let keyboard = keyboard_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32) as sys::MaaWin32InputMethod;
+    let screencap = screencap_method.unwrap_or(sys::MaaWin32ScreencapMethod_GDI as i32)
+        as sys::MaaWin32ScreencapMethod;
+    let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32)
+        as sys::MaaWin32InputMethod;
+    let keyboard = keyboard_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32)
+        as sys::MaaWin32InputMethod;
 
     let result = tokio::task::spawn_blocking(move || {
         match Controller::new_win32(hwnd as *mut std::ffi::c_void, screencap, mouse, keyboard) {
-            Ok(ctrl) => {
-                match ctrl.post_connection() {
-                    Ok(id) => {
-                        let success = wait_for_connection(&ctrl, id);
-                        if success {
-                            Some(ctrl)
-                        } else {
-                            None
-                        }
-                    }
-                    Err(_) => None,
+            Ok(ctrl) => match ctrl.post_connection() {
+                Ok(id) => {
+                    let success = wait_for_connection(&ctrl, id);
+                    if success { Some(ctrl) } else { None }
                 }
-            }
+                Err(_) => None,
+            },
             Err(_) => None,
         }
-    }).await.unwrap_or(None);
+    })
+    .await
+    .unwrap_or(None);
 
     match result {
         Some(ctrl) => (true, None, Some(ctrl)),
-        None => (false, Some(format!("Connection timeout or failed for hwnd {}", hwnd)), None)
+        None => (
+            false,
+            Some(format!("Connection timeout or failed for hwnd {}", hwnd)),
+            None,
+        ),
     }
 }

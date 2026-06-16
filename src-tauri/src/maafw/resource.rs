@@ -6,14 +6,24 @@ pub async fn load_resource_async(
     paths: &[String],
 ) -> (bool, Option<String>, Option<Resource>) {
     if paths.is_empty() {
-        return (false, Some("No resource paths provided".to_string()), existing_resource);
+        return (
+            false,
+            Some("No resource paths provided".to_string()),
+            existing_resource,
+        );
     }
 
     let resource = match existing_resource {
         Some(existing) => existing,
         None => match Resource::new() {
             Ok(res) => res,
-            Err(e) => return (false, Some(format!("Failed to create resource: {}", e)), None),
+            Err(e) => {
+                return (
+                    false,
+                    Some(format!("Failed to create resource: {}", e)),
+                    None,
+                );
+            }
         },
     };
 
@@ -38,18 +48,33 @@ pub async fn load_resource_async(
         }
 
         (resource, load_success, errors)
-    }).await;
+    })
+    .await;
 
     let (resource, load_success, errors) = match result {
         Ok(r) => r,
-        Err(e) => return (false, Some(format!("Resource loading task failed: {}", e)), None),
+        Err(e) => {
+            return (
+                false,
+                Some(format!("Resource loading task failed: {}", e)),
+                None,
+            );
+        }
     };
 
     if resource.loaded() {
         if load_success {
-            (true, Some(format!("Loaded {} resource path(s)", paths.len())), Some(resource))
+            (
+                true,
+                Some(format!("Loaded {} resource path(s)", paths.len())),
+                Some(resource),
+            )
         } else {
-            (true, Some(format!("Partially loaded: {}", errors.join("; "))), Some(resource))
+            (
+                true,
+                Some(format!("Partially loaded: {}", errors.join("; "))),
+                Some(resource),
+            )
         }
     } else {
         let msg = if errors.is_empty() {

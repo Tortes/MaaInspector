@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { Settings, Save, RotateCcw, Terminal } from 'lucide-vue-next'
+import { openPath } from '@tauri-apps/plugin-opener'
+import { Settings, Save, RotateCcw, Terminal, FolderOpen } from 'lucide-vue-next'
+import { logApi } from '@/services/api'
 import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '@/utils/flowOptions'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
@@ -90,6 +92,15 @@ const handleOpenDevTools = async () => {
     await invoke('devtools_open')
   } catch (e) {
     console.error('Failed to open DevTools:', e)
+  }
+}
+
+const handleOpenLogDir = async () => {
+  try {
+    const dir = await logApi.getDir()
+    await openPath(dir)
+  } catch (e) {
+    console.error('Failed to open log directory:', e)
   }
 }
 </script>
@@ -313,6 +324,18 @@ const handleOpenDevTools = async () => {
                 </div>
                 <p class="text-[10px] text-slate-400 mt-1">
                   在生产环境中打开浏览器 DevTools (F12)
+                </p>
+              </button>
+              <button
+                class="w-full py-2.5 px-3 text-xs font-medium rounded-lg border-2 transition-all text-left bg-slate-50 text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50"
+                @click="handleOpenLogDir"
+              >
+                <div class="flex items-center gap-2">
+                  <FolderOpen :size="14" />
+                  <span>打开日志目录</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">
+                  查看前端与后端分离保存的日志文件
                 </p>
               </button>
             </div>

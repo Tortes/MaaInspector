@@ -1,8 +1,8 @@
-use super::{maafw_mut, MaaFrameworkState};
+use super::{MaaFrameworkState, maafw_mut};
 use crate::resources::ResourcesManager;
 use crate::response::{ApiResponse, FileNodesResponse, ResourceLoadResponse};
-use tokio::sync::Mutex;
 use tauri::State;
+use tokio::sync::Mutex;
 
 /// Load resource paths
 #[tauri::command]
@@ -75,7 +75,10 @@ pub async fn resource_save_file_nodes(
         ));
     }
 
-    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
+    Ok(ApiResponse::error_with_status(
+        "ResourcesManager not initialized",
+        500,
+    ))
 }
 
 /// Create a new file
@@ -105,7 +108,10 @@ pub async fn resource_create_file(
         return Ok(ApiResponse::error_with_status("File already exists", 409));
     }
 
-    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
+    Ok(ApiResponse::error_with_status(
+        "ResourcesManager not initialized",
+        500,
+    ))
 }
 
 /// Search nodes globally
@@ -146,7 +152,6 @@ pub async fn resource_get_templates(
         let nodes = manager.get_nodes_by_file(&source, &filename);
         let image_base = manager.get_image_base_path(&source);
 
-
         let mut results: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
 
         if let Some(nodes_map) = nodes {
@@ -176,7 +181,8 @@ pub async fn resource_get_templates(
                     for tpl in templates_arr {
                         let full_img = manager.get_image_full_path(&source, &tpl);
                         let found = full_img.exists();
-                        let full_path_str = full_img.to_string_lossy()
+                        let full_path_str = full_img
+                            .to_string_lossy()
                             .replace("\\", "/")
                             .replace("//?/", "");
 
@@ -194,7 +200,6 @@ pub async fn resource_get_templates(
             }
         }
 
-
         return Ok(ApiResponse::ok_with_data(
             "Loaded",
             serde_json::json!({
@@ -204,7 +209,10 @@ pub async fn resource_get_templates(
         ));
     }
 
-    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
+    Ok(ApiResponse::error_with_status(
+        "ResourcesManager not initialized",
+        500,
+    ))
 }
 
 /// Check unused images
@@ -268,7 +276,10 @@ pub async fn resource_check_unused_images(
         ));
     }
 
-    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
+    Ok(ApiResponse::error_with_status(
+        "ResourcesManager not initialized",
+        500,
+    ))
 }
 
 /// Process images (delete and save)
@@ -334,5 +345,8 @@ pub async fn resource_process_images(
         return Ok(ApiResponse::ok_with_data("Processed", results));
     }
 
-    Ok(ApiResponse::error_with_status("ResourcesManager not initialized", 500))
+    Ok(ApiResponse::error_with_status(
+        "ResourcesManager not initialized",
+        500,
+    ))
 }

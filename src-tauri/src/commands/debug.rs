@@ -1,7 +1,7 @@
-use super::{maafw_mut, maafw_ref, MaaFrameworkState};
+use super::{MaaFrameworkState, maafw_mut, maafw_ref};
 use crate::response::{ApiResponse, RecoDetailResponse};
-use tauri::State;
 use tauri::Manager;
+use tauri::State;
 
 /// Run debug node
 #[tauri::command]
@@ -75,9 +75,15 @@ pub async fn debug_status(maafw: State<'_, MaaFrameworkState>) -> Result<ApiResp
 
 /// OCR text recognition
 #[tauri::command]
-pub async fn debug_ocr_text(maafw: State<'_, MaaFrameworkState>, roi: Vec<i32>) -> Result<ApiResponse, String> {
+pub async fn debug_ocr_text(
+    maafw: State<'_, MaaFrameworkState>,
+    roi: Vec<i32>,
+) -> Result<ApiResponse, String> {
     if roi.len() != 4 {
-        return Ok(ApiResponse::error_with_status("Missing or invalid roi", 400));
+        return Ok(ApiResponse::error_with_status(
+            "Missing or invalid roi",
+            400,
+        ));
     }
 
     let mut fw = maafw.lock().await;
@@ -85,7 +91,10 @@ pub async fn debug_ocr_text(maafw: State<'_, MaaFrameworkState>, roi: Vec<i32>) 
     let roi_array = [roi[0], roi[1], roi[2], roi[3]];
 
     match fw.ocr_text_async(roi_array).await {
-        Ok(result) => Ok(ApiResponse::ok_with_data("OK", serde_json::to_value(result).unwrap_or(serde_json::Value::Null))),
+        Ok(result) => Ok(ApiResponse::ok_with_data(
+            "OK",
+            serde_json::to_value(result).unwrap_or(serde_json::Value::Null),
+        )),
         Err(e) => Ok(ApiResponse::error_with_status(&e, 500)),
     }
 }

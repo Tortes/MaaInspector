@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { listen } from '@tauri-apps/api/event';
+import { logWarn, serializeForLog } from '@/utils/logger';
 
 // API Response types
 export interface ApiResponse<T = unknown> {
@@ -164,18 +165,83 @@ export interface OcrRecognitionResponse extends ApiResponse {
   };
 }
 
+const SLOW_COMMAND_MS = 1000;
+
+const sanitizeLogValue = (value: unknown, key = '', depth = 0): unknown => {
+  if (/base64|image/i.test(key)) return '[omitted]';
+  if (depth > 4) return '[max-depth]';
+  if (typeof value === 'string') {
+    if (value.length > 300) return `${value.slice(0, 300)}...[truncated:${value.length}]`;
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 20) return { type: 'array', length: value.length };
+    return value.map(item => sanitizeLogValue(item, '', depth + 1));
+  }
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [innerKey, innerValue] of Object.entries(value as Record<string, unknown>)) {
+      result[innerKey] = sanitizeLogValue(innerValue, innerKey, depth + 1);
+    }
+    return result;
+  }
+  return serializeForLog(value);
+};
+
+const summarizeInvokeArgs = (args?: Record<string, unknown>) => {
+  if (!args) return {};
+  const summary: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(args)) {
+    summary[key] = sanitizeLogValue(value, key);
+  }
+
+  return summary;
+};
+
+const invokeCommand = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+  const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  try {
+    const result = await invoke<T>(command, args);
+    const duration = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) * 10) / 10;
+    if (duration >= SLOW_COMMAND_MS) {
+      logWarn('api', `Slow invoke: ${command}`, {
+        command,
+        duration,
+        args: summarizeInvokeArgs(args)
+      });
+    }
+    return result;
+  } catch (error) {
+    const duration = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) * 10) / 10;
+    logWarn('api', `Invoke failed: ${command}`, {
+      command,
+      duration,
+      error: serializeForLog(error),
+      args: summarizeInvokeArgs(args)
+    });
+    throw error;
+  }
+};
+
 // System API
 export const systemApi = {
   getInitialState: async (): Promise<SystemInitResponse> => {
-    return invoke('system_init');
+    return invokeCommand('system_init');
   },
 
   saveDeviceConfig: async (fullConfig: DeviceConfigPayload): Promise<ApiResponse> => {
-    return invoke('system_save_config', { configData: fullConfig });
+    return invokeCommand('system_save_config', { configData: fullConfig });
   },
 
   searchDevices: async (deviceType?: string): Promise<ApiResponse<{ devices?: ApiDeviceInfo[] }>> => {
-    return invoke('system_search_devices', { deviceType });
+    return invokeCommand('system_search_devices', { deviceType });
+  }
+};
+
+export const logApi = {
+  getDir: async (): Promise<string> => {
+    return invokeCommand('log_get_dir');
   }
 };
 
@@ -189,7 +255,7 @@ export const deviceApi = {
       name?: string;
     }
   ): Promise<ApiResponse> => {
-    return invoke('device_connect_adb', {
+    return invokeCommand('device_connect_adb', {
       adbPath: deviceData.adb_path,
       address: deviceData.address,
       config: deviceData.config,
@@ -208,7 +274,7 @@ export const deviceApi = {
       keyboard_method?: number;
     }
   ): Promise<ApiResponse> => {
-    return invoke('device_connect_win32', {
+    return invokeCommand('device_connect_win32', {
       hwnd: deviceData.hwnd,
       name: deviceData.name,
       windowName: deviceData.window_name,
@@ -220,11 +286,11 @@ export const deviceApi = {
   },
 
   getScreenshot: async (): Promise<ScreenshotResponse> => {
-    return invoke('device_screenshot');
+    return invokeCommand('device_screenshot');
   },
 
   ocrText: async (roi: number[]): Promise<OcrRecognitionResponse> => {
-    return invoke('debug_ocr_text', { roi });
+    return invokeCommand('debug_ocr_text', { roi });
   }
 };
 
@@ -237,25 +303,25 @@ export const resourceApi = {
         ? (profile as ResourceProfile).paths
         : (profile as { paths?: string[] })?.paths || [];
 
-    return invoke('resource_load', { paths });
+    return invokeCommand('resource_load', { paths });
   },
 
   getFileNodes: async <TNodes = Record<string, unknown>>(
     source: string,
     filename: string
   ): Promise<FileNodesResponse<TNodes>> => {
-    return invoke('resource_get_file_nodes', { source, filename });
+    return invokeCommand('resource_get_file_nodes', { source, filename });
   },
 
   getTemplateImages: async (
     source: string,
     filename: string
   ): Promise<TemplateImagesResponse> => {
-    return invoke('resource_get_templates', { source, filename });
+    return invokeCommand('resource_get_templates', { source, filename });
   },
 
   createFile: async (path: string, filename: string): Promise<ApiResponse> => {
-    return invoke('resource_create_file', { path, filename });
+    return invokeCommand('resource_create_file', { path, filename });
   },
 
   saveFileNodes: async <TNodes = Record<string, unknown>>(
@@ -263,7 +329,7 @@ export const resourceApi = {
     filename: string,
     nodes: TNodes
   ): Promise<ApiResponse> => {
-    return invoke('resource_save_file_nodes', { source, filename, nodes });
+    return invokeCommand('resource_save_file_nodes', { source, filename, nodes });
   },
 
   searchGlobalNodes: async (
@@ -272,7 +338,7 @@ export const resourceApi = {
     currentFilename: string,
     currentSource: string
   ): Promise<ApiResponse> => {
-    return invoke('resource_search_nodes', {
+    return invokeCommand('resource_search_nodes', {
       query,
       useRegex,
       currentFilename,
@@ -285,7 +351,7 @@ export const resourceApi = {
     currentFilename: string,
     delImages: { path: string }[]
   ): Promise<ImageCheckResponse> => {
-    return invoke('resource_check_unused_images', {
+    return invokeCommand('resource_check_unused_images', {
       source,
       currentFilename,
       delImages
@@ -297,7 +363,7 @@ export const resourceApi = {
     deletePaths: string[],
     saveImages: { path: string; base64: string; nodeId?: string }[]
   ): Promise<ApiResponse> => {
-    return invoke('resource_process_images', {
+    return invokeCommand('resource_process_images', {
       source,
       deletePaths,
       saveImages
@@ -308,22 +374,22 @@ export const resourceApi = {
 // Agent API
 export const agentApi = {
   connect: async (socketId: string): Promise<ApiResponse> => {
-    return invoke('agent_connect', { socketId });
+    return invokeCommand('agent_connect', { socketId });
   }
 };
 
 // Debug API
 export const debugApi = {
   runNode: async (payload: Record<string, unknown>): Promise<DebugRunResponse> => {
-    return invoke('debug_run_node', payload);
+    return invokeCommand('debug_run_node', payload);
   },
 
   stop: async (): Promise<ApiResponse> => {
-    return invoke('debug_stop');
+    return invokeCommand('debug_stop');
   },
 
   getRecoDetails: async (recoId: string | number): Promise<RecoDetailResponse> => {
-    return invoke('debug_get_reco_details', { recoId });
+    return invokeCommand('debug_get_reco_details', { recoId });
   },
 
   subscribeNodeStream: (onData: (data: DebugStreamPayload) => void): (() => void) => {

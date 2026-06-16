@@ -3,16 +3,18 @@
 mod commands;
 mod config;
 mod events;
+mod logging;
 mod maafw;
 mod resources;
 mod response;
 
 use commands::{
     agent_connect, debug_get_reco_details, debug_ocr_text, debug_run_node, debug_status,
-    debug_stop, devtools_open, device_connect_adb, device_connect_win32, device_screenshot,
-    system_pick_folder, resource_check_unused_images, resource_create_file, resource_get_file_nodes,
-    resource_get_templates, resource_load, resource_process_images, resource_save_file_nodes,
-    resource_search_nodes, system_init, system_save_config, system_search_devices,
+    debug_stop, device_connect_adb, device_connect_win32, device_screenshot, devtools_open,
+    log_frontend_batch, log_get_dir, resource_check_unused_images, resource_create_file,
+    resource_get_file_nodes, resource_get_templates, resource_load, resource_process_images,
+    resource_save_file_nodes, resource_search_nodes, system_init, system_pick_folder,
+    system_save_config, system_search_devices,
 };
 use events::DebugEventBroker;
 use maafw::MaaFrameworkWrapper;
@@ -26,7 +28,11 @@ const MAA_FRAMEWORK_DIR: &str = "maa-framework";
 
 fn append_maa_dll_candidate(candidates: &mut Vec<PathBuf>, path: impl AsRef<Path>) {
     let path = path.as_ref();
-    candidates.push(path.join(MAA_FRAMEWORK_DIR).join("bin").join("MaaFramework.dll"));
+    candidates.push(
+        path.join(MAA_FRAMEWORK_DIR)
+            .join("bin")
+            .join("MaaFramework.dll"),
+    );
     candidates.push(path.join("bin").join("MaaFramework.dll"));
     candidates.push(path.join("MaaFramework.dll"));
 }
@@ -36,8 +42,13 @@ fn resolve_app_data_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("Failed to create app data directory {}: {}", dir.display(), e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "Failed to create app data directory {}: {}",
+            dir.display(),
+            e
+        )
+    })?;
     Ok(dir)
 }
 
@@ -55,7 +66,10 @@ fn load_maa_library<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), 
 
     if let Ok(current_dir) = std::env::current_dir() {
         append_maa_dll_candidate(&mut candidates, current_dir.join(MAA_FRAMEWORK_DIR));
-        append_maa_dll_candidate(&mut candidates, current_dir.join("src-tauri").join(MAA_FRAMEWORK_DIR));
+        append_maa_dll_candidate(
+            &mut candidates,
+            current_dir.join("src-tauri").join(MAA_FRAMEWORK_DIR),
+        );
     }
 
     if let Ok(exe_path) = std::env::current_exe() {
@@ -75,7 +89,7 @@ fn load_maa_library<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), 
                     e
                 )
             })?;
-            println!("Loaded MaaFramework.dll from: {}", path.display());
+            crate::backend_log_info!("lib", "Loaded MaaFramework.dll from: {}", path.display());
             Ok(())
         }
         None => {
@@ -101,11 +115,23 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            load_maa_library(app.handle()).map_err(|e| {
-                Box::<dyn std::error::Error>::from(std::io::Error::new(std::io::ErrorKind::Other, e))
-            })?;
             let app_data_dir = resolve_app_data_dir(app.handle()).map_err(|e| {
-                Box::<dyn std::error::Error>::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                Box::<dyn std::error::Error>::from(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                ))
+            })?;
+            logging::init(&app_data_dir).map_err(|e| {
+                Box::<dyn std::error::Error>::from(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                ))
+            })?;
+            load_maa_library(app.handle()).map_err(|e| {
+                Box::<dyn std::error::Error>::from(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                ))
             })?;
 
             let broker = DebugEventBroker::new_with_handle(app.handle().clone());
@@ -149,6 +175,8 @@ pub fn run() {
             debug_ocr_text,
             debug_get_reco_details,
             devtools_open,
+            log_frontend_batch,
+            log_get_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

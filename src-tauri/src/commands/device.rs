@@ -1,4 +1,4 @@
-use super::{maafw_mut, MaaFrameworkState};
+use super::{MaaFrameworkState, maafw_mut};
 use crate::response::{ApiResponse, ScreenshotResponse};
 use tauri::State;
 
@@ -25,7 +25,10 @@ pub async fn device_connect_adb(
             }),
         ))
     } else {
-        Ok(ApiResponse::error_with_status(msg.unwrap_or_else(|| "Connect failed".to_string()), 400))
+        Ok(ApiResponse::error_with_status(
+            msg.unwrap_or_else(|| "Connect failed".to_string()),
+            400,
+        ))
     }
 }
 
@@ -44,7 +47,9 @@ pub async fn device_connect_win32(
 ) -> Result<ApiResponse, String> {
     let mut fw = maafw.lock().await;
     let fw = maafw_mut(&mut fw)?;
-    let (success, msg) = fw.connect_win32_async(hwnd, screencap_method, mouse_method, keyboard_method).await;
+    let (success, msg) = fw
+        .connect_win32_async(hwnd, screencap_method, mouse_method, keyboard_method)
+        .await;
 
     if success {
         Ok(ApiResponse::ok_with_data(
@@ -56,13 +61,18 @@ pub async fn device_connect_win32(
             }),
         ))
     } else {
-        Ok(ApiResponse::error_with_status(msg.unwrap_or_else(|| "Connect failed".to_string()), 400))
+        Ok(ApiResponse::error_with_status(
+            msg.unwrap_or_else(|| "Connect failed".to_string()),
+            400,
+        ))
     }
 }
 
 /// Get screenshot
 #[tauri::command]
-pub async fn device_screenshot(maafw: State<'_, MaaFrameworkState>) -> Result<ScreenshotResponse, String> {
+pub async fn device_screenshot(
+    maafw: State<'_, MaaFrameworkState>,
+) -> Result<ScreenshotResponse, String> {
     let mut fw = maafw.lock().await;
     let fw = maafw_mut(&mut fw)?;
 
