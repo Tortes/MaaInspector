@@ -97,8 +97,8 @@ const save = () => {
     v-if="visible"
     class="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
   >
-    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[700px] h-[500px]">
-      <div class="w-[200px] bg-slate-50 border-r border-slate-100 flex flex-col">
+    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(700px,calc(100vw-2rem))] h-[500px] max-h-[calc(100vh-2rem)]">
+      <div class="w-[200px] bg-slate-50 border-r border-slate-100 flex flex-col min-h-0">
         <div class="p-3 text-xs font-bold text-slate-500 border-b border-slate-100">
           配置列表 (Profiles)
         </div>
@@ -124,7 +124,7 @@ const save = () => {
         </div>
       </div>
 
-      <div class="flex-1 flex flex-col bg-white">
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-white">
         <div class="flex items-center justify-between p-4 border-b border-slate-100">
           <h3 class="font-bold text-slate-700 flex items-center gap-2">
             <Database :size="16" />
@@ -140,7 +140,7 @@ const save = () => {
 
         <div
           v-if="editingProfiles[editProfIndex]"
-          class="flex-1 p-5 overflow-hidden flex flex-col gap-4"
+          class="flex-1 min-h-0 p-5 overflow-hidden flex flex-col gap-4"
         >
           <div class="space-y-1">
             <label class="text-[10px] font-bold text-slate-400 uppercase">Profile Name</label>
@@ -230,7 +230,7 @@ const save = () => {
 
         <div
           v-else
-          class="flex-1 flex flex-col items-center justify-center text-slate-300"
+          class="flex-1 min-h-0 flex flex-col items-center justify-center text-slate-300"
         >
           <Database
             :size="48"

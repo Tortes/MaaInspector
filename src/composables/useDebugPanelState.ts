@@ -2,7 +2,6 @@ import { ref } from 'vue'
 import { deviceApi, debugApi } from '@/services/api'
 import { withCache } from '@/services/cache'
 import type { ScreenshotResponse } from '@/services/api'
-import { usePanelResize } from './usePanelResize'
 
 export interface NextChild {
   name: string
@@ -56,27 +55,7 @@ interface NextListPayload {
 
 type SsePayload = RecognitionPayload | NextListPayload
 
-const WIDTH_STORAGE_KEY = 'maainspector.debugPanel.width.v1'
-const DEFAULT_PANEL_WIDTH = 1120
-const MIN_PANEL_WIDTH = 600
-const SIDE_GAP = 24
-
 export function useDebugPanelState() {
-  const {
-    panelWidth,
-    isResizing: isResizingWidth,
-    startResize: startWidthResize,
-    stopResize: stopWidthResize,
-    loadWidth: loadPanelWidth,
-    saveWidth: savePanelWidth
-  } = usePanelResize({
-    storageKey: WIDTH_STORAGE_KEY,
-    defaultWidth: DEFAULT_PANEL_WIDTH,
-    minWidth: MIN_PANEL_WIDTH,
-    sideGap: SIDE_GAP
-  })
-
-  const resizeStart = ref({ x: 0, width: DEFAULT_PANEL_WIDTH })
   const events = ref<DebugEventRecord[]>([])
   const isStreamRunning = ref(false)
   const previewUrl = ref('')
@@ -295,16 +274,9 @@ export function useDebugPanelState() {
 
   return {
     STATUS,
-    panelWidth,
-    isResizingWidth,
-    resizeStart,
     events,
     isStreamRunning,
     previewUrl,
-    loadPanelWidth,
-    savePanelWidth,
-    startWidthResize,
-    stopWidthResize,
     startPreviewAutoRefresh,
     stopPreviewAutoRefresh,
     startRealtimeStream,

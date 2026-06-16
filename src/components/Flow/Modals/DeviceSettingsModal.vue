@@ -176,8 +176,8 @@ const configPlaceholder = computed(() => {
     v-if="visible"
     class="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
   >
-    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[900px] h-[560px]">
-      <div class="w-[200px] bg-slate-50 border-r border-slate-100 flex flex-col">
+    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(900px,calc(100vw-2rem))] h-[560px] max-h-[calc(100vh-2rem)]">
+      <div class="w-[200px] bg-slate-50 border-r border-slate-100 flex flex-col min-h-0">
         <div class="p-3 text-xs font-bold text-slate-500 border-b border-slate-100 flex items-center justify-between">
           <span>已保存</span>
           <span class="text-[10px] text-slate-400">{{ editingDevices.length }}</span>
@@ -250,7 +250,7 @@ const configPlaceholder = computed(() => {
           </div>
         </div>
       </div>
-      <div class="flex-1 flex flex-col bg-white">
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-white">
         <div class="flex items-center justify-between p-4 border-b border-slate-100">
           <h3 class="font-bold text-slate-700 flex items-center gap-2">
             <Edit3 :size="16" />
@@ -263,7 +263,7 @@ const configPlaceholder = computed(() => {
             <X :size="20" />
           </button>
         </div>
-        <div class="flex-1 overflow-hidden flex flex-col">
+        <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
           <div class="p-4 border-b border-slate-100 bg-slate-50/60">
             <div class="flex items-center justify-between mb-2">
               <div class="text-[11px] font-bold text-slate-600">
@@ -317,7 +317,7 @@ const configPlaceholder = computed(() => {
 
           <div
             v-if="editingDevices[editDevIndex]"
-            class="flex-1 p-5 overflow-y-auto space-y-4"
+            class="flex-1 min-h-0 p-5 overflow-y-auto space-y-4 custom-scrollbar"
           >
             <div class="space-y-1">
               <label class="text-[10px] font-bold text-slate-400 uppercase">Name</label><input
@@ -385,7 +385,7 @@ const configPlaceholder = computed(() => {
           </div>
           <div
             v-else
-            class="flex-1 flex items-center justify-center text-xs text-slate-400"
+            class="flex-1 min-h-0 flex items-center justify-center text-xs text-slate-400"
           >
             暂无已保存设备，左侧手动添加或从发现列表加入。
           </div>

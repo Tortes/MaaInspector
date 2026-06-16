@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import {
-  X, Bug, PlayCircle, PauseCircle
+  X, Bug, PlayCircle, PauseCircle, Grip
 } from 'lucide-vue-next'
 import { debugApi } from '@/services/api'
 import type { FlowNode } from '@/utils/flowTypes'
@@ -11,6 +11,7 @@ import DebugDetailPanel from './DebugPanel/DebugDetailPanel.vue'
 import ImagePreviewOverlay from './DebugPanel/ImagePreviewOverlay.vue'
 import { useDebugPanelState } from '@/composables/useDebugPanelState'
 import type { NextChild, DebugEventRecord, NodeStatusPayload } from '@/composables/useDebugPanelState'
+import { useFloatingPanel } from '@/composables/useFloatingPanel'
 
 const props = defineProps<{
   visible?: boolean
@@ -29,13 +30,9 @@ const emit = defineEmits<{
 
 const {
   STATUS,
-  panelWidth,
   events,
   isStreamRunning,
   previewUrl,
-  loadPanelWidth,
-  startWidthResize,
-  stopWidthResize,
   startPreviewAutoRefresh,
   stopPreviewAutoRefresh,
   startRealtimeStream,
@@ -44,6 +41,22 @@ const {
   copyText,
   clearEvents
 } = useDebugPanelState()
+
+const {
+  panelStyle,
+  loadLayout,
+  ensureInViewport,
+  startMove,
+  startResize,
+  stopInteraction
+} = useFloatingPanel({
+  storageKey: 'maainspector.debugPanel.floatingLayout.v1',
+  defaultWidth: 1120,
+  defaultHeight: 720,
+  minWidth: 680,
+  minHeight: 440,
+  edgeGap: 24
+})
 
 const searchValue = ref('')
 const selectedNodeId = ref('')
@@ -275,7 +288,7 @@ const closeImagePreview = () => {
 
 watch(() => props.visible, (val) => {
   if (val) {
-    panelWidth.value = loadPanelWidth()
+    loadLayout()
     selectedNodeId.value = props.initialNodeId || ''
     searchValue.value = props.initialNodeId || ''
     startPreviewAutoRefresh()
@@ -296,35 +309,39 @@ watch(() => props.initialNodeId, (val) => {
   }
 })
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', ensureInViewport)
+}
+
 onUnmounted(() => {
-  stopWidthResize()
+  stopInteraction()
   stopRealtimeStream()
   stopPreviewAutoRefresh()
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', ensureInViewport)
+  }
 })
 </script>
 
 <template>
   <transition
     enter-active-class="transition ease-out duration-200"
-    enter-from-class="translate-x-full opacity-0"
-    enter-to-class="translate-x-0 opacity-100"
+    enter-from-class="scale-95 opacity-0"
+    enter-to-class="scale-100 opacity-100"
     leave-active-class="transition ease-in duration-150"
-    leave-from-class="translate-x-0 opacity-100"
-    leave-to-class="translate-x-full opacity-0"
+    leave-from-class="scale-100 opacity-100"
+    leave-to-class="scale-95 opacity-0"
   >
     <div
       v-if="visible"
-      class="fixed right-0 top-0 bottom-0 z-[120] bg-white shadow-2xl border-l border-slate-200 overflow-hidden select-none flex flex-col"
-      :style="{ width: `${panelWidth}px` }"
+      class="fixed z-[120] bg-white shadow-2xl border border-slate-200 rounded-lg overflow-hidden select-none flex flex-col"
+      :style="panelStyle"
       @mousedown.stop
     >
       <div
-        class="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-amber-400/60 z-[130] transition-colors"
-        title="拖动调整调试面板宽度"
-        @mousedown.stop="startWidthResize"
-      />
-      <div
-        class="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0"
+        class="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0 cursor-move"
+        title="拖动移动调试窗口"
+        @mousedown.stop="startMove"
       >
         <div class="flex items-center gap-2">
           <Bug
@@ -338,8 +355,10 @@ onUnmounted(() => {
           >{{ currentFilename }}</span>
         </div>
         <button
-          class="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
+          class="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+          title="关闭调试窗口"
           @click.stop="$emit('close')"
+          @mousedown.stop
         >
           <X :size="15" />
         </button>
@@ -419,6 +438,13 @@ onUnmounted(() => {
           />
         </transition>
       </div>
+      <button
+        class="absolute bottom-0 right-0 z-[130] p-1 text-slate-300 hover:text-amber-500 cursor-nwse-resize bg-white/80 rounded-tl-md"
+        title="拖动调整调试窗口大小"
+        @mousedown.stop="startResize"
+      >
+        <Grip :size="14" />
+      </button>
     </div>
   </transition>
 

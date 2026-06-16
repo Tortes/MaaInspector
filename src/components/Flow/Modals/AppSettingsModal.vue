@@ -110,8 +110,8 @@ const handleOpenLogDir = async () => {
     v-if="visible"
     class="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
   >
-    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[500px]">
-      <div class="flex-1 flex flex-col bg-white">
+    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(500px,calc(100vw-2rem))] max-h-[calc(100vh-2rem)]">
+      <div class="flex-1 min-h-0 flex flex-col bg-white">
         <div class="flex items-center justify-between p-4 border-b border-slate-100">
           <h3 class="font-bold text-slate-700 flex items-center gap-2">
             <Settings :size="16" />
@@ -128,7 +128,7 @@ const handleOpenLogDir = async () => {
           </div>
         </div>
 
-        <div class="flex-1 p-5 overflow-y-auto custom-scrollbar">
+        <div class="flex-1 min-h-0 p-5 overflow-y-auto custom-scrollbar">
           <div class="space-y-6">
             <!-- 画布默认配置 -->
             <div class="space-y-3">
