@@ -28,6 +28,7 @@ export interface FlowEditorPort {
     layoutDirection?: string
   }) => void
   handleUpdatePipelineVersion: (val: 'V1' | 'V2') => void
+  handleApplyLayout: () => Promise<void>
   handleLocateNode: (nodeId: string) => void
   handleDebugNodeFromPanel: (nodeId: string) => void
   handleUpdateNodeStatus: (payload: { nodeId: string; status: NodeStatus }) => void

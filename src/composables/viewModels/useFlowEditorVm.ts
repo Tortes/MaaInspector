@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue'
 import { useVueFlow, type NodeTypesObject } from '@vue-flow/core'
 import { ElMessage } from 'element-plus'
 import { useFlowGraph } from '@/composables/useFlowGraph'
@@ -7,7 +7,7 @@ import { useSaveManager } from '@/composables/useSaveManager'
 import { useDebugRunner } from '@/composables/useDebugRunner'
 import { resourceApi } from '@/services/api'
 import { parseFileId } from '@/utils/fileId'
-import type { FlowEdge, FlowNode, LoadNodesPayload } from '@/utils/flowTypes'
+import type { FlowEdge, FlowNode, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
 import type { FlowEditorPort } from './types'
@@ -50,7 +50,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
     currentFilename, currentSource, isDirty,
     exportState, restoreState, getNodesData, getImageData, clearTempImageData, clearDirty,
-    imageManager: imageManager as unknown as { setNodeImages: (nodeId: string, images: unknown[]) => void },
+    imageManager: imageManager as unknown as {
+      setNodeImages: (nodeId: string, images: TemplateImage[]) => void
+      replaceLoadedImages: (imageMap: Record<string, TemplateImage[] | unknown>) => void
+    },
     tabId: options.tabId
   })
 
@@ -169,6 +172,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
           selectedNodes.forEach((node: FlowNode) => {
             const edgeIds = edges.value.filter((edge: FlowEdge) => edge.source === node.id || edge.target === node.id).map((edge: FlowEdge) => edge.id)
             removeEdges(edgeIds)
+            imageManager.removeNodeState(node.id)
           })
           nodes.value = nodes.value.filter((node: FlowNode) => !selectedNodes.find((selectedNode: FlowNode) => selectedNode.id === node.id))
           markDataChanged()
@@ -264,6 +268,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
         const imgRes = await resourceApi.getTemplateImages(source, filename)
         if (imgRes?.results) {
           handleLoadImages(imgRes.results as Record<string, unknown>)
+          await nextTick()
+          await applyLayout()
         }
       }
     } catch (e) {
@@ -285,6 +291,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleDeviceConnected: (val: boolean) => handleDeviceConnected(val, () => {}),
     handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) => handleUpdateCanvasConfig(config, () => {}),
     handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val, () => {}),
+    handleApplyLayout: () => applyLayout(),
     handleLocateNode,
     handleDebugNodeFromPanel,
     handleUpdateNodeStatus

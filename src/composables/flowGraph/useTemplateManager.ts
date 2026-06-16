@@ -115,19 +115,36 @@ export const handleSpecialAction = (
   }
 
   if (action === 'save_image_changes') {
-    const { validPaths, images, tempImages } = actionData as Record<string, unknown> & {
+    const { validPaths, images, tempImages, deletedImages } = actionData as Record<string, unknown> & {
       validPaths?: string[]
       images?: TemplateImage[]
       tempImages?: TemplateImage[]
+      deletedImages?: TemplateImage[]
     }
+    const savedImages = images || []
+    const pendingImages = tempImages || []
+    const effectiveValidPaths = Array.isArray(validPaths)
+      ? [...validPaths]
+      : [...savedImages, ...pendingImages].map(image => image.path).filter(Boolean)
 
-    imageManager.setNodeImageChanges(node.id, images || [], tempImages || [])
+    pendingImages.forEach((image) => {
+      if (image.path && !effectiveValidPaths.includes(image.path)) {
+        effectiveValidPaths.push(image.path)
+      }
+    })
+
+    imageManager.applyNodeImageChanges(node.id, {
+      images: savedImages,
+      tempImages: pendingImages,
+      deletedImages: deletedImages || [],
+      validPaths: effectiveValidPaths
+    })
 
     if (!meta.data) meta.data = {}
     if (templateTarget) {
-      updateCompositeTemplate(meta, templateTarget, () => (validPaths && validPaths.length ? [...validPaths] : []))
+      updateCompositeTemplate(meta, templateTarget, () => (effectiveValidPaths.length ? [...effectiveValidPaths] : []))
     } else {
-      ;(meta.data as FlowBusinessData).template = validPaths && validPaths.length ? [...validPaths] : []
+      ;(meta.data as FlowBusinessData).template = effectiveValidPaths.length ? [...effectiveValidPaths] : []
     }
   }
 }

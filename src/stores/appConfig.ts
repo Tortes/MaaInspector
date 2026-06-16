@@ -451,6 +451,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     tabs.value.activeTabId = restoredTabs.some(tab => tab.id === lastWorkspace?.active_tab_id)
       ? lastWorkspace?.active_tab_id || restoredTabs[0].id
       : restoredTabs[0].id
+    resource.value.selectedFileId = restoredTabs.find(tab => tab.id === tabs.value.activeTabId)?.resourceFile || restoredTabs[0].resourceFile || ''
     void saveToBackend()
     return restoredTabs
   }

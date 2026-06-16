@@ -27,6 +27,8 @@ export function useFlowWorkspaceVm() {
 
   const infoPanelRef = ref<InfoPanelPort | null>(null)
   const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
+  const pendingVisibleLayoutTabs = ref<Set<string>>(new Set())
+  const loadingRestoredTabs = ref<Set<string>>(new Set())
 
   const activeTab = computed(() => tabs.value.items.find(t => t.id === activeTabId.value) || tabs.value.items[0] || null)
   const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
@@ -49,21 +51,67 @@ export function useFlowWorkspaceVm() {
     registerEditor(activeTabId.value, editor)
   }
 
+  const waitForEditor = async (tabId: string, maxTicks = 5): Promise<FlowEditorPort | null> => {
+    let editor = editorRefs.value.get(tabId) || null
+    for (let i = 0; !editor && i < maxTicks; i++) {
+      await nextTick()
+      editor = editorRefs.value.get(tabId) || null
+    }
+    return editor
+  }
+
+  const markTabLayoutPending = (tabId: string) => {
+    pendingVisibleLayoutTabs.value = new Set([...pendingVisibleLayoutTabs.value, tabId])
+  }
+
+  const markRestoredTabLoading = (tabId: string) => {
+    loadingRestoredTabs.value = new Set([...loadingRestoredTabs.value, tabId])
+  }
+
+  const clearTabLayoutPending = (tabId: string) => {
+    const nextPending = new Set(pendingVisibleLayoutTabs.value)
+    nextPending.delete(tabId)
+    pendingVisibleLayoutTabs.value = nextPending
+  }
+
+  const clearRestoredTabLoading = (tabId: string) => {
+    const nextLoading = new Set(loadingRestoredTabs.value)
+    nextLoading.delete(tabId)
+    loadingRestoredTabs.value = nextLoading
+  }
+
+  const waitForVisibleFrame = async () => {
+    await nextTick()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    await nextTick()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  }
+
+  const applyVisibleTabLayout = async (tabId: string) => {
+    const editor = await waitForEditor(tabId)
+    if (!editor || !pendingVisibleLayoutTabs.value.has(tabId) || loadingRestoredTabs.value.has(tabId)) return
+    await waitForVisibleFrame()
+    await editor.handleApplyLayout()
+    clearTabLayoutPending(tabId)
+  }
+
   const selectTab = (tabId: string) => {
     tabManagerSelectTab(tabId)
+    const layoutPromise = applyVisibleTabLayout(tabId)
 
     const targetTab = tabs.value.items.find(t => t.id === tabId)
     appConfig.selectResourceFile(targetTab?.resourceFile || '')
-    if (!targetTab?.resourceFile) return
+    if (!targetTab?.resourceFile) return layoutPromise
 
     const [source, filename] = targetTab.resourceFile.split('|')
-    if (!source || !filename) return
+    if (!source || !filename) return layoutPromise
 
     infoPanelRef.value?.triggerLoadFromCache?.({
       filename,
       source,
       tabId
     })
+    return layoutPromise
   }
 
   const addTab = () => {
@@ -98,8 +146,11 @@ export function useFlowWorkspaceVm() {
     fileVersion?: 'V1' | 'V2'
   }) => {
     const tab = activeTab.value || ensureWorkspaceTab()
-    await nextTick()
-    const targetEditor = editorRefs.value.get(tab.id)
+    let targetEditor = editorRefs.value.get(tab.id)
+    if (!targetEditor) {
+      await nextTick()
+      targetEditor = editorRefs.value.get(tab.id)
+    }
     if (!targetEditor) return
     await targetEditor.handleLoadNodesWrapper(payload)
     const resourceFile = `${payload.source}|${payload.filename}`
@@ -126,17 +177,29 @@ export function useFlowWorkspaceVm() {
 
   const handleRestoreTabs = async (lastTabs: TabResourceInfo[]) => {
     restoreTabsFromResource(lastTabs)
+    lastTabs
+      .filter(tab => tab.resourceFile)
+      .forEach(tab => {
+        markTabLayoutPending(tab.id)
+        markRestoredTabLoading(tab.id)
+      })
 
     await nextTick()
     for (let i = 0; i < lastTabs.length; i++) {
       const tab = tabs.value.items[i]
       if (tab && lastTabs[i].resourceFile) {
-        const editor = editorRefs.value.get(tab.id)
+        const editor = await waitForEditor(tab.id)
         if (editor) {
           try {
             await editor.loadResourceFile(lastTabs[i].resourceFile)
+            clearRestoredTabLoading(tab.id)
+            if (tab.id === activeTabId.value) {
+              await applyVisibleTabLayout(tab.id)
+            }
           } catch (error) {
             console.warn(`Failed to load resource for tab ${tab.title}`, error)
+            clearRestoredTabLoading(tab.id)
+            clearTabLayoutPending(tab.id)
             tabManagerCloseTab(tab.id)
           }
         }

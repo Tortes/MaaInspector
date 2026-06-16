@@ -32,6 +32,12 @@ vi.mock('../composables/useImageManager', () => ({
     addTempImage: vi.fn(),
     restoreImage: vi.fn(),
     setNodeImages: vi.fn(),
+    resetForFile: vi.fn(),
+    commitPendingImageChanges: vi.fn(),
+    migrateNodeState: vi.fn(),
+    removeNodeState: vi.fn(),
+    exportState: vi.fn(() => ({ nodeImageStates: [] })),
+    restoreState: vi.fn(),
   }),
 }))
 

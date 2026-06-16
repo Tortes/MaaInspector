@@ -64,6 +64,20 @@ const currentProfile = computed<EditableProfile>(() =>
 
 const findFileById = (id: string) => getFileObjById(id, availableFiles.value)
 
+const loadFileById = (fileId: string): boolean => {
+  if (!fileId) return false
+  const fileObj = findFileById(fileId)
+  if (!fileObj?.value) return false
+
+  localSelectedFile.value = fileId
+  emit('update:selectedFile', fileId)
+  emit('file-selected', {
+    filename: fileObj.value,
+    source: fileObj.source
+  })
+  return true
+}
+
 const profileOptions = computed<DropdownOption[]>(() => {
   if (resourceProfiles.value.length === 0) {
     return [{ label: '无配置...', value: -1, disabled: true }]
@@ -135,9 +149,19 @@ const handleResourceLoad = async () => {
         )
         const restoredTabs = appConfig.restoreLastWorkspace(validFileIds)
         if (restoredTabs.length > 0) {
+          const activeRestoredFile = appConfig.resource.selectedFileId || restoredTabs[0].resourceFile
+          if (activeRestoredFile) {
+            localSelectedFile.value = activeRestoredFile
+            emit('update:selectedFile', activeRestoredFile)
+          }
           emit('restore-tabs', restoredTabs)
           return
         }
+      }
+
+      const selectedFileId = props.selectedFile ?? localSelectedFile.value
+      if (selectedFileId) {
+        loadFileById(selectedFileId)
       }
     }
   } catch (e: unknown) {
@@ -161,9 +185,7 @@ const executeFileSwitch = async (filename: string, source?: string) => {
   if (target) {
     const newId = makeFileId(target.source, target.value)
     appConfig.hydrateWorkspaceFromResource(newId)
-    localSelectedFile.value = newId
-    emit('update:selectedFile', newId)
-    emit('file-selected', { filename: target.value, source: target.source })
+    loadFileById(newId)
   } else {
     ElMessage.error(`无法切换: 未找到文件 ${filename}`)
   }
@@ -177,13 +199,8 @@ const handleFileSelectChange = (newFileId: PropertyKey) => {
   const fileObj = findFileById(fileId)
   if (!fileObj || !fileObj.value) return
 
-  localSelectedFile.value = fileId
   appConfig.hydrateWorkspaceFromResource(fileId)
-  emit('update:selectedFile', fileId)
-  emit('file-selected', {
-    filename: fileObj.value,
-    source: fileObj.source
-  })
+  loadFileById(fileId)
 }
 
 // 设置 profiles

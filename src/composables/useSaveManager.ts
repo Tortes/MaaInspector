@@ -35,7 +35,10 @@ export interface SaveManagerDeps {
   getImageData: () => { delImages: { path: string }[]; tempImages: { path: string; base64: string; nodeId?: string }[] }
   clearTempImageData: () => void
   clearDirty: () => void
-  imageManager: { setNodeImages: (nodeId: string, images: TemplateImage[]) => void }
+  imageManager: {
+    setNodeImages: (nodeId: string, images: TemplateImage[]) => void
+    replaceLoadedImages: (imageMap: Record<string, TemplateImage[] | unknown>) => void
+  }
   tabId?: string
 }
 
@@ -72,7 +75,7 @@ export function useSaveManager(deps: SaveManagerDeps) {
     loadedFileVersion.value = ''
   }
 
-  const isTemplateImageArray = (value: unknown): value is Array<{ path: string }> =>
+  const isTemplateImageArray = (value: unknown): value is TemplateImage[] =>
     Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item)
 
   const isUsedImageInfoArray = (value: unknown): value is UsedImageInfo[] =>
@@ -81,11 +84,11 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const handleLoadImages = (imageDataMap: Record<string, unknown>, _basePath?: string) => {
     if (!imageDataMap) return
     try {
+      const normalized: Record<string, TemplateImage[]> = {}
       for (const [nodeId, images] of Object.entries(imageDataMap)) {
-        if (isTemplateImageArray(images)) {
-          imageManager.setNodeImages(nodeId, images)
-        }
+        if (isTemplateImageArray(images)) normalized[nodeId] = images
       }
+      imageManager.replaceLoadedImages(normalized)
     } catch (e) {
       console.warn('Failed to load images:', e)
     }
@@ -107,8 +110,8 @@ export function useSaveManager(deps: SaveManagerDeps) {
       if (deletePaths.length > 0 || tempImages.length > 0) {
         await resourceApi.processImages(source, deletePaths, tempImages)
       }
-      clearTempImageData()
       await saveNodesOnly(source, filename, onSnapshotState)
+      clearTempImageData()
     } catch (e: unknown) {
       console.error('[FlowEditor] 图片处理失败:', e)
       throw e

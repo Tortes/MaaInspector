@@ -18,6 +18,7 @@ const createEditorPort = (): FlowEditorPort => ({
   handleDeviceConnected: vi.fn(),
   handleUpdateCanvasConfig: vi.fn(),
   handleUpdatePipelineVersion: vi.fn(),
+  handleApplyLayout: vi.fn().mockResolvedValue(undefined),
   handleLocateNode: vi.fn(),
   handleDebugNodeFromPanel: vi.fn(),
   handleUpdateNodeStatus: vi.fn()
@@ -27,6 +28,10 @@ describe('useFlowWorkspaceVm', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0)
+      return 0
+    })
   })
 
   it('adds, selects, and closes tabs through the workspace store', async () => {
@@ -104,6 +109,33 @@ describe('useFlowWorkspaceVm', () => {
     expect(vm.tabs.value.items[1].title).toBe('tasks.json')
   })
 
+  it('loads nodes synchronously for an already registered editor before images can be routed', async () => {
+    const vm = useFlowWorkspaceVm()
+    const tab = useAppConfigStore().ensureWorkspaceTab()
+    const calls: string[] = []
+    const editor = createEditorPort()
+    editor.handleLoadNodesWrapper = vi.fn().mockImplementation(async () => {
+      calls.push('nodes')
+    })
+    editor.handleLoadImages = vi.fn(() => {
+      calls.push('images')
+    })
+    vm.registerEditor(tab.id, editor)
+
+    const loadPromise = vm.handleLoadNodes({
+      filename: 'pipeline.json',
+      source: 'D:/maa',
+      nodes: {
+        Start: { id: 'Start', recognition: 'DirectHit' }
+      },
+      fileVersion: 'V1'
+    })
+    vm.handleLoadImages({ Start: [{ path: 'a.png' }] })
+    await loadPromise
+
+    expect(calls).toEqual(['nodes', 'images'])
+  })
+
   it('routes debug panel state and active editor actions', () => {
     const vm = useFlowWorkspaceVm()
     vm.addTab()
@@ -119,5 +151,44 @@ describe('useFlowWorkspaceVm', () => {
 
     vm.closeDebugPanel()
     expect(vm.debugPanel.value).toEqual({ visible: false, nodeId: '' })
+  })
+
+  it('loads restored tab resources and reapplies layout after startup restore', async () => {
+    const vm = useFlowWorkspaceVm()
+    const editor = createEditorPort()
+    const tabs = [
+      { id: 'tab-1', title: 'pipeline.json', resourceFile: 'D:/maa|pipeline.json' }
+    ]
+
+    const restorePromise = vm.handleRestoreTabs(tabs)
+    await nextTick()
+    vm.registerEditor('tab-1', editor)
+    await restorePromise
+
+    expect(editor.loadResourceFile).toHaveBeenCalledWith('D:/maa|pipeline.json')
+    expect(editor.handleApplyLayout).toHaveBeenCalled()
+  })
+
+  it('defers restored background tab layout until the tab becomes visible', async () => {
+    const vm = useFlowWorkspaceVm()
+    const firstEditor = createEditorPort()
+    const secondEditor = createEditorPort()
+    const tabs = [
+      { id: 'tab-1', title: 'a.json', resourceFile: 'D:/maa|a.json' },
+      { id: 'tab-2', title: 'b.json', resourceFile: 'D:/maa|b.json' }
+    ]
+
+    const restorePromise = vm.handleRestoreTabs(tabs)
+    await nextTick()
+    vm.registerEditor('tab-1', firstEditor)
+    vm.registerEditor('tab-2', secondEditor)
+    await restorePromise
+
+    expect(firstEditor.handleApplyLayout).toHaveBeenCalledTimes(1)
+    expect(secondEditor.handleApplyLayout).not.toHaveBeenCalled()
+
+    await vm.selectTab('tab-2')
+
+    expect(secondEditor.handleApplyLayout).toHaveBeenCalledTimes(1)
   })
 })

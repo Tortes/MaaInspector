@@ -68,6 +68,30 @@ describe('appConfig workspace state', () => {
     expect(store.tabs.items[0].resourceFile).toBe('D:/maa|pipeline.json')
   })
 
+  it('restores selected resource file from the active restored tab', async () => {
+    const profile = { name: 'default', paths: ['D:/maa'] }
+    vi.mocked(systemApi.getInitialState).mockResolvedValue({
+      resource_profiles: [profile],
+      workspace_state: {
+        resource_index: 0,
+        resource_signature: buildResourceSignature(profile),
+        tabs: [
+          { id: 'tab-1', title: 'a.json', resource_file: 'D:/maa|a.json' },
+          { id: 'tab-2', title: 'b.json', resource_file: 'D:/maa|b.json' }
+        ],
+        active_tab_id: 'tab-2'
+      }
+    })
+
+    const store = useAppConfigStore()
+    await store.loadFromBackend()
+    store.markResourceLoaded()
+    store.restoreLastWorkspace(new Set(['D:/maa|a.json', 'D:/maa|b.json']))
+
+    expect(store.tabs.activeTabId).toBe('tab-2')
+    expect(store.resource.selectedFileId).toBe('D:/maa|b.json')
+  })
+
   it('does not restore tabs for a different resource profile', async () => {
     vi.mocked(systemApi.getInitialState).mockResolvedValue({
       resource_profiles: [{ name: 'other', paths: ['D:/other'] }],
@@ -110,4 +134,3 @@ describe('appConfig workspace state', () => {
     }))
   })
 })
-

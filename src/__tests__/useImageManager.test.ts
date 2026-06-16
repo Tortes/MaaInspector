@@ -48,6 +48,46 @@ describe('useImageManager', () => {
     })
   })
 
+  describe('file and node lifecycle', () => {
+    it('should reset all image state for a new file', () => {
+      const manager = createManager()
+      manager.setNodeImages('node-1', [{ path: 'old.png' }])
+      manager.addTempImage('node-1', 'temp.png', undefined, 'base64data')
+
+      manager.resetForFile({ source: 'D:/maa', filename: 'next.json' })
+
+      expect(manager.getNodeImages('node-1')).toHaveLength(0)
+      expect(manager.getPendingImageChanges().tempImages).toHaveLength(0)
+      expect(manager.currentFile.value).toEqual({ source: 'D:/maa', filename: 'next.json' })
+    })
+
+    it('should replace loaded images as a whole', () => {
+      const manager = createManager()
+      manager.setNodeImages('old-node', [{ path: 'old.png' }])
+
+      manager.replaceLoadedImages({
+        'node-1': [{ path: 'new.png', fullPath: '/path/new.png', found: true }]
+      })
+
+      expect(manager.getNodeImages('old-node')).toHaveLength(0)
+      expect(manager.getNodeImages('node-1')[0].url).toBe('tauri://localhost/path/new.png')
+    })
+
+    it('should migrate saved, temp, and deleted state when a node is renamed', () => {
+      const manager = createManager()
+      manager.setNodeImages('old-id', [{ path: 'saved.png' }, { path: 'deleted.png' }])
+      manager.addTempImage('old-id', 'temp.png', undefined, 'base64data')
+      manager.deleteImage('old-id', 'deleted.png')
+
+      manager.migrateNodeState('old-id', 'new-id')
+
+      expect(manager.getNodeImages('old-id')).toHaveLength(0)
+      expect(manager.getNodeSavedImages('new-id').map(img => img.path)).toEqual(['saved.png'])
+      expect(manager.getNodeTempImages('new-id').map(img => img.path)).toEqual(['temp.png'])
+      expect(manager.getNodeDeletedImages('new-id').map(img => img.path)).toEqual(['deleted.png'])
+    })
+  })
+
   describe('deleteImage', () => {
     it('should move saved image to delImages', () => {
       const manager = createManager()
@@ -207,6 +247,61 @@ describe('useImageManager', () => {
     })
   })
 
+  describe('applyNodeImageChanges', () => {
+    it('should preserve deleted saved images but drop deleted temp images from pending deletions', () => {
+      const manager = createManager()
+
+      manager.applyNodeImageChanges('node-1', {
+        validPaths: ['kept.png', 'new.png'],
+        images: [{ path: 'kept.png' }],
+        tempImages: [{ path: 'new.png', base64: 'base64data', url: 'base64data' }],
+        deletedImages: [
+          { path: 'removed-saved.png' },
+          { path: 'removed-temp.png', _source: 'temp' } as TemplateImage & { _source: string }
+        ]
+      })
+
+      expect(manager.getNodeSavedImages('node-1').map(img => img.path)).toEqual(['kept.png'])
+      expect(manager.getNodeTempImages('node-1').map(img => img.path)).toEqual(['new.png'])
+      expect(manager.getNodeDeletedImages('node-1').map(img => img.path)).toEqual(['removed-saved.png'])
+      expect(manager.getPendingImageChanges()).toEqual({
+        delImages: [{ path: 'removed-saved.png', nodeId: 'node-1' }],
+        tempImages: [{ path: 'new.png', base64: 'base64data', nodeId: 'node-1' }]
+      })
+    })
+
+    it('should increment version for every display-affecting change', () => {
+      const manager = createManager()
+      const versions: number[] = [manager.version.value]
+
+      manager.setNodeImages('node-1', [{ path: 'a.png' }])
+      versions.push(manager.version.value)
+      manager.addTempImage('node-1', 'b.png', undefined, 'base64data')
+      versions.push(manager.version.value)
+      manager.deleteImage('node-1', 'a.png')
+      versions.push(manager.version.value)
+      manager.restoreImage('node-1', 'a.png')
+      versions.push(manager.version.value)
+
+      expect(versions).toEqual([...versions].sort((a, b) => a - b))
+      expect(new Set(versions).size).toBe(versions.length)
+    })
+
+    it('should keep temp images pending when validPaths is omitted', () => {
+      const manager = createManager()
+
+      manager.applyNodeImageChanges('node-1', {
+        images: [],
+        tempImages: [{ path: 'new.png', base64: 'base64data', url: 'base64data' }],
+        deletedImages: []
+      })
+
+      expect(manager.getPendingImageChanges().tempImages).toEqual([
+        { path: 'new.png', base64: 'base64data', nodeId: 'node-1' }
+      ])
+    })
+  })
+
   describe('clearNodeState / clearAll', () => {
     it('should clear single node state', () => {
       const manager = createManager()
@@ -251,6 +346,22 @@ describe('useImageManager', () => {
       expect(result).toHaveLength(2)
       expect(result.map(i => i.path)).toContain('a.png')
       expect(result.map(i => i.path)).toContain('b.png')
+    })
+  })
+
+  describe('getImagesForTemplatePaths', () => {
+    it('should follow template path order, skip missing images, and honor limit', () => {
+      const manager = createManager()
+      manager.setNodeImages('node-1', [
+        { path: 'a.png', found: true },
+        { path: 'b.png', found: true },
+        { path: 'c.png', found: false }
+      ])
+      manager.addTempImage('node-1', 'd.png', undefined, 'base64data')
+
+      const result = manager.getImagesForTemplatePaths('node-1', ['d.png', 'c.png', 'b.png', 'a.png'], 2)
+
+      expect(result.map(img => img.path)).toEqual(['d.png', 'b.png'])
     })
   })
 

@@ -213,6 +213,8 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
     if (oldId !== newId) {
       if (findNode(newId)) { ElMessage.error(`ID "${newId}" already exists!`); return }
 
+      const originalId = nodeMeta._originalId
+      imageManager.migrateNodeState(oldId, newId)
       node.id = newId
       nodeMeta.id = newId
       if (nodeMeta.data) nodeMeta.data.id = newId
@@ -228,8 +230,6 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
         if (typeof val !== 'string') return val
         const flags = parseLinkFlags(val)
         const targetId = flags.id || val
-        const oldNode = findNode(oldId)
-        const originalId = oldNode?.data?._originalId
         if (targetId !== oldId && targetId !== originalId) return val
         return buildLinkId(newId, flags.anchor, flags.jumpBack)
       }
@@ -266,6 +266,7 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
    */
   const loadNodes = async ({ filename, source, nodes: rawNodesData }: LoadNodesPayload) => {
     const totalStart = perfNow()
+    imageManager.resetForFile({ source, filename })
     const newNodes: FlowNode[] = []
     const newEdges: FlowEdge[] = []
     const createdNodeIds = new Set<string>()
@@ -383,7 +384,7 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
    * Clears temporary image data that has been successfully uploaded.
    */
   const clearTempImageData = () => {
-    imageManager.clearTempImageData()
+    imageManager.commitPendingImageChanges()
   }
 
   /**

@@ -34,6 +34,16 @@ interface UsePreloadCacheOptions {
 export function usePreloadCache(options: UsePreloadCacheOptions) {
   const preloadCache = new Map<string, CachedFileData>()
 
+  const emitCachedFile = (
+    payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' },
+    images: Record<string, TemplateImage[]>
+  ) => {
+    options.emit('load-nodes', payload)
+    queueMicrotask(() => {
+      options.emit('load-images', images)
+    })
+  }
+
   const preloadAllTabFiles = async () => {
     const tabs = options.tabs()
     if (!tabs || tabs.length === 0) return
@@ -92,8 +102,10 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
 
     if (!cached) return false
 
-    options.emit('load-nodes', { filename: config.filename, source: config.source, nodes: cached.nodes, fileVersion: cached.fileVersion })
-    options.emit('load-images', cached.images)
+    emitCachedFile(
+      { filename: config.filename, source: config.source, nodes: cached.nodes, fileVersion: cached.fileVersion },
+      cached.images
+    )
     preloadCache.delete(fileKey)
     return true
   }
@@ -112,8 +124,10 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
 
     const cached = preloadCache.get(fileKey)
     if (cached) {
-      options.emit('load-nodes', { filename: fname, source: src, nodes: cached.nodes, fileVersion: cached.fileVersion })
-      options.emit('load-images', cached.images)
+      emitCachedFile(
+        { filename: fname, source: src, nodes: cached.nodes, fileVersion: cached.fileVersion },
+        cached.images
+      )
       preloadCache.delete(fileKey)
       rm.setMessage(`已加载: ${Object.keys(cached.nodes).length} 节点 (从缓存)`)
       return

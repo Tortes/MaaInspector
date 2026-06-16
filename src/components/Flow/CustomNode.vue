@@ -99,7 +99,7 @@ const nodeImages = computed<TemplateImage[]>(() => {
   const paths = Array.isArray(template) ? template : (typeof template === 'string' ? [template] : [])
   if (!paths.length) return []
 
-  const result = imageManager.getImagesForDisplayWithCache(props.id, paths)
+  const result = imageManager.getImagesForTemplatePaths(props.id, paths, 16)
   return result
 })
 
