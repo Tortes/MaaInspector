@@ -82,6 +82,28 @@ pub struct ScreenshotResponse {
     pub size: Option<Vec<i32>>,
 }
 
+/// OCR candidate item
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrRecognitionCandidate {
+    #[serde(skip_serializing_if = "Option::is_none", rename = "box")]
+    pub bbox: Option<Vec<i32>>,
+    pub score: f64,
+    pub text: String,
+}
+
+/// OCR recognition response payload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrRecognitionResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best: Option<OcrRecognitionCandidate>,
+    #[serde(default)]
+    pub all: Vec<OcrRecognitionCandidate>,
+    #[serde(default)]
+    pub filtered: Vec<OcrRecognitionCandidate>,
+}
+
 /// Debug stream event payload
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DebugStreamPayload {

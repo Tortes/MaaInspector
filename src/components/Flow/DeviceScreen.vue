@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { RefreshCw, Crosshair, Check, ZoomIn, Mouse } from 'lucide-vue-next'
-import { deviceApi, debugApi } from '@/services/api'
+import { deviceApi } from '@/services/api'
 import DeviceScreenCanvas from './DeviceScreensModals/DeviceScreenCanvas.vue'
 import DeviceScreenSidebar from './DeviceScreensModals/DeviceScreenSidebar.vue'
 import type { TemplateImage } from '@/utils/flowTypes'
@@ -17,6 +17,12 @@ interface Selection {
 
 interface ImageItem extends TemplateImage {
   _source?: 'images' | 'temp' | string
+}
+
+interface OcrCandidate {
+  box?: number[]
+  score: number
+  text: string
 }
 
 const props = defineProps<{
@@ -69,6 +75,8 @@ const previewUrl = ref<string>('')
 const ocrResult = ref<string>('')
 const canvasRef = ref<InstanceType<typeof DeviceScreenCanvas> | null>(null)
 const imageSize = ref({ width: 1280, height: 720 })
+const ocrCandidates = ref<OcrCandidate[]>([])
+const selectedOcrIndex = ref(0)
 
 // 选区状态 (共享给 Sidebar 和 Canvas)
 const selection = reactive<Selection>({x: 0, y: 0, w: 0, h: 0})
@@ -153,6 +161,8 @@ watch(() => props.visible, async (val: boolean) => {
   if (val) {
     if (canvasRef.value) canvasRef.value.resetView()
     ocrResult.value = ''
+    ocrCandidates.value = []
+    selectedOcrIndex.value = 0
     previewUrl.value = ''
     imageCounter.value = 1
 
@@ -253,17 +263,40 @@ const handleOcr = async () => {
       Math.round(selection.w),
       Math.round(selection.h)
     ]
-    const res = await debugApi.ocrText(roi)
-    const text = (res as any)?.text ?? (res as any)?.data?.text ?? ''
+    const res = await deviceApi.ocrText(roi)
+    const payload = (res as any)?.data ?? res
     if (res && (res as any).success === false) {
       throw new Error((res as any).message || 'OCR failed')
     }
+
+    const all = Array.isArray(payload?.all) ? payload.all : []
+    const filtered = Array.isArray(payload?.filtered) ? payload.filtered : []
+    const best = payload?.best ?? null
+    ocrCandidates.value = (filtered.length ? filtered : all).filter((item: any) => item && typeof item.text === 'string')
+    if (!ocrCandidates.value.length && best && typeof best.text === 'string') {
+      ocrCandidates.value = [best]
+    }
+    selectedOcrIndex.value = 0
+
+    const text = typeof payload?.text === 'string'
+      ? payload.text
+      : (ocrCandidates.value[0]?.text ?? '')
+
     ocrResult.value = text || '识别失败'
   } catch (e: unknown) {
     console.error("OCR 失败", e)
     ocrResult.value = "识别失败"
+    ocrCandidates.value = []
   } finally {
     isOcrLoading.value = false
+  }
+}
+
+const selectOcrCandidate = (index: number) => {
+  selectedOcrIndex.value = index
+  const candidate = ocrCandidates.value[index]
+  if (candidate?.text) {
+    ocrResult.value = candidate.text
   }
 }
 
@@ -275,7 +308,13 @@ const handleBackgroundClick = () => {
 
 const handleConfirm = () => {
   if (props.mode === 'ocr') {
-    emit('confirm', ocrResult.value)
+    emit('confirm', {
+      text: ocrResult.value,
+      best: ocrCandidates.value[selectedOcrIndex.value] ?? null,
+      all: ocrCandidates.value,
+      filtered: ocrCandidates.value
+    })
+    emit('close')
   } else if (props.mode === 'image_manager') {
     // 逻辑在 handleImageManagerSave 中，这里只处理普通确认
     if (selection.w > 0) {
@@ -289,8 +328,8 @@ const handleConfirm = () => {
   } else {
     const result = [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)]
     emit('confirm', result)
+    emit('close')
   }
-  emit('close')
 }
 
 const handleImageManagerSave = () => {
@@ -401,6 +440,8 @@ saveImagePath.value = generateDefaultSavePath()
         :title="title"
         :selection="selection"
         :ocr-result="ocrResult"
+        :ocr-candidates="ocrCandidates"
+        :selected-ocr-index="selectedOcrIndex"
         :is-ocr-loading="isOcrLoading"
         :preview-url="previewUrl"
         :save-image-path="saveImagePath"
@@ -416,6 +457,7 @@ saveImagePath.value = generateDefaultSavePath()
         @confirm="handleConfirm"
         @ocr-start="handleOcr"
         @update:ocr-result="ocrResult = $event"
+        @select-ocr-candidate="selectOcrCandidate"
         @update:save-image-path="saveImagePath = $event"
         @save-temp-image="handleSaveTempImage"
         @apply-preview-edit="handlePreviewEdit"

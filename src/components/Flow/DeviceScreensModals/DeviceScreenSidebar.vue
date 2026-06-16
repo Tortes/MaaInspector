@@ -10,6 +10,7 @@ import DeviceScreenMaskEditor from './DeviceScreenMaskEditor.vue'
 type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 interface Selection { x: number; y: number; w: number; h: number }
 interface GuideItem { icon: any; text: string }
+interface OcrCandidate { box?: number[]; score: number; text: string }
 import type { TemplateImage } from '@/utils/flowTypes'
 
 const props = defineProps<{
@@ -17,6 +18,8 @@ const props = defineProps<{
   title?: string
   selection: Selection
   ocrResult?: string
+  ocrCandidates?: OcrCandidate[]
+  selectedOcrIndex?: number
   isOcrLoading?: boolean
   previewUrl?: string
   saveImagePath?: string
@@ -35,6 +38,7 @@ const emit = defineEmits<{
   (e: 'confirm'): void
   (e: 'ocr-start'): void
   (e: 'update:ocrResult', val: string): void
+  (e: 'select-ocr-candidate', index: number): void
   (e: 'update:saveImagePath', val: string): void
   (e: 'save-temp-image'): void
   (e: 'apply-preview-edit', val: string): void
@@ -49,6 +53,8 @@ const emit = defineEmits<{
 
 // 复制选区数据
 const safeOcrResult = computed(() => props.ocrResult ?? '')
+const safeOcrCandidates = computed(() => props.ocrCandidates ?? [])
+const safeSelectedOcrIndex = computed(() => props.selectedOcrIndex ?? 0)
 const safeSaveImagePath = computed(() => props.saveImagePath ?? '')
 
 const copySelection = () => {
@@ -137,6 +143,29 @@ const handleApply = (edited: string) => {
                 placeholder="等待识别..."
                 @input="(e) => $emit('update:ocrResult', (e.target as HTMLTextAreaElement | null)?.value || '')"
               />
+            </div>
+            <div
+              v-if="safeOcrCandidates.length"
+              class="space-y-1"
+            >
+              <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">候选结果</label>
+              <div class="max-h-40 overflow-y-auto space-y-1">
+                <button
+                  v-for="(item, idx) in safeOcrCandidates"
+                  :key="`${item.text}-${idx}`"
+                  class="w-full text-left px-2.5 py-2 rounded-lg border text-xs transition-colors"
+                  :class="idx === safeSelectedOcrIndex ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
+                  @click="$emit('select-ocr-candidate', idx)"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-mono truncate">{{ item.text }}</span>
+                    <span class="text-[10px] text-slate-400 shrink-0">{{ item.score.toFixed(4) }}</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 font-mono truncate">
+                    {{ item.box?.join(', ') || 'no box' }}
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
         </div>

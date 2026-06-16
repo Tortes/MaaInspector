@@ -5,7 +5,7 @@ mod tasker;
 
 use crate::config::DeviceInfo;
 use crate::events::DebugEventBroker;
-use crate::response::RecognitionDetail;
+use crate::response::{OcrRecognitionCandidate, OcrRecognitionResponse, RecognitionDetail};
 use controller::wait_with_timeout;
 use maa_framework::controller::Controller;
 use maa_framework::resource::Resource;
@@ -13,6 +13,35 @@ use maa_framework::sys;
 use maa_framework::tasker::Tasker;
 use maa_framework::{set_debug_mode, toolkit::Toolkit};
 use std::sync::Arc;
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct OcrDetailBundle {
+    all: Vec<OcrRecognitionCandidate>,
+    best: Option<OcrRecognitionCandidate>,
+    filtered: Vec<OcrRecognitionCandidate>,
+}
+
+fn ocr_bundle_to_response(bundle: OcrDetailBundle) -> OcrRecognitionResponse {
+    let text = bundle.best.as_ref().map(|item| item.text.clone());
+    OcrRecognitionResponse {
+        text,
+        best: bundle.best,
+        all: bundle.all,
+        filtered: bundle.filtered,
+    }
+}
+
+fn ocr_result_to_response(
+    text: String,
+    candidate: OcrRecognitionCandidate,
+) -> OcrRecognitionResponse {
+    OcrRecognitionResponse {
+        text: Some(text),
+        best: Some(candidate.clone()),
+        all: vec![candidate.clone()],
+        filtered: vec![candidate],
+    }
+}
 
 /// Timeout for controller operations (screencap, etc.)
 const CONTROLLER_TIMEOUT_MS: u64 = 30000;
@@ -241,7 +270,14 @@ impl MaaFrameworkWrapper {
     }
 
     /// OCR text recognition with roi (async)
-    pub async fn ocr_text_async(&mut self, roi: [i32; 4]) -> Result<String, String> {
+    pub async fn ocr_text_async(&mut self, roi: [i32; 4]) -> Result<OcrRecognitionResponse, String> {
+        eprintln!(
+            "[OCR] start roi={:?}, resource_bound={}, tasker_ready={}",
+            roi,
+            self.resource.is_some(),
+            self.tasker.as_ref().map(|t| t.inited()).unwrap_or(false)
+        );
+
         let controller = self.controller.as_ref()
             .ok_or("Controller not initialized. Please connect a device first.")?;
         
@@ -271,26 +307,226 @@ impl MaaFrameworkWrapper {
                 new_tasker
             }
         };
-        
+
+        // Prefer a task-based OCR path so we can inspect TaskDetail/NodeDetail.
+        let ocr_pipeline = serde_json::json!({
+            "__OCRDebug": {
+                "recognition": "OCR",
+                "roi": roi,
+                "action": "DoNothing",
+                "next": [],
+                "on_error": []
+            }
+        });
+
+        match tasker.post_task_json("__OCRDebug", &ocr_pipeline) {
+            Ok(job) => {
+                let wait_status = job.wait();
+                eprintln!("[OCR] task wait status: {}", wait_status);
+
+                match job.get(false) {
+                    Ok(Some(task_detail)) => {
+                        eprintln!(
+                            "[OCR] task detail: entry={}, status={}, node_id_list={:?}, nodes={}",
+                            task_detail.entry,
+                            task_detail.status,
+                            task_detail.node_id_list,
+                            task_detail.nodes.len()
+                        );
+
+                        for (idx, node_opt) in task_detail.nodes.iter().enumerate() {
+                            let Some(node_detail) = node_opt.as_ref() else {
+                                eprintln!("[OCR] node[{}]: None", idx);
+                                continue;
+                            };
+
+                            eprintln!(
+                                "[OCR] node[{}]: name={}, reco_id={}, act_id={}, completed={}",
+                                idx,
+                                node_detail.node_name,
+                                node_detail.reco_id,
+                                node_detail.act_id,
+                                node_detail.completed
+                            );
+
+                            if let Some(recognition) = &node_detail.recognition {
+                                eprintln!(
+                                    "[OCR] node[{}].recognition: node={}, algo={:?}, hit={}, box={:?}, sub_details={}, raw_image_bytes={}, draw_images={}",
+                                    idx,
+                                    recognition.node_name,
+                                    recognition.algorithm,
+                                    recognition.hit,
+                                    recognition.box_rect,
+                                    recognition.sub_details.len(),
+                                    recognition.raw_image.as_ref().map(|v| v.len()).unwrap_or(0),
+                                    recognition.draw_images.len()
+                                );
+                                eprintln!(
+                                    "[OCR] node[{}].recognition raw detail: {}",
+                                    idx,
+                                    serde_json::to_string_pretty(&recognition.detail)
+                                        .unwrap_or_else(|_| recognition.detail.to_string())
+                                );
+
+                                if let Ok(ocr_bundle) = serde_json::from_value::<OcrDetailBundle>(
+                                    recognition.detail.clone()
+                                ) {
+                                    eprintln!(
+                                    "[OCR] node[{}].ocr_bundle: all={}, filtered={}, best={}",
+                                        idx,
+                                        ocr_bundle.all.len(),
+                                        ocr_bundle.filtered.len(),
+                                        ocr_bundle.best.is_some()
+                                    );
+                                    for (res_idx, item) in ocr_bundle.all.iter().enumerate() {
+                                        eprintln!(
+                                            "[OCR] node[{}].all[{}]: box={:?}, score={:.4}, text={:?}",
+                                            idx,
+                                            res_idx,
+                                            item.bbox,
+                                            item.score,
+                                            item.text
+                                        );
+                                    }
+                                    for (res_idx, item) in ocr_bundle.filtered.iter().enumerate() {
+                                        eprintln!(
+                                            "[OCR] node[{}].filtered[{}]: box={:?}, score={:.4}, text={:?}",
+                                            idx,
+                                            res_idx,
+                                            item.bbox,
+                                            item.score,
+                                            item.text
+                                        );
+                                    }
+                                    if let Some(best) = ocr_bundle.best.as_ref() {
+                                        eprintln!(
+                                            "[OCR] node[{}].best: box={:?}, score={:.4}, text_len={}, text={:?}",
+                                            idx,
+                                            best.bbox,
+                                            best.score,
+                                            best.text.chars().count(),
+                                            best.text
+                                        );
+                                    }
+                                    return Ok(ocr_bundle_to_response(ocr_bundle));
+                                } else if let Some(ocr_result) = recognition.as_ocr_result() {
+                                    eprintln!(
+                                        "[OCR] node[{}].ocr_result: box={:?}, score={:.4}, text_len={}, text={:?}",
+                                        idx,
+                                        ocr_result.base.box_rect,
+                                        ocr_result.base.score,
+                                        ocr_result.text.chars().count(),
+                                        ocr_result.text
+                                    );
+                                    let candidate = OcrRecognitionCandidate {
+                                        bbox: Some(vec![
+                                            ocr_result.base.box_rect.0,
+                                            ocr_result.base.box_rect.1,
+                                            ocr_result.base.box_rect.2,
+                                            ocr_result.base.box_rect.3,
+                                        ]),
+                                        score: ocr_result.base.score,
+                                        text: ocr_result.text.clone(),
+                                    };
+                                    return Ok(ocr_result_to_response(ocr_result.text.clone(), candidate));
+                                } else {
+                                    eprintln!("[OCR] node[{}].recognition is not OCR detail", idx);
+                                }
+                            } else {
+                                eprintln!("[OCR] node[{}].recognition: None", idx);
+                            }
+                        }
+
+                        eprintln!("[OCR] task route produced OCR detail bundle");
+                    }
+                    Ok(None) => {
+                        eprintln!("[OCR] task.get returned None");
+                    }
+                    Err(e) => {
+                        eprintln!("[OCR] task.get failed: {:?} | {}", e, e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[OCR] task post failed: {}", e);
+            }
+        }
+
+        // Fallback: direct recognition call for plain text output.
         let ocr_params = serde_json::json!({
             "roi": roi
         });
-        
+
         let job = tasker.post_recognition(
             "OCR",
             &ocr_params.to_string(),
             &img_buffer
         ).map_err(|e| format!("OCR recognition failed: {}", e))?;
-        
-        job.wait();
-        
-        if let Ok(Some(detail)) = job.get(true) {
-            if let Some(ocr_result) = detail.as_ocr_result() {
-                return Ok(ocr_result.text.clone());
+
+        let wait_status = job.wait();
+        eprintln!("[OCR] direct wait status: {}", wait_status);
+
+        match job.get(false) {
+            Ok(Some(detail)) => {
+                eprintln!("[OCR] direct recognition detail: {:#?}", detail);
+                eprintln!(
+                    "[OCR] direct raw detail json: {}",
+                    serde_json::to_string_pretty(&detail.detail)
+                        .unwrap_or_else(|_| detail.detail.to_string())
+                );
+
+                if let Some(ocr_result) = detail.as_ocr_result() {
+                    eprintln!(
+                        "[OCR] direct parsed result: box={:?}, score={:.4}, text_len={}, text={:?}",
+                        ocr_result.base.box_rect,
+                        ocr_result.base.score,
+                        ocr_result.text.chars().count(),
+                        ocr_result.text
+                    );
+                    let candidate = OcrRecognitionCandidate {
+                        bbox: Some(vec![
+                            ocr_result.base.box_rect.0,
+                            ocr_result.base.box_rect.1,
+                            ocr_result.base.box_rect.2,
+                            ocr_result.base.box_rect.3,
+                        ]),
+                        score: ocr_result.base.score,
+                        text: ocr_result.text.clone(),
+                    };
+                    return Ok(ocr_result_to_response(ocr_result.text.clone(), candidate));
+                }
+
+                if let Ok(ocr_bundle) = serde_json::from_value::<OcrDetailBundle>(detail.detail.clone()) {
+                    if let Some(best) = ocr_bundle.best.as_ref() {
+                        eprintln!(
+                            "[OCR] direct best: box={:?}, score={:.4}, text_len={}, text={:?}",
+                            best.bbox,
+                            best.score,
+                            best.text.chars().count(),
+                            best.text
+                        );
+                        return Ok(ocr_bundle_to_response(ocr_bundle));
+                    }
+                }
+
+                eprintln!("[OCR] direct detail could not be parsed as OCRResult or OcrDetailBundle");
+            }
+            Ok(None) => {
+                eprintln!("[OCR] direct job.get returned None");
+            }
+            Err(e) => {
+                eprintln!("[OCR] direct job.get failed: {:?} | {}", e, e);
             }
         }
-        
-        Ok(String::new())
+
+        eprintln!("[OCR] no recognition result");
+
+        Ok(OcrRecognitionResponse {
+            text: None,
+            best: None,
+            all: vec![],
+            filtered: vec![],
+        })
     }
 }
 

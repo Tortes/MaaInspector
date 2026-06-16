@@ -9,6 +9,19 @@ export interface ImageItem extends TemplateImage {
   _source?: string
 }
 
+export interface OcrCandidate {
+  box?: number[]
+  score: number
+  text: string
+}
+
+export interface OcrPickResult {
+  text?: string
+  best?: OcrCandidate | null
+  all?: OcrCandidate[]
+  filtered?: OcrCandidate[]
+}
+
 export interface DevicePickResult {
   type?: string
   validPaths?: string[]
@@ -18,6 +31,7 @@ export interface DevicePickResult {
   imagePath?: string
   imageBase64?: string
   closeModal?: boolean
+  ocrResult?: OcrPickResult
   [key: string]: unknown
 }
 
@@ -36,7 +50,7 @@ export interface PickerPayload {
   referenceField?: string | null
   referenceLabel?: string | null
   referenceRect?: number[] | null
-  onConfirm?: (val: DevicePickResult | number[]) => void
+  onConfirm?: (val: DevicePickResult | number[] | OcrPickResult) => void
 }
 
 export interface DeviceScreenConfig {
@@ -52,7 +66,7 @@ export interface DeviceScreenConfig {
   deletedImageList: ImageItem[]
   filename: string
   nodeId: string
-  onConfirm?: ((val: DevicePickResult | number[]) => void) | null
+  onConfirm?: ((val: DevicePickResult | number[] | OcrPickResult) => void) | null
   templateTarget?: TemplateTarget | null
 }
 
@@ -159,7 +173,7 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
     } = payload
 
     const finalMode: DevicePickerMode =
-      field === 'expected'
+      field === 'expected' || field === 'replace'
         ? 'ocr'
         : field === 'template'
           ? 'image_manager'
@@ -231,7 +245,7 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
 
   const handleDevicePick = (result: unknown) => {
     if (deviceScreenConfig.onConfirm) {
-      deviceScreenConfig.onConfirm(result as DevicePickResult | number[])
+      deviceScreenConfig.onConfirm(result as DevicePickResult | number[] | OcrPickResult)
       showDeviceScreen.value = false
       return
     }
@@ -272,6 +286,12 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
         setValue(field, [coords[0] - refRect[0], coords[1] - refRect[1], coords[2] - refRect[2], coords[3] - refRect[3]])
       } else {
         setValue(field, coords)
+      }
+    } else if (deviceScreenConfig.mode === 'ocr' && result && typeof result === 'object') {
+      const ocrResult = result as OcrPickResult
+      const value = typeof ocrResult.text === 'string' ? ocrResult.text : ''
+      if (deviceScreenConfig.targetField && value) {
+        setValue(deviceScreenConfig.targetField, value)
       }
     }
   }

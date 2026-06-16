@@ -82,7 +82,7 @@ pub async fn debug_ocr_text(maafw: State<'_, Mutex<MaaFrameworkWrapper>>, roi: V
     let roi_array = [roi[0], roi[1], roi[2], roi[3]];
 
     match fw.ocr_text_async(roi_array).await {
-        Ok(text) => Ok(ApiResponse::ok_with_data("OK", serde_json::json!({ "text": text }))),
+        Ok(result) => Ok(ApiResponse::ok_with_data("OK", serde_json::to_value(result).unwrap_or(serde_json::Value::Null))),
         Err(e) => Ok(ApiResponse::error_with_status(&e, 500)),
     }
 }

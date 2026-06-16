@@ -149,6 +149,21 @@ export interface ScreenshotResponse extends ApiResponse {
   size?: number[];
 }
 
+export interface OcrRecognitionCandidate {
+  box?: number[];
+  score: number;
+  text: string;
+}
+
+export interface OcrRecognitionResponse extends ApiResponse {
+  data?: {
+    text?: string;
+    best?: OcrRecognitionCandidate | null;
+    all?: OcrRecognitionCandidate[];
+    filtered?: OcrRecognitionCandidate[];
+  };
+}
+
 // System API
 export const systemApi = {
   getInitialState: async (): Promise<SystemInitResponse> => {
@@ -206,6 +221,10 @@ export const deviceApi = {
 
   getScreenshot: async (): Promise<ScreenshotResponse> => {
     return invoke('device_screenshot');
+  },
+
+  ocrText: async (roi: number[]): Promise<OcrRecognitionResponse> => {
+    return invoke('debug_ocr_text', { roi });
   }
 };
 
@@ -305,10 +324,6 @@ export const debugApi = {
 
   getRecoDetails: async (recoId: string | number): Promise<RecoDetailResponse> => {
     return invoke('debug_get_reco_details', { recoId });
-  },
-
-  ocrText: async (roi: number[]): Promise<ApiResponse<{ text?: string }>> => {
-    return invoke('debug_ocr_text', { roi });
   },
 
   subscribeNodeStream: (onData: (data: DebugStreamPayload) => void): (() => void) => {
