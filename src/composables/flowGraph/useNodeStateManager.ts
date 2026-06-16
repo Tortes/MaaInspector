@@ -1,4 +1,5 @@
 import { perfLog, perfNow } from '@/utils/perfTrace'
+import { normalizeTemplateValue } from '@/utils/templateUtils'
 import type { FlowNode, FlowNodeMeta, FlowBusinessData, NodeStatus } from '@/utils/flowTypes'
 
 export const UNKNOWN_NODE_ID_PREFIX = '__maa_unknown_node__'
@@ -22,6 +23,9 @@ export const getNodesData = (nodes: FlowNode[]): Record<string, FlowBusinessData
 
     delete (nodeData as Record<string, unknown>).id
     delete (nodeData as Record<string, unknown>).interrupt
+    const template = normalizeTemplateValue(nodeData.template)
+    if (template === undefined) delete (nodeData as Record<string, unknown>).template
+    else nodeData.template = template
     result[node.id] = nodeData
   })
   perfLog('useFlowGraph.getNodesData', start, { nodeCount: nodes.length, outputCount: Object.keys(result).length })

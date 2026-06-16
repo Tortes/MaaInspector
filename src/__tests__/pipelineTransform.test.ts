@@ -120,6 +120,16 @@ describe('pipelineTransform', () => {
       const result = toPipelineV2Node(node)
       expect(result.recognition).toBe('')
     })
+
+    it('should omit empty template params when converting to V2', () => {
+      const result = toPipelineV2Node({
+        recognition: 'TemplateMatch',
+        template: [' ', '']
+      } as FlowBusinessData)
+
+      expect(result.recognition).toEqual({ type: 'TemplateMatch' })
+      expect(result.template).toBeUndefined()
+    })
   })
 
   describe('toPipelineV1Node', () => {
@@ -208,6 +218,15 @@ describe('pipelineTransform', () => {
       expect(result.recognition).toBeUndefined()
       expect(result.action).toBeUndefined()
       expect(result.next).toEqual(['node2'])
+    })
+
+    it('should omit empty template params when converting to V1', () => {
+      const result = toPipelineV1Node({
+        recognition: { type: 'TemplateMatch', param: { template: [' ', ''] } }
+      } as unknown as FlowBusinessData)
+
+      expect(result.recognition).toBe('TemplateMatch')
+      expect(result.template).toBeUndefined()
     })
   })
 

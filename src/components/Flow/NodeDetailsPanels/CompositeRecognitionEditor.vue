@@ -140,7 +140,7 @@ const setChildTemplateList = (index: number, list: string[]) => {
   if (normalized.length === 1) {
     const single = normalized[0]
     if (!single || !single.trim()) {
-      setChildValue(index, 'template', [''])
+      setChildValue(index, 'template', null)
     } else {
       setChildValue(index, 'template', single.trim())
     }

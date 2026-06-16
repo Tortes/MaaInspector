@@ -40,4 +40,35 @@ describe('useTemplateManager', () => {
       { path: 'new.png', base64: 'base64data', nodeId: 'Start' }
     ])
   })
+
+  it('removes template when image changes leave no valid paths', () => {
+    const imageManager = useImageManager()
+    const node = {
+      id: 'Start',
+      position: { x: 0, y: 0 },
+      data: {
+        id: 'Start',
+        type: 'TemplateMatch',
+        data: {
+          id: 'Start',
+          recognition: 'TemplateMatch',
+          template: ['']
+        }
+      }
+    } as FlowNode
+
+    handleSpecialAction(
+      node,
+      {
+        _action: 'save_image_changes',
+        validPaths: ['', '   '],
+        images: [],
+        tempImages: [],
+        deletedImages: []
+      },
+      imageManager
+    )
+
+    expect(node.data?.data?.template).toBeUndefined()
+  })
 })

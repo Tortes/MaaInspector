@@ -32,7 +32,7 @@ const setTemplateList = (list: string[]) => {
   if (normalized.length === 1) {
     const single = normalized[0]
     if (!single || !single.trim()) {
-      setValue('template', [''])
+      setValue('template', null)
     } else {
       setValue('template', single.trim())
     }

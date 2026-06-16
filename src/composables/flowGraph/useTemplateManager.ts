@@ -1,21 +1,21 @@
 import type { FlowNodeMeta, FlowBusinessData, FlowNode, TemplateImage } from '@/utils/flowTypes'
 import type { useImageManager } from '@/composables/useImageManager'
-import { normalizeTemplateList } from '@/utils/templateUtils'
+import { normalizeTemplateList, normalizeTemplateValue } from '@/utils/templateUtils'
 
 export const modifyTemplatePath = (nodeData: FlowNodeMeta, path: string, mode: 'add' | 'remove' = 'add') => {
   if (!nodeData.data) nodeData.data = {}
   const tpl = (nodeData.data as FlowBusinessData).template
 
-  let paths: Array<string> = []
-  if (Array.isArray(tpl)) paths = [...tpl] as string[]
-  else if (typeof tpl === 'string' && tpl) paths = [tpl]
+  let paths = normalizeTemplateList(tpl)
 
   if (mode === 'add') {
     if (!paths.includes(path)) paths.push(path)
   } else if (mode === 'remove') {
     paths = paths.filter(p => p !== path)
   }
-  ;(nodeData.data as FlowBusinessData).template = paths
+  const nextTemplate = normalizeTemplateValue(paths)
+  if (nextTemplate === undefined) delete (nodeData.data as FlowBusinessData).template
+  else (nodeData.data as FlowBusinessData).template = nextTemplate
 }
 
 export const updateCompositeTemplate = (
@@ -123,9 +123,9 @@ export const handleSpecialAction = (
     }
     const savedImages = images || []
     const pendingImages = tempImages || []
-    const effectiveValidPaths = Array.isArray(validPaths)
-      ? [...validPaths]
-      : [...savedImages, ...pendingImages].map(image => image.path).filter(Boolean)
+    const effectiveValidPaths = normalizeTemplateList(Array.isArray(validPaths)
+      ? validPaths
+      : [...savedImages, ...pendingImages].map(image => image.path))
 
     pendingImages.forEach((image) => {
       if (image.path && !effectiveValidPaths.includes(image.path)) {
@@ -144,7 +144,11 @@ export const handleSpecialAction = (
     if (templateTarget) {
       updateCompositeTemplate(meta, templateTarget, () => (effectiveValidPaths.length ? [...effectiveValidPaths] : []))
     } else {
-      ;(meta.data as FlowBusinessData).template = effectiveValidPaths.length ? [...effectiveValidPaths] : []
+      if (effectiveValidPaths.length) {
+        ;(meta.data as FlowBusinessData).template = [...effectiveValidPaths]
+      } else {
+        delete (meta.data as FlowBusinessData).template
+      }
     }
   }
 }

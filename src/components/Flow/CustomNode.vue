@@ -5,6 +5,7 @@ import { Anchor as AnchorIcon } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
 import LazyImage from '@/components/Common/LazyImage.vue'
 import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '@/utils/node-config'
+import { normalizeTemplateList } from '@/utils/templateUtils'
 import type { useImageManager } from '@/composables/useImageManager'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload, LayoutDirection } from '@/utils/flowTypes'
 
@@ -96,8 +97,7 @@ const headerStyle = computed(() => {
 // 图片逻辑
 const isImageNode = computed(() => ['TemplateMatch', 'FeatureMatch'].includes(props.data.type))
 const nodeImages = computed<TemplateImage[]>(() => {
-  const template = businessData.value.template
-  const paths = Array.isArray(template) ? template : (typeof template === 'string' ? [template] : [])
+  const paths = normalizeTemplateList(businessData.value.template)
   if (!paths.length) return []
 
   const result = imageManager.getImagesForTemplatePaths(props.id, paths, 16)

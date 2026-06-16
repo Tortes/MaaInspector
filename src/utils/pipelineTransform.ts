@@ -1,4 +1,5 @@
 import type { FlowBusinessData } from './flowTypes'
+import { normalizeTemplateValue } from './templateUtils'
 
 type PipelineNode = FlowBusinessData & {
   recognition?: unknown
@@ -80,6 +81,13 @@ const pickParams = (source: Record<string, unknown>, keys: Set<string>) => {
   return result
 }
 
+const normalizeTemplateParam = (params: Record<string, unknown>) => {
+  if (!('template' in params)) return
+  const normalizedTemplate = normalizeTemplateValue(params.template)
+  if (normalizedTemplate === undefined) delete params.template
+  else params.template = normalizedTemplate
+}
+
 const removeKeys = (source: Record<string, unknown>, keys: Set<string>) => {
   keys.forEach(key => {
     delete source[key]
@@ -113,6 +121,7 @@ export const toPipelineV2Node = (node: PipelineNode): PipelineNode => {
     : {}
   const recognitionParamFromV1 = pickParams(source, RECOGNITION_PARAM_KEYS)
   const recognitionParam = { ...recognitionParamFromV1, ...recognitionParamFromV2 }
+  normalizeTemplateParam(recognitionParam)
 
   const action = source.action
   const actionType = typeof action === 'string'
@@ -152,6 +161,7 @@ export const toPipelineV1Node = (node: PipelineNode): PipelineNode => {
   if (isObject(recognition) && typeof recognition.type === 'string') {
     const recognitionType = recognition.type
     const recognitionParam = isObject(recognition.param) ? { ...(recognition.param as Record<string, unknown>) } : {}
+    normalizeTemplateParam(recognitionParam)
     const compositeKey = recognitionType === 'And' ? 'all_of' : recognitionType === 'Or' ? 'any_of' : null
     if (compositeKey && recognitionParam[compositeKey] !== undefined) {
       recognitionParam[compositeKey] = normalizeCompositeChildren(recognitionParam[compositeKey], toPipelineV1Node)
