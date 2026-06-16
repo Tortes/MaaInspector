@@ -5,7 +5,7 @@
   "identifier": "com.black.maainspector",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:48732",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },

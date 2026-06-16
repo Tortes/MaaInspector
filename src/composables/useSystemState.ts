@@ -24,8 +24,8 @@ export function useSystemState(emit: SaveNodesEmit) {
     await store.loadFromBackend()
   }
 
-  const handleSaveNodes = async (resourceManagerRef: ResourceManagerRef | null) => {
-    const fileId = store.resource.selectedFileId
+  const handleSaveNodes = async (resourceManagerRef: ResourceManagerRef | null, targetFileId?: string) => {
+    const fileId = targetFileId || store.resource.selectedFileId
     if (!fileId || isSaving.value) return
     isSaving.value = true
     try {

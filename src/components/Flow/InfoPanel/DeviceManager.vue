@@ -16,6 +16,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'device-connected': [status: boolean]
+  'status-change': [snapshot: { status: 'disconnected' | 'connecting' | 'connected' | 'failed' | 'disconnecting'; message: string }]
 }>()
 
 // 设备类型
@@ -262,6 +263,13 @@ watch(status, (newStatus) => {
     stopScreenshotTimer()
   }
 })
+
+watch([status, message], () => {
+  emit('status-change', {
+    status: status.value,
+    message: message.value
+  })
+}, { immediate: true })
 
 onUnmounted(() => {
   stopScreenshotTimer()

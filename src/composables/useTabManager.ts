@@ -2,24 +2,12 @@ import { ref, computed } from 'vue'
 import type { Pinia } from 'pinia'
 import { useAppConfigStore } from '@/stores/appConfig'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
+import type { FlowEditorPort } from '@/composables/viewModels/types'
 
 interface FlowTab {
   id: string
   title: string
   resourceFile: string
-}
-
-type FlowEditorExpose = {
-  loadResourceFile: (fileId: string) => Promise<void>
-  handleLoadNodesWrapper: (payload: { filename: string; source: string; nodes: Record<string, unknown>; fileVersion?: 'V1' | 'V2' }) => Promise<void>
-  handleLoadImages: (imageDataMap: Record<string, unknown>, basePath?: string) => void
-  handleSaveNodes: (payload: { source: string; filename: string }) => Promise<void>
-  handleDeviceConnected: (val: boolean) => void
-  handleUpdateCanvasConfig: (payload: { edgeType?: string; spacing?: string; layoutAlgorithm?: string; layoutDirection?: string }) => void
-  handleUpdatePipelineVersion: (val: 'V1' | 'V2') => void
-  handleLocateNode: (nodeId: string) => void
-  handleDebugNodeFromPanel: (nodeId: string) => void
-  handleUpdateNodeStatus: (payload: { nodeId: string; status: unknown }) => void
 }
 
 const createInitialTab = (): FlowTab => ({
@@ -30,9 +18,9 @@ const createInitialTab = (): FlowTab => ({
 
 export const useTabManager = (pinia?: Pinia) => {
   const store = useAppConfigStore(pinia)
-  const editorRefs = ref<Map<string, FlowEditorExpose>>(new Map())
+  const editorRefs = ref<Map<string, FlowEditorPort>>(new Map())
 
-  const activeEditorRef = ref<FlowEditorExpose | null>(null)
+  const activeEditorRef = ref<FlowEditorPort | null>(null)
 
   const makeTabTitle = (tab: FlowTab, index: number) => tab.title || `流程 ${index + 1}`
 

@@ -1,20 +1,14 @@
 <script setup lang="ts">
-import {computed, ref, onMounted, onUnmounted} from 'vue'
-import { ElMessage } from 'element-plus'
 import {
   Bot, Settings, RefreshCw, Loader2,
   Minimize2, Maximize2,
   Save, Bell, Settings as SettingsIcon, Bug
 } from 'lucide-vue-next'
-import {resourceApi} from '@/services/api'
-import { useAppConfigStore } from '@/stores/appConfig'
-import type { ResourceProfile, ResourceFileInfo } from '@/services/api'
 import type { FlowBusinessData, TemplateImage } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { SpacingKey, LayoutAlgorithm, LayoutDirection } from '@/utils/flowTypes'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
-import { usePreloadCache } from '@/composables/usePreloadCache'
-import { useSystemState } from '@/composables/useSystemState'
+import { useInfoPanelVm } from '@/composables/viewModels/useInfoPanelVm'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
 import AppSettingsModal from './Modals/AppSettingsModal.vue'
@@ -25,7 +19,6 @@ import AgentManager from './InfoPanel/AgentManager.vue'
 import Dropdown from './Common/Dropdown.vue'
 import StatusIndicator from './Common/StatusIndicator.vue'
 
-// --- Props & Emits ---
 const props = defineProps<{
   tabs?: FlowTab[]
   nodeCount?: number
@@ -49,13 +42,6 @@ interface FlowTab {
   resourceFile: string
 }
 
-const openedFileIds = computed(() => {
-  if (!props.tabs) return []
-  return props.tabs
-    .filter(tab => tab.resourceFile)
-    .map(tab => tab.resourceFile)
-})
-
 const emit = defineEmits<{
   'load-nodes': [payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }]
   'load-images': [payload: Record<string, TemplateImage[]>, basePath?: string]
@@ -70,175 +56,39 @@ const emit = defineEmits<{
   'open-debug-panel': []
 }>()
 
-// --- Store & Composables ---
-const appConfig = useAppConfigStore()
-
-const systemState = useSystemState((e, payload) => {
-  if (e === 'save-nodes') emit('save-nodes', payload)
-})
-
 const {
-  triggerLoadFromCache,
-  handleFileSelected: handleFileSelectedFromCache
-} = usePreloadCache({
-  tabs: () => props.tabs,
-  selectedResourceFile: () => systemState.selectedResourceFile.value,
-  resourceManagerRef: () => resourceManagerRef.value,
-  emit
-})
-
-// --- View state ---
-const isCollapsed = ref(false)
-const showResourceSettings = ref(false)
-const showCreateFileModal = ref(false)
-const showAppSettings = ref(false)
-const showAnnouncement = ref(false)
-const hasUnreadAnnouncement = ref(true)
-
-// --- Child component refs ---
-const deviceManagerRef = ref<InstanceType<typeof DeviceManager> | null>(null)
-const resourceManagerRef = ref<InstanceType<typeof ResourceManager> | null>(null)
-const agentManagerRef = ref<InstanceType<typeof AgentManager> | null>(null)
-
-// --- Sync child state for collapsed template ---
-const dmStatus = ref('disconnected')
-const dmMessage = ref('设备未连接')
-const rmStatus = ref('disconnected')
-const rmMessage = ref('资源未连接')
-const rmFileOptions = ref<{label: string; value: PropertyKey; disabled?: boolean}[]>([])
-const rmAvailableFilesLen = ref(0)
-const amStatus = ref('disconnected')
-const amMessage = ref('Agent 未连接')
-
-let syncTimer: ReturnType<typeof setInterval> | null = null
-const syncChildState = () => {
-  const dm = deviceManagerRef.value
-  if (dm) {
-    dmStatus.value = dm.status ?? 'disconnected'
-    dmMessage.value = dm.message ?? '设备未连接'
-  }
-  const rm = resourceManagerRef.value
-  if (rm) {
-    rmStatus.value = rm.status ?? 'disconnected'
-    rmMessage.value = rm.message ?? '资源未连接'
-    rmFileOptions.value = rm.fileOptions ?? []
-    rmAvailableFilesLen.value = (rm.availableFiles as any)?.length ?? 0
-  }
-  const am = agentManagerRef.value
-  if (am) {
-    amStatus.value = am.status ?? 'disconnected'
-    amMessage.value = am.message ?? 'Agent 未连接'
-  }
-}
-
-// --- Wrapped composable methods ---
-const handleSaveNodes = async () => {
-  await systemState.handleSaveNodes(resourceManagerRef.value)
-}
-
-const executeFileSwitch = async (filename: string, source?: string) => {
-  await systemState.executeFileSwitch(filename, source, resourceManagerRef.value)
-}
-
-const triggerLoadFromCacheWrapper = (config: { filename: string; source: string; tabId: string }) => {
-  triggerLoadFromCache(config)
-}
-
-const handleFileSelected = (payload: { filename: string; source: string }) => {
-  handleFileSelectedFromCache(payload)
-}
+  appConfig,
+  systemState,
+  isCollapsed,
+  showResourceSettings,
+  showCreateFileModal,
+  showAppSettings,
+  showAnnouncement,
+  hasUnreadAnnouncement,
+  resourceManagerRef,
+  resourceStatus,
+  deviceStatus,
+  agentStatus,
+  openedFileIds,
+  editableProfiles,
+  handleResourceStatus,
+  handleDeviceStatus,
+  handleAgentStatus,
+  handleSaveNodes,
+  executeFileSwitch,
+  triggerLoadFromCacheWrapper,
+  handleFileSelected,
+  handleDeviceConnected,
+  handleConfigChanged,
+  handleCreateFile,
+  handleFetchSystemState,
+  saveResourceSettings,
+  handleAppSettingsSave,
+  handleAnnouncementClose,
+  handleCollapsedFileChange
+} = useInfoPanelVm(props, emit)
 
 defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: triggerLoadFromCacheWrapper })
-
-// --- Child component event handlers ---
-const handleDeviceConnected = (status: boolean) => {
-  emit('device-connected', status)
-}
-
-const handleConfigChanged = () => {
-  void appConfig.saveToBackend()
-}
-
-const handleCreateFile = async ({path, filename}: { path: string; filename: string }) => {
-  const rm = resourceManagerRef.value
-  if (!rm) return
-  try {
-    rm.setMessage('创建文件中...')
-    await resourceApi.createFile(path, filename)
-    showCreateFileModal.value = false
-    await rm.handleResourceLoad()
-    const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
-    const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
-    const availFiles = rm.availableFiles as ResourceFileInfo[]
-    const newFileObj = availFiles.find(f =>
-      f.value === simpleName &&
-      f.source?.replace(/\\/g, '/').toLowerCase() === normalizedPath
-    )
-    if (newFileObj && newFileObj.value) {
-      await executeFileSwitch(newFileObj.value, newFileObj.source)
-      rm.setMessage('新建成功并已加载')
-    }
-  } catch (e: unknown) {
-    console.error(e)
-    ElMessage.error(`创建失败: ${e instanceof Error ? e.message : '未知错误'}`)
-    rm.setMessage('创建失败')
-  }
-}
-
-// --- Initialization ---
-const handleFetchSystemState = async () => {
-  await systemState.fetchSystemState()
-}
-
-onMounted(async () => {
-  await handleFetchSystemState()
-  setTimeout(() => {
-    syncChildState()
-    syncTimer = setInterval(syncChildState, 200)
-  }, 100)
-})
-
-onUnmounted(() => {
-  if (syncTimer) { clearInterval(syncTimer); syncTimer = null }
-})
-
-type EditableProfile = ResourceProfile & { paths: string[] }
-
-const editableProfiles = computed<EditableProfile[]>(() =>
-  appConfig.resource.profiles.map(p => ({
-    ...p,
-    paths: p.paths || []
-  }))
-)
-
-const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: number }) => {
-  void appConfig.updateResourceProfiles(data.profiles, data.index)
-  showResourceSettings.value = false
-}
-
-const handleAppSettingsSave = (payload: {
-  edgeType: EdgeType
-  spacing: SpacingKey
-  layoutAlgorithm: LayoutAlgorithm
-  layoutDirection: LayoutDirection
-  pipelineVersion: 'V1' | 'V2'
-  lowMemoryMode: boolean
-}) => {
-  appConfig.updateCanvasSettings({
-    edgeType: payload.edgeType,
-    spacing: payload.spacing,
-    layoutAlgorithm: payload.layoutAlgorithm,
-    layoutDirection: payload.layoutDirection,
-    pipelineVersion: payload.pipelineVersion,
-    lowMemoryMode: payload.lowMemoryMode
-  })
-  showAppSettings.value = false
-}
-
-const handleAnnouncementClose = () => {
-  hasUnreadAnnouncement.value = false
-  showAnnouncement.value = false
-}
 </script>
 
 <template>
@@ -254,20 +104,20 @@ const handleAnnouncementClose = () => {
       >
         <div
           class="flex items-center gap-1.5"
-          :title="dmMessage"
+          :title="deviceStatus.message"
         >
           <StatusIndicator
-            :status="dmStatus"
+            :status="deviceStatus.status"
             :size="12"
           />
           <span class="text-xs font-bold text-slate-600 max-w-[80px] truncate">{{
-            dmStatus === 'connected' ? '设备' : '无设备'
+            deviceStatus.status === 'connected' ? '设备' : '无设备'
           }}</span>
         </div>
         <div class="w-px h-4 bg-slate-200" />
         <div class="flex items-center gap-1.5 min-w-0">
           <StatusIndicator
-            :status="rmStatus"
+            :status="resourceStatus.status"
             :size="12"
           />
           <div class="flex items-center gap-1 min-w-0">
@@ -279,20 +129,11 @@ const handleAnnouncementClose = () => {
             <div class="min-w-[120px] max-w-[160px]">
               <Dropdown
                 :model-value="systemState.selectedResourceFile.value"
-                :options="rmFileOptions"
-                :disabled="rmStatus !== 'connected' || rmAvailableFilesLen === 0"
+                :options="resourceStatus.fileOptions"
+                :disabled="resourceStatus.status !== 'connected' || resourceStatus.availableFilesLength === 0"
                 placeholder="未加载资源"
                 size="xs"
-                @update:model-value="(v: PropertyKey) => {
-                  const fileId = String(v)
-                  if (fileId === systemState.selectedResourceFile.value) return
-                  const rm = resourceManagerRef
-                  if (!rm) return
-                  const fileObj = rm.findFileById(fileId)
-                  if (!fileObj || !fileObj.value) return
-                  emit('update:selected-resource-file', fileId)
-                  void executeFileSwitch(fileObj.value, fileObj.source)
-                }"
+                @update:model-value="handleCollapsedFileChange"
               />
             </div>
           </div>
@@ -300,14 +141,14 @@ const handleAnnouncementClose = () => {
         <div class="w-px h-4 bg-slate-200" />
         <div
           class="flex items-center gap-1"
-          :title="amMessage"
+          :title="agentStatus.message"
         >
           <Bot
             :size="14"
-            :class="amStatus === 'connected' ? 'text-violet-500' : 'text-slate-400'"
+            :class="agentStatus.status === 'connected' ? 'text-violet-500' : 'text-slate-400'"
           />
           <StatusIndicator
-            :status="amStatus"
+            :status="agentStatus.status"
             :size="10"
           />
         </div>
@@ -422,9 +263,9 @@ const handleAnnouncementClose = () => {
 
         <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
           <DeviceManager
-            ref="deviceManagerRef"
             :is-connected="appConfig.system.status === 'connected'"
             @device-connected="handleDeviceConnected"
+            @status-change="handleDeviceStatus"
           />
 
           <ResourceManager
@@ -442,9 +283,10 @@ const handleAnnouncementClose = () => {
             @open-create-file="showCreateFileModal = true"
             @restore-tabs="(tabs) => emit('restore-tabs', tabs)"
             @clear-tabs="emit('clear-tabs')"
+            @status-change="handleResourceStatus"
           />
 
-          <AgentManager ref="agentManagerRef" />
+          <AgentManager @status-change="handleAgentStatus" />
 
           <section class="space-y-2">
             <div class="flex items-center justify-between text-xs mb-1">

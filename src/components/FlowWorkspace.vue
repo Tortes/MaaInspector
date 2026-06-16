@@ -1,159 +1,39 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, ref } from 'vue'
+import { defineAsyncComponent } from 'vue'
 import { FileJson, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
-import { useTabManager } from '@/composables/useTabManager'
-import { useMainAppState } from '@/composables/useMainAppState'
-import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
-import type { FlowBusinessData } from '@/utils/flowTypes'
+import { useFlowWorkspaceVm } from '@/composables/viewModels/useFlowWorkspaceVm'
+import type { FlowEditorPort } from '@/composables/viewModels/types'
 
 const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
-
-type FlowEditorExpose = {
-  loadResourceFile: (fileId: string) => Promise<void>
-  handleLoadNodesWrapper: (payload: { filename: string; source: string; nodes: Record<string, unknown>; fileVersion?: 'V1' | 'V2' }) => Promise<void>
-  handleLoadImages: (imageDataMap: Record<string, unknown>, basePath?: string) => void
-  handleSaveNodes: (payload: { source: string; filename: string }) => Promise<void>
-  handleDeviceConnected: (val: boolean) => void
-  handleUpdateCanvasConfig: (payload: { edgeType?: string; spacing?: string; layoutAlgorithm?: string; layoutDirection?: string }) => void
-  handleUpdatePipelineVersion: (val: 'V1' | 'V2') => void
-  handleLocateNode: (nodeId: string) => void
-  handleDebugNodeFromPanel: (nodeId: string) => void
-  handleUpdateNodeStatus: (payload: { nodeId: string; status: unknown }) => void
-}
-
-type InfoPanelExpose = {
-  executeFileSwitch: (filename: string, source?: string) => Promise<void>
-  handleSaveNodes: () => Promise<void>
-  triggerLoadFromCache: (config: { filename: string; source: string; tabId: string }) => void
-}
-
-interface DebugPanelState {
-  visible: boolean
-  nodeId: string
-}
 
 const {
   tabs,
   activeTabId,
   appSettings,
-  editorRefs,
   makeTabTitle,
-  selectTab: tabManagerSelectTab,
-  addTab: tabManagerAddTab,
-  closeTab: tabManagerCloseTab,
-  updateTabResourceFile,
-  restoreTabsFromResource,
-  resetToInitialState,
-  ensureWorkspaceTab
-} = useTabManager()
-
-const { updateTabs, clearTabs: clearMainTabs } = useMainAppState()
-
-const infoPanelRef = ref<InfoPanelExpose | null>(null)
-const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
-
-const activeTab = computed(() => tabs.value.items.find(t => t.id === activeTabId.value) || tabs.value.items[0] || null)
-const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
-
-const selectTab = (tabId: string) => {
-  tabManagerSelectTab(tabId)
-
-  const targetTab = tabs.value.items.find(t => t.id === tabId)
-  if (!targetTab?.resourceFile) return
-
-  const infoPanel = infoPanelRef.value
-  if (infoPanel?.triggerLoadFromCache) {
-    const [source, filename] = targetTab.resourceFile.split('|')
-    infoPanel.triggerLoadFromCache({
-      filename,
-      source,
-      tabId
-    })
-  }
-}
-
-const addTab = () => {
-  tabManagerAddTab()
-}
-
-const closeTab = (tabId: string) => {
-  tabManagerCloseTab(tabId)
-}
-
-const handleRequestSwitchFile = async (payload: { filename: string; source: string }) => {
-  await infoPanelRef.value?.executeFileSwitch?.(payload.filename, payload.source)
-}
-
-const openDebugPanel = (payload?: { nodeId?: string }) => {
-  debugPanel.value = {
-    visible: true,
-    nodeId: payload?.nodeId || ''
-  }
-}
-
-const closeDebugPanel = () => {
-  debugPanel.value = { visible: false, nodeId: '' }
-}
-
-const handleLoadNodes = async (payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }) => {
-  const tab = ensureWorkspaceTab()
-  await nextTick()
-  const targetEditor = editorRefs.value.get(tab.id)
-  if (!targetEditor) return
-  await targetEditor.handleLoadNodesWrapper(payload)
-  const resourceFile = `${payload.source}|${payload.filename}`
-  updateTabResourceFile(tab.id, resourceFile, payload.filename)
-}
-
-const handleLoadImages = (payload: Record<string, unknown>, basePath?: string) => {
-  activeEditorRef.value?.handleLoadImages(payload, basePath)
-}
-
-const handleUpdateCanvasConfig = (payload: {
-  edgeType?: string
-  spacing?: string
-  layoutAlgorithm?: string
-  layoutDirection?: string
-}) => {
-  activeEditorRef.value?.handleUpdateCanvasConfig(payload)
-}
-
-const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {
-  activeEditorRef.value?.handleUpdatePipelineVersion(val)
-}
-
-const handleRestoreTabs = async (lastTabs: TabResourceInfo[]) => {
-  restoreTabsFromResource(lastTabs)
-
-  await nextTick()
-  for (let i = 0; i < lastTabs.length; i++) {
-    const tab = tabs.value.items[i]
-    if (tab && lastTabs[i].resourceFile) {
-      const editor = editorRefs.value.get(tab.id)
-      if (editor) {
-        try {
-          await editor.loadResourceFile(lastTabs[i].resourceFile)
-        } catch (error) {
-          console.warn(`Failed to load resource for tab ${tab.title}`, error)
-          tabManagerCloseTab(tab.id)
-        }
-      }
-    }
-  }
-
-  updateTabs(tabs.value.items, activeTabId.value)
-}
-
-const handleClearTabs = () => {
-  resetToInitialState()
-  clearMainTabs()
-}
-
-const handleDeviceConnected = (val: boolean) => {
-  activeEditorRef.value?.handleDeviceConnected(val)
-}
+  infoPanelRef,
+  debugPanel,
+  activeTab,
+  activeEditorRef,
+  activeEditorStatus,
+  registerEditor,
+  registerActiveEditor,
+  selectTab,
+  addTab,
+  closeTab,
+  handleRequestSwitchFile,
+  openDebugPanel,
+  closeDebugPanel,
+  handleLoadNodes,
+  handleLoadImages,
+  handleUpdateCanvasConfig,
+  handleUpdatePipelineVersion,
+  handleRestoreTabs,
+  handleClearTabs,
+  handleDeviceConnected
+} = useFlowWorkspaceVm()
 </script>
 
 <template>
@@ -202,7 +82,7 @@ const handleDeviceConnected = (val: boolean) => {
       <FlowEditor
         v-if="appSettings.lowMemoryMode && activeTab"
         :key="activeTab.id"
-        :ref="(el: any) => { if (el) editorRefs.set(activeTabId, el as FlowEditorExpose); else editorRefs.delete(activeTabId) }"
+        :ref="(el: any) => registerActiveEditor(el as FlowEditorPort | null)"
         :tab-id="activeTab.id"
         :debug-panel-visible="debugPanel.visible"
         @request-switch-file="handleRequestSwitchFile"
@@ -218,7 +98,7 @@ const handleDeviceConnected = (val: boolean) => {
           v-for="tab in tabs.items"
           v-show="tab.id === activeTabId"
           :key="tab.id"
-          :ref="(el: any) => { if (el) editorRefs.set(tab.id, el as FlowEditorExpose); else editorRefs.delete(tab.id) }"
+          :ref="(el: any) => registerEditor(tab.id, el as FlowEditorPort | null)"
           :tab-id="tab.id"
           :debug-panel-visible="debugPanel.visible"
           @request-switch-file="handleRequestSwitchFile"
@@ -251,6 +131,9 @@ const handleDeviceConnected = (val: boolean) => {
           :tabs="tabs.items"
           :current-filename="activeTab?.title || ''"
           :selected-resource-file="activeTab?.resourceFile || ''"
+          :node-count="activeEditorStatus.nodeCount"
+          :edge-count="activeEditorStatus.edgeCount"
+          :is-dirty="activeEditorStatus.isDirty"
           :edge-type="appSettings.edgeType"
           :spacing="appSettings.spacing"
           :layout-algorithm="appSettings.layoutAlgorithm"

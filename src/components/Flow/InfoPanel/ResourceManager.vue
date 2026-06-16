@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, watchEffect } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Database, HardDrive, Settings, RefreshCw, FilePlus,
@@ -34,7 +34,8 @@ const emit = defineEmits([
   'open-settings',
   'open-create-file',
   'restore-tabs',
-  'clear-tabs'
+  'clear-tabs',
+  'status-change'
 ])
 
 // 内部状态 (当 props 未提供时使用)
@@ -88,6 +89,15 @@ const fileOptions = computed<DropdownOption[]>(() => {
   })
 })
 
+watchEffect(() => {
+  emit('status-change', {
+    status: status.value,
+    message: message.value,
+    fileOptions: fileOptions.value,
+    availableFilesLength: availableFiles.value.length
+  })
+})
+
 const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
   (profiles || []).map(p => ({
     ...p,
@@ -117,19 +127,18 @@ const handleResourceLoad = async () => {
       
       appConfig.markResourceLoaded()
 
-      const validFileIds = new Set(
-        availableFiles.value
-          .filter(file => file.value)
-          .map(file => makeFileId(file.source, file.value))
-      )
-      const restoredTabs = appConfig.restoreLastWorkspace(validFileIds)
-      if (restoredTabs.length > 0) {
-        emit('restore-tabs', restoredTabs)
-        return
+      if (!props.openedFileIds || props.openedFileIds.length === 0) {
+        const validFileIds = new Set(
+          availableFiles.value
+            .filter(file => file.value)
+            .map(file => makeFileId(file.source, file.value))
+        )
+        const restoredTabs = appConfig.restoreLastWorkspace(validFileIds)
+        if (restoredTabs.length > 0) {
+          emit('restore-tabs', restoredTabs)
+          return
+        }
       }
-
-      emit('clear-tabs')
-      emit('update:selectedFile', '')
     }
   } catch (e: unknown) {
     console.error("资源加载流程异常", e)

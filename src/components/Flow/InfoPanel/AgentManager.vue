@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Bot, Loader2 } from 'lucide-vue-next'
 import { agentApi } from '@/services/api'
 import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
+
+const emit = defineEmits<{
+  'status-change': [snapshot: { status: 'disconnected' | 'connecting' | 'connected' | 'failed'; message: string }]
+}>()
 
 // 状态
 const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
@@ -50,6 +54,13 @@ defineExpose({
   status,
   message
 })
+
+watch([status, message], () => {
+  emit('status-change', {
+    status: status.value,
+    message: message.value
+  })
+}, { immediate: true })
 </script>
 
 <template>
