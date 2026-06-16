@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { EdgeMouseEvent, NodeMouseEvent } from '@vue-flow/core'
-import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType } from '@/utils/flowTypes'
+import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType, TemplateImage } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
 import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '@/utils/typeGuards'
 
@@ -31,6 +31,11 @@ export interface EditorActionsDeps {
   markDataChanged: () => void
   fitView: (options?: Record<string, unknown>) => void
   screenToFlowCoordinate: (pos: { x: number; y: number }) => { x: number; y: number }
+  getSelectedNodes: { value: FlowNode[] }
+  imageManager: {
+    getNodeImages: (nodeId: string) => TemplateImage[]
+    setNodeImages: (nodeId: string, images: TemplateImage[]) => void
+  }
   snapshotState: () => void
   onDebugNode: (nodeId: string, mode: 'standard' | 'recognition_only') => void
   onOpenDebugPanel: (payload?: { nodeId?: string }) => void
@@ -38,16 +43,23 @@ export interface EditorActionsDeps {
   onIncrementCloseAllDetails: () => void
 }
 
+interface ClipboardNode {
+  data: FlowBusinessData
+  position: { x: number; y: number }
+  images: TemplateImage[]
+}
+
 export function useEditorActions(deps: EditorActionsDeps) {
   const {
     nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
     isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
     layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
-    snapshotState, onDebugNode, onOpenDebugPanel, onCloseDebugPanel, onIncrementCloseAllDetails
+    getSelectedNodes, imageManager, snapshotState, onDebugNode, onOpenDebugPanel, onCloseDebugPanel, onIncrementCloseAllDetails
   } = deps
 
   const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
   const searchVisible = ref(false)
+  const copiedNodes = ref<ClipboardNode[]>([])
 
   const closeMenu = () => { menu.value.visible = false }
 
@@ -79,6 +91,79 @@ export function useEditorActions(deps: EditorActionsDeps) {
   }
 
   const isFlowNodeData = (value: MenuData): value is FlowNode => !!value && 'position' in value
+
+  const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+
+  const createUniqueNodeId = () => {
+    let id = `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    while (nodes.value.some(node => node.id === id)) {
+      id = `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    }
+    return id
+  }
+
+  const toClipboardNode = (node: FlowNode): ClipboardNode | null => {
+    if (!node.data?.data || !node.position) return null
+    const data = clone(node.data.data)
+    delete (data as Record<string, unknown>).next
+    delete (data as Record<string, unknown>).on_error
+    delete (data as Record<string, unknown>).timeout_next
+    return {
+      data,
+      position: { ...node.position },
+      images: imageManager.getNodeImages(node.id)
+    }
+  }
+
+  const copyNodesToClipboard = (targetNode?: FlowNode | null): number => {
+    if (!isFileLoaded.value) return 0
+    const selectedNodes = getSelectedNodes.value
+    const shouldCopySelection = targetNode
+      ? selectedNodes.some(node => node.id === targetNode.id)
+      : selectedNodes.length > 0
+    const sourceNodes = shouldCopySelection
+      ? selectedNodes
+      : (targetNode ? [targetNode] : [])
+    const normalized = sourceNodes
+      .filter(node => !node.data?._isMissing)
+      .map(toClipboardNode)
+      .filter((node): node is ClipboardNode => !!node)
+
+    copiedNodes.value = normalized
+    return normalized.length
+  }
+
+  const pasteNodesFromClipboard = (position?: { x: number; y: number } | null): FlowNode[] => {
+    if (!isFileLoaded.value || copiedNodes.value.length === 0) return []
+    const pastePosition = position || menu.value.flowPos
+    if (!pastePosition) return []
+
+    const minX = Math.min(...copiedNodes.value.map(node => node.position.x))
+    const minY = Math.min(...copiedNodes.value.map(node => node.position.y))
+    const nextNodes: FlowNode[] = []
+
+    copiedNodes.value.forEach((clipboardNode) => {
+      const nodeId = createUniqueNodeId()
+      const copyData = { ...clone(clipboardNode.data), id: nodeId }
+      const newNode = createNodeObject(nodeId, copyData)
+      newNode.position = {
+        x: pastePosition.x + (clipboardNode.position.x - minX),
+        y: pastePosition.y + (clipboardNode.position.y - minY)
+      }
+      nextNodes.push(newNode)
+      if (clipboardNode.images.length > 0) {
+        imageManager.setNodeImages(nodeId, clone(clipboardNode.images))
+      }
+    })
+
+    nodes.value = [
+      ...nodes.value.map(node => ({ ...node, selected: false })),
+      ...nextNodes.map(node => ({ ...node, selected: true }))
+    ]
+    markDataChanged()
+    snapshotState()
+    return nextNodes
+  }
 
   type MenuAction = {
     action: string
@@ -120,21 +205,12 @@ export function useEditorActions(deps: EditorActionsDeps) {
       case 'edit':
         break
       case 'duplicate':
-        if (type === 'node' && isFlowNodeData(data) && data.data?.data && data.position) {
-          const copyId = `N-${Date.now()}`
-          const sourceData = data.data.data
-          const sourceMeta = data.data
-          const copyData: FlowBusinessData = { ...JSON.parse(JSON.stringify(sourceData)), id: copyId }
-          delete (copyData as Record<string, unknown>).next
-          delete (copyData as Record<string, unknown>).on_error
-          const copyNode = createNodeObject(copyId, copyData)
-          if (sourceMeta._images?.length && copyNode.data) {
-            copyNode.data._images = JSON.parse(JSON.stringify(sourceMeta._images))
-          }
-          copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
-          nodes.value = [...nodes.value, copyNode]
-          markDataChanged()
+        if (type === 'node' && isFlowNodeData(data)) {
+          copyNodesToClipboard(data)
         }
+        break
+      case 'paste':
+        pasteNodesFromClipboard(menu.value.flowPos)
         break
       case 'delete':
         if (type === 'node' && data?.id) {
@@ -210,6 +286,8 @@ export function useEditorActions(deps: EditorActionsDeps) {
     onNodeContextMenu,
     onEdgeContextMenu,
     handleMenuAction,
+    copyNodesToClipboard,
+    pasteNodesFromClipboard,
     isFlowNodeData
   }
 }

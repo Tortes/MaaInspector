@@ -127,23 +127,56 @@ export function useDebugPanelState() {
     if (!payload) return
     const nextList = Array.isArray(payload.next_list) ? payload.next_list : []
     const taskId = payload.task_id || Date.now()
-    const record = {
-      recordId: createRecordId(taskId),
-      taskId,
-      name: payload.name || '未知节点',
-      nextList: nextList.map(child => {
+    const recordName = payload.name || '未知节点'
+    const normalizedNextList: NextChild[] = nextList.map(child => {
+      const childName = child?.name || 'Unknown'
+      return {
+        ...child,
+        name: childName,
+        status: STATUS.UNKNOWN,
+        reco_id: child.reco_id ?? null
+      }
+    })
+
+    const updatedEvents = [...events.value]
+    const existingIndex = updatedEvents.findIndex(evt => evt.taskId === taskId && evt.name === recordName)
+
+    if (existingIndex !== -1) {
+      const existing = updatedEvents[existingIndex]
+      const mergedNextList: NextChild[] = normalizedNextList.map(child => {
         const childName = child?.name || 'Unknown'
+        const existingChild = existing.nextList.find(item => item.name === childName)
         return {
+          ...existingChild,
           ...child,
           name: childName,
-          status: STATUS.UNKNOWN,
-          reco_id: child.reco_id ?? null
+          status: existingChild?.status ?? child.status ?? STATUS.UNKNOWN,
+          reco_id: child.reco_id ?? existingChild?.reco_id ?? null
         }
-      }),
-      timestamp: payload.timestamp || Date.now()
+      })
+
+      existing.nextList.forEach(existingChild => {
+        if (!mergedNextList.some(child => child.name === existingChild.name)) {
+          mergedNextList.push(existingChild)
+        }
+      })
+
+      updatedEvents[existingIndex] = {
+        ...existing,
+        nextList: mergedNextList,
+        timestamp: payload.timestamp || existing.timestamp
+      }
+    } else {
+      updatedEvents.unshift({
+        recordId: createRecordId(taskId),
+        taskId,
+        name: recordName,
+        nextList: normalizedNextList,
+        timestamp: payload.timestamp || Date.now()
+      })
     }
 
-    events.value = [record, ...events.value].slice(0, 200)
+    events.value = updatedEvents.slice(0, 200)
 
     if (nextList.length && nodes) {
       const targetNames = new Set(nextList.map(child => child.name).filter(Boolean))

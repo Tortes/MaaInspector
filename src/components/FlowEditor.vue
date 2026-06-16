@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
-import { VueFlow } from '@vue-flow/core'
+import { SelectionMode, VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { FolderSearch } from 'lucide-vue-next'
@@ -78,6 +78,10 @@ defineExpose(editorPort)
       :nodes-draggable="isFileLoaded"
       :nodes-connectable="isFileLoaded"
       :elements-selectable="isFileLoaded"
+      selection-key-code="Control"
+      :multi-selection-key-code="null"
+      :select-nodes-on-drag="true"
+      :selection-mode="SelectionMode.Partial"
       :pan-on-drag="true"
       @connect="(params) => { handleConnect(params) }"
       @edges-change="(changes) => { handleEdgesChange(changes) }"
@@ -160,4 +164,13 @@ defineExpose(editorPort)
 @import '@vue-flow/core/dist/style.css';
 @import '@vue-flow/controls/dist/style.css';
 .vue-flow__panel { pointer-events: none; }
+.vue-flow__selection {
+  background: rgb(59 130 246 / 0.12);
+  border: 1px solid rgb(37 99 235 / 0.85);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7) inset;
+}
+.vue-flow__pane.selection {
+  cursor: crosshair;
+}
 </style>

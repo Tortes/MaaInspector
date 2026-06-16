@@ -43,9 +43,15 @@ pub fn run_task(
     if let Some(broker) = event_broker {
         let broker_clone = Arc::clone(broker);
 
+        eprintln!("[ContextSink] Clearing existing context sinks before registering debug sink");
         tasker_ref.clear_context_sinks();
 
-        let _ = tasker_ref.add_context_sink(move |msg, details| {
+        eprintln!("[ContextSink] Registering MaaFramework context sink for debug events");
+        if let Err(e) = tasker_ref.add_context_sink(move |msg, details| {
+            eprintln!("[ContextSink] ===== MaaFramework context signal received =====");
+            eprintln!("[ContextSink] Raw msg: {}", msg);
+            eprintln!("[ContextSink] Raw details: {}", details);
+
             let noti_type = if msg.ends_with(".Starting") {
                 "starting"
             } else if msg.ends_with(".Succeeded") {
@@ -55,11 +61,30 @@ pub fn run_task(
             } else {
                 "unknown"
             };
+            eprintln!(
+                "[ContextSink] Notification type resolved from msg suffix: {}",
+                noti_type
+            );
 
-            let detail: serde_json::Value =
-                serde_json::from_str(details).unwrap_or(serde_json::Value::Null);
+            let detail: serde_json::Value = match serde_json::from_str::<serde_json::Value>(details)
+            {
+                Ok(value) => {
+                    let pretty = serde_json::to_string_pretty::<serde_json::Value>(&value)
+                        .unwrap_or_else(|_| value.to_string());
+                    eprintln!("[ContextSink] Details parsed as JSON:\n{}", pretty);
+                    value
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[ContextSink] Failed to parse details as JSON: {}. Using null detail",
+                        e
+                    );
+                    serde_json::Value::Null
+                }
+            };
 
             if msg.starts_with("Node.NextList") {
+                eprintln!("[ContextSink] Trigger type matched: Node.NextList");
                 let task_id =
                     detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let name = detail
@@ -91,8 +116,34 @@ pub fn run_task(
                     .unwrap_or_default();
 
                 let focus = detail.get("focus").cloned();
+                eprintln!(
+                    "[ContextSink] Node.NextList extracted fields: task_id={}, name=\"{}\", next_list_len={}, has_focus={}",
+                    task_id,
+                    name,
+                    next_list.len(),
+                    focus.is_some()
+                );
+                for (idx, (next_name, jump_back, anchor)) in next_list.iter().enumerate() {
+                    eprintln!(
+                        "[ContextSink] Node.NextList item[{}]: name=\"{}\", jump_back={}, anchor={}",
+                        idx,
+                        next_name,
+                        jump_back,
+                        anchor
+                    );
+                }
+                if let Some(focus_value) = &focus {
+                    let focus_pretty =
+                        serde_json::to_string_pretty::<serde_json::Value>(focus_value)
+                        .unwrap_or_else(|_| focus_value.to_string());
+                    eprintln!("[ContextSink] Node.NextList focus:\n{}", focus_pretty);
+                }
+                eprintln!(
+                    "[ContextSink] Dispatching Node.NextList to DebugEventBroker for frontend emit"
+                );
                 broker_clone.emit_node_next_list(task_id, name, next_list, focus);
             } else if msg.starts_with("Node.Recognition") {
+                eprintln!("[ContextSink] Trigger type matched: Node.Recognition");
                 let task_id =
                     detail.get("task_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let reco_id =
@@ -104,6 +155,23 @@ pub fn run_task(
                     .to_string();
                 let focus = detail.get("focus").cloned();
 
+                eprintln!(
+                    "[ContextSink] Node.Recognition extracted fields: task_id={}, reco_id={}, name=\"{}\", status={}, has_focus={}",
+                    task_id,
+                    reco_id,
+                    name,
+                    noti_type,
+                    focus.is_some()
+                );
+                if let Some(focus_value) = &focus {
+                    let focus_pretty =
+                        serde_json::to_string_pretty::<serde_json::Value>(focus_value)
+                        .unwrap_or_else(|_| focus_value.to_string());
+                    eprintln!("[ContextSink] Node.Recognition focus:\n{}", focus_pretty);
+                }
+                eprintln!(
+                    "[ContextSink] Dispatching Node.Recognition to DebugEventBroker for frontend emit"
+                );
                 broker_clone.emit_node_recognition(
                     task_id,
                     reco_id,
@@ -111,8 +179,20 @@ pub fn run_task(
                     noti_type.to_string(),
                     focus,
                 );
+            } else {
+                eprintln!(
+                    "[ContextSink] Trigger type unmatched. No frontend event emitted for msg: {}",
+                    msg
+                );
             }
-        });
+            eprintln!("[ContextSink] ===== MaaFramework context signal handling finished =====");
+        }) {
+            eprintln!("[ContextSink] Failed to register MaaFramework context sink: {}", e);
+        } else {
+            eprintln!("[ContextSink] MaaFramework context sink registered successfully");
+        }
+    } else {
+        eprintln!("[ContextSink] DebugEventBroker is not initialized; context sink not registered");
     }
 
     match tasker_ref.post_task_json(entry, &pipeline_override) {

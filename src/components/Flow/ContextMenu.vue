@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed, ref, onMounted, nextTick, type Component} from 'vue'
 import {
-  Trash2, Copy, PlusCircle, RefreshCw, XCircle, ChevronRight,
+  Trash2, Copy, ClipboardPaste, PlusCircle, RefreshCw, XCircle, ChevronRight,
   Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
 } from 'lucide-vue-next'
 import { recognitionMenuOptions } from '@/utils/node-config'
@@ -178,6 +178,8 @@ const menuItems = computed<MenuItem[]>(() => {
         icon: PlusCircle,
         color: 'text-amber-600'
       },
+      {type: 'divider'},
+      {type: 'item', label: '粘贴节点', action: 'paste', icon: ClipboardPaste, color: 'text-slate-600'},
       {type: 'divider'},
       searchMenuItem,
       debugMenuItem,

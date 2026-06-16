@@ -53,9 +53,27 @@ impl DebugEventBroker {
                 ..Default::default()
             };
 
+            eprintln!(
+                "[ContextSink] Emitting frontend event \"{}\" with payload: {}",
+                EVENT_NODE_NEXT_LIST,
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| format!("{:?}", payload))
+            );
             if let Err(e) = handle.emit(EVENT_NODE_NEXT_LIST, payload) {
-                eprintln!("Failed to emit node_next_list event: {}", e);
+                eprintln!(
+                    "[ContextSink] Failed to emit frontend event \"{}\": {}",
+                    EVENT_NODE_NEXT_LIST, e
+                );
+            } else {
+                eprintln!(
+                    "[ContextSink] Frontend event \"{}\" emitted successfully",
+                    EVENT_NODE_NEXT_LIST
+                );
             }
+        } else {
+            eprintln!(
+                "[ContextSink] Skipped frontend event \"{}\" because AppHandle is not available",
+                EVENT_NODE_NEXT_LIST
+            );
         }
     }
 
@@ -84,9 +102,27 @@ impl DebugEventBroker {
                 ..Default::default()
             };
 
+            eprintln!(
+                "[ContextSink] Emitting frontend event \"{}\" with payload: {}",
+                EVENT_NODE_RECOGNITION,
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| format!("{:?}", payload))
+            );
             if let Err(e) = handle.emit(EVENT_NODE_RECOGNITION, payload) {
-                eprintln!("Failed to emit node_recognition event: {}", e);
+                eprintln!(
+                    "[ContextSink] Failed to emit frontend event \"{}\": {}",
+                    EVENT_NODE_RECOGNITION, e
+                );
+            } else {
+                eprintln!(
+                    "[ContextSink] Frontend event \"{}\" emitted successfully",
+                    EVENT_NODE_RECOGNITION
+                );
             }
+        } else {
+            eprintln!(
+                "[ContextSink] Skipped frontend event \"{}\" because AppHandle is not available",
+                EVENT_NODE_RECOGNITION
+            );
         }
     }
 }

@@ -40,6 +40,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const closeAllDetailsSignal = ref<number>(0)
   const isBulkLoading = ref(false)
   const pendingFocusNodeId = ref<string | null>(null)
+  const lastPointerPosition = ref<{ x: number; y: number } | null>(null)
 
   provide('closeAllDetailsSignal', closeAllDetailsSignal)
   provide('currentFilename', currentFilename)
@@ -73,6 +74,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
     isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
     layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
+    getSelectedNodes,
+    imageManager,
     snapshotState: () => {},
     onDebugNode: debugRunner.handleDebugNode,
     onOpenDebugPanel: (payload) => options.emit('open-debug-panel', payload),
@@ -80,7 +83,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onIncrementCloseAllDetails: () => { closeAllDetailsSignal.value++ }
   })
 
-  const { menu, searchVisible, closeMenu, onPaneContextMenu, onNodeContextMenu, onEdgeContextMenu, handleMenuAction } = editorActions
+  const { menu, searchVisible, closeMenu, onPaneContextMenu, onNodeContextMenu, onEdgeContextMenu, handleMenuAction, copyNodesToClipboard, pasteNodesFromClipboard } = editorActions
   const {
     loadedFileVersion, isDirtyCombined,
     showSaveModal, isSavingModal, pendingSwitchConfig, showDeleteImagesModal,
@@ -149,10 +152,23 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     pendingSwitchConfig.value = null
   }
 
+  const isEditableTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) return false
+    return target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+  }
+
+  const handlePointerMove = (e: PointerEvent) => {
+    lastPointerPosition.value = { x: e.clientX, y: e.clientY }
+  }
+
   const handleKeyDown = (e: KeyboardEvent) => {
     const isMod = e.ctrlKey || e.metaKey
+    const key = e.key.toLowerCase()
 
-    if (isMod && e.key === 's') {
+    if (isMod && key === 's') {
       e.preventDefault()
       if (isFileLoaded.value && currentFilename.value) {
         handleSaveNodes({ source: currentSource.value, filename: currentFilename.value }, () => {})
@@ -162,9 +178,35 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
       return
     }
 
+    if (isMod && key === 'c') {
+      if (isEditableTarget(e.target)) return
+      e.preventDefault()
+      const count = copyNodesToClipboard()
+      if (count > 0) {
+        ElMessage.success(`已复制 ${count} 个节点`)
+      } else {
+        ElMessage.info('请先选择要复制的节点')
+      }
+      return
+    }
+
+    if (isMod && key === 'v') {
+      if (isEditableTarget(e.target)) return
+      e.preventDefault()
+      const position = lastPointerPosition.value
+        ? screenToFlowCoordinate(lastPointerPosition.value)
+        : null
+      const pastedNodes = pasteNodesFromClipboard(position)
+      if (pastedNodes.length > 0) {
+        ElMessage.success(`已粘贴 ${pastedNodes.length} 个节点`)
+      } else {
+        ElMessage.info('没有可粘贴的节点')
+      }
+      return
+    }
+
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      const target = e.target as HTMLElement
-      if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+      if (!isEditableTarget(e.target)) {
         e.preventDefault()
         const selectedNodes = getSelectedNodes.value
         const selectedEdges = getSelectedEdges.value
@@ -207,10 +249,12 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   onMounted(() => {
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('pointermove', handlePointerMove)
   })
   onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('keydown', handleKeyDown)
+    window.removeEventListener('pointermove', handlePointerMove)
   })
 
   const handleLocateNode = (nodeId: string) => {
