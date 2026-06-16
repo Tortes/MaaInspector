@@ -1,12 +1,11 @@
-use crate::maafw::MaaFrameworkWrapper;
+use super::MaaFrameworkState;
 use crate::response::ApiResponse;
-use tokio::sync::Mutex;
 use tauri::State;
 
 /// Connect to agent
 #[tauri::command]
 pub async fn agent_connect(
-    _maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
+    _maafw: State<'_, MaaFrameworkState>,
     socket_id: String,
 ) -> Result<ApiResponse, String> {
     // Note: AgentClient is not fully implemented in maa-framework-rs yet

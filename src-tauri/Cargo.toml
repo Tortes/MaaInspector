@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # MaaFramework Rust Binding - dynamic linking for packaged app
-# DLL location: exe_dir/MAA-win-x86_64-v5.10.0/bin/MaaFramework.dll
+# DLL location: bundled maa-framework/bin/MaaFramework.dll
 maa-framework = { version = "1", features = ["dynamic"] }
 
 # Async runtime

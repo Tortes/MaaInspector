@@ -12,6 +12,7 @@ use maa_framework::resource::Resource;
 use maa_framework::sys;
 use maa_framework::tasker::Tasker;
 use maa_framework::{set_debug_mode, toolkit::Toolkit};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -68,10 +69,9 @@ pub struct MaaFrameworkWrapper {
 }
 
 impl MaaFrameworkWrapper {
-    pub fn new() -> Self {
-        let target_dir = std::env::current_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("."))
-            .join("target");
+    pub fn new(work_dir: impl AsRef<Path>) -> Self {
+        let target_dir: PathBuf = work_dir.as_ref().join("maa-framework");
+        let _ = std::fs::create_dir_all(&target_dir);
         let _ = Toolkit::init_option(&target_dir.to_string_lossy(), "{}");
 
         let _ = set_debug_mode(true);
@@ -532,6 +532,7 @@ impl MaaFrameworkWrapper {
 
 impl Default for MaaFrameworkWrapper {
     fn default() -> Self {
-        Self::new()
+        let work_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self::new(work_dir)
     }
 }

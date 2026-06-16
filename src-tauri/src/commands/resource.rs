@@ -1,4 +1,4 @@
-use crate::maafw::MaaFrameworkWrapper;
+use super::{maafw_mut, MaaFrameworkState};
 use crate::resources::ResourcesManager;
 use crate::response::{ApiResponse, FileNodesResponse, ResourceLoadResponse};
 use tokio::sync::Mutex;
@@ -7,7 +7,7 @@ use tauri::State;
 /// Load resource paths
 #[tauri::command]
 pub async fn resource_load(
-    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
+    maafw: State<'_, MaaFrameworkState>,
     resources_manager: State<'_, Mutex<Option<ResourcesManager>>>,
     paths: Vec<String>,
 ) -> Result<ResourceLoadResponse, String> {
@@ -19,6 +19,7 @@ pub async fn resource_load(
     // Try loading into MaaFramework
     let (maafw_ok, maafw_msg) = {
         let mut fw = maafw.lock().await;
+        let fw = maafw_mut(&mut fw)?;
         fw.load_resource_async(&paths).await
     };
 

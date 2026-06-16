@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      maa_framework_version:
+        description: 'MaaFramework release version, for example v5.10.0'
+        required: false
+        default: 'v5.10.0'
+      release_tag:
+        description: 'Release tag to build when manually dispatched, for example v0.7.0'
+        required: false
 
 defaults:
   run:
@@ -13,7 +22,7 @@ permissions:
   contents: write
 
 env:
-  MAA_VERSION: "v5.10.0"
+  DEFAULT_MAA_FRAMEWORK_VERSION: "v5.10.0"
 
 jobs:
   build:
@@ -50,30 +59,50 @@ jobs:
           workspaces: "src-tauri -> target"
           cache-on-failure: true
 
-      - name: Download MaaFramework SDK
+      - name: Resolve release inputs
+        id: release
         run: |
-          $url = "https://github.com/MaaXYZ/MaaFramework/releases/download/${{ env.MAA_VERSION }}/MAA-win-x86_64-${{ env.MAA_VERSION }}.zip"
-          $targetPath = "src-tauri/MAA-win-x86_64-${{ env.MAA_VERSION }}"
-
-          if (Test-Path $targetPath) {
-            Remove-Item $targetPath -Recurse -Force
+          $tag = "${{ github.ref_name }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.release_tag }}")) {
+            $tag = "${{ inputs.release_tag }}"
           }
 
-          $zipPath = "MAA-sdk.zip"
-          Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
-          Expand-Archive -Path $zipPath -DestinationPath $targetPath -Force
-          Remove-Item $zipPath
+          if (-not $tag.StartsWith("v")) {
+            throw "Release tag must start with v, got '$tag'"
+          }
 
-          $sdkFullPath = "${{ github.workspace }}\$targetPath"
-          "MAA_SDK_PATH=$sdkFullPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $maaVersion = "${{ env.DEFAULT_MAA_FRAMEWORK_VERSION }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_version }}")) {
+            $maaVersion = "${{ inputs.maa_framework_version }}"
+          }
+          if (-not $maaVersion.StartsWith("v")) {
+            $maaVersion = "v$maaVersion"
+          }
+
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "maa_version=$maaVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "MAA_FRAMEWORK_VERSION=$maaVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare MaaFramework SDK
+        run: .\scripts\prepare-maa-framework.ps1 -Version "${{ steps.release.outputs.maa_version }}"
 
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
       - name: Set version from tag
         run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag.Substring(1)
+          $version = "${{ steps.release.outputs.version }}"
+
+          $pkg = Get-Content package.json | ConvertFrom-Json
+          $pkg.version = $version
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json
+
+          $cargoPath = "src-tauri/Cargo.toml"
+          $cargo = Get-Content $cargoPath -Raw
+          $cargo = $cargo -replace '(?m)^version = ".*"', "version = `"$version`""
+          Set-Content -Path $cargoPath -Value $cargo
+
           $json = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
           $json.version = $version
           $json | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
@@ -81,14 +110,7 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          $tag = "${{ github.ref_name }}"
-          $prevTag = git describe --tags --abbrev=0 --match "v*" "$tag^" 2>$null
-          $range = if ($prevTag) { "$prevTag..$tag" } else { "$tag" }
-          $log = git log $range --pretty=format:"- %s (%h)" --no-merges
-          if (-not $log) { $log = "- (no changes)" }
-
-          $body = "# MaaInspector 更新日志`n`n## $tag`n`n### 变更`n$log`n"
-          $body | Out-File -FilePath "public/changelog.md" -Encoding utf8
+          $body = .\scripts\generate-changelog.ps1 -Tag "${{ steps.release.outputs.tag }}" -Stdout
 
           "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           $body | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -99,8 +121,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "MaaInspector ${{ github.ref_name }}"
+          tagName: ${{ steps.release.outputs.tag }}
+          releaseName: "MaaInspector ${{ steps.release.outputs.tag }}"
           releaseBody: ${{ steps.changelog.outputs.body }}
           prerelease: false
           releaseDraft: false

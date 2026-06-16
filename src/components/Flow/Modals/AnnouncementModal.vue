@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import { Bell, X, Clock, CheckCircle, Sparkles, Bug } from 'lucide-vue-next'
 
-import { changelogContent } from '@/changelog'
+import { changelogContent } from '@/generated/changelog'
+import { parseChangelog } from '@/utils/changelog'
 
 interface AnnouncementProps {
   visible?: boolean
@@ -16,117 +17,7 @@ defineEmits<{
   (e: 'close'): void
 }>()
 
-interface AnnouncementItem {
-  version: string
-  date: string
-  features: string[]
-  improvements: string[]
-  fixes: string[]
-}
-
-const parseMarkdown = (content: string): AnnouncementItem[] => {
-  const items: AnnouncementItem[] = []
-  const lines = content.split(/\r?\n/)
-
-  let currentItem: Partial<AnnouncementItem> | null = null
-  let currentSection: 'features' | 'improvements' | 'fixes' | null = null
-
-  const ensureItem = () => {
-    if (!currentItem) return null
-    currentItem.features ??= []
-    currentItem.improvements ??= []
-    currentItem.fixes ??= []
-    return currentItem
-  }
-
-  const splitListItems = (text: string): string[] => {
-    return text
-      .split(/\s+-\s+/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-  }
-
-  const resolveSection = (section: string) => {
-    const normalized = section.toLowerCase()
-    if (
-      section.includes('新功能') ||
-      section.includes('特性') ||
-      normalized.includes('feature') ||
-      normalized.includes('new')
-    ) {
-      return 'features'
-    }
-    if (
-      section.includes('优化') ||
-      section.includes('改进') ||
-      section.includes('变更') ||
-      section.includes('更新') ||
-      normalized.includes('improve') ||
-      normalized.includes('change') ||
-      normalized.includes('changelog')
-    ) {
-      return 'improvements'
-    }
-    if (section.includes('修复') || normalized.includes('fix')) {
-      return 'fixes'
-    }
-    return null
-  }
-
-  for (const line of lines) {
-    const versionMatch = line.match(/^##\s+v?([\d.]+)(?:\s*\(([^)]+)\))?(?:\s*-\s*(.+))?/)
-    if (versionMatch) {
-      if (currentItem) {
-        items.push(currentItem as AnnouncementItem)
-      }
-      const dateText = (versionMatch[2] || versionMatch[3] || '未知日期').trim()
-      currentItem = {
-        version: `v${versionMatch[1]}`,
-        date: dateText,
-        features: [],
-        improvements: [],
-        fixes: []
-      }
-      currentSection = null
-      continue
-    }
-
-    if (line.startsWith('###')) {
-      const sectionLine = line.replace(/^###\s*/, '').trim()
-      const inlineMatch = sectionLine.match(/^(.*?)(?:\s*[-*]\s+(.+))$/)
-      const sectionTitle = (inlineMatch ? inlineMatch[1] : sectionLine).trim()
-      currentSection = resolveSection(sectionTitle)
-      const inlineItem = inlineMatch ? inlineMatch[2].trim() : ''
-      if (inlineItem && currentSection && currentItem) {
-        const target = ensureItem()?.[currentSection]
-        if (target) {
-          splitListItems(inlineItem).forEach((item) => target.push(item))
-        }
-      }
-      continue
-    }
-
-    const listMatch = line.match(/^[-*]\s*(.+)/)
-    if (listMatch && currentItem) {
-      const text = listMatch[1].trim()
-      if (text) {
-        const section = currentSection ?? 'improvements'
-        const target = ensureItem()?.[section]
-        if (target) {
-          splitListItems(text).forEach((item) => target.push(item))
-        }
-      }
-    }
-  }
-
-  if (currentItem) {
-    items.push(currentItem as AnnouncementItem)
-  }
-
-  return items
-}
-
-const announcements = computed(() => parseMarkdown(changelogContent))
+const announcements = computed(() => parseChangelog(changelogContent))
 </script>
 
 <template>

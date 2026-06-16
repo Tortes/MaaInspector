@@ -1,18 +1,18 @@
-use crate::maafw::MaaFrameworkWrapper;
+use super::{maafw_mut, MaaFrameworkState};
 use crate::response::{ApiResponse, ScreenshotResponse};
-use tokio::sync::Mutex;
 use tauri::State;
 
 /// Connect to ADB device
 #[tauri::command]
 pub async fn device_connect_adb(
-    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
+    maafw: State<'_, MaaFrameworkState>,
     adb_path: String,
     address: String,
     config: serde_json::Value,
     _name: Option<String>,
 ) -> Result<ApiResponse, String> {
     let mut fw = maafw.lock().await;
+    let fw = maafw_mut(&mut fw)?;
     let (success, msg) = fw.connect_adb_async(&adb_path, &address, config).await;
 
     if success {
@@ -33,7 +33,7 @@ pub async fn device_connect_adb(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn device_connect_win32(
-    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
+    maafw: State<'_, MaaFrameworkState>,
     hwnd: i64,
     _name: Option<String>,
     _window_name: Option<String>,
@@ -43,6 +43,7 @@ pub async fn device_connect_win32(
     keyboard_method: Option<i32>,
 ) -> Result<ApiResponse, String> {
     let mut fw = maafw.lock().await;
+    let fw = maafw_mut(&mut fw)?;
     let (success, msg) = fw.connect_win32_async(hwnd, screencap_method, mouse_method, keyboard_method).await;
 
     if success {
@@ -61,8 +62,9 @@ pub async fn device_connect_win32(
 
 /// Get screenshot
 #[tauri::command]
-pub async fn device_screenshot(maafw: State<'_, Mutex<MaaFrameworkWrapper>>) -> Result<ScreenshotResponse, String> {
+pub async fn device_screenshot(maafw: State<'_, MaaFrameworkState>) -> Result<ScreenshotResponse, String> {
     let mut fw = maafw.lock().await;
+    let fw = maafw_mut(&mut fw)?;
 
     if let Some((image_base64, size)) = fw.screencap_async().await {
         Ok(ScreenshotResponse {

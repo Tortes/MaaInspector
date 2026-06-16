@@ -1,17 +1,17 @@
-use crate::maafw::MaaFrameworkWrapper;
+use super::{maafw_mut, maafw_ref, MaaFrameworkState};
 use crate::response::{ApiResponse, RecoDetailResponse};
-use tokio::sync::Mutex;
 use tauri::State;
 use tauri::Manager;
 
 /// Run debug node
 #[tauri::command]
 pub async fn debug_run_node(
-    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
+    maafw: State<'_, MaaFrameworkState>,
     node: serde_json::Value,
     debug_mode: Option<String>,
 ) -> Result<ApiResponse, String> {
     let mut fw = maafw.lock().await;
+    let fw = maafw_mut(&mut fw)?;
 
     // Extract node id
     let node_id = node.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -54,16 +54,18 @@ pub async fn debug_run_node(
 
 /// Stop debug task
 #[tauri::command]
-pub async fn debug_stop(maafw: State<'_, Mutex<MaaFrameworkWrapper>>) -> Result<ApiResponse, String> {
+pub async fn debug_stop(maafw: State<'_, MaaFrameworkState>) -> Result<ApiResponse, String> {
     let mut fw = maafw.lock().await;
+    let fw = maafw_mut(&mut fw)?;
     fw.stop_task();
     Ok(ApiResponse::ok("debug_return"))
 }
 
 /// Get debug status
 #[tauri::command]
-pub async fn debug_status(maafw: State<'_, Mutex<MaaFrameworkWrapper>>) -> Result<ApiResponse, String> {
+pub async fn debug_status(maafw: State<'_, MaaFrameworkState>) -> Result<ApiResponse, String> {
     let fw = maafw.lock().await;
+    let fw = maafw_ref(&fw)?;
     let running = fw.is_running();
     Ok(ApiResponse::ok_with_data(
         "debug_return_running",
@@ -73,12 +75,13 @@ pub async fn debug_status(maafw: State<'_, Mutex<MaaFrameworkWrapper>>) -> Resul
 
 /// OCR text recognition
 #[tauri::command]
-pub async fn debug_ocr_text(maafw: State<'_, Mutex<MaaFrameworkWrapper>>, roi: Vec<i32>) -> Result<ApiResponse, String> {
+pub async fn debug_ocr_text(maafw: State<'_, MaaFrameworkState>, roi: Vec<i32>) -> Result<ApiResponse, String> {
     if roi.len() != 4 {
         return Ok(ApiResponse::error_with_status("Missing or invalid roi", 400));
     }
 
     let mut fw = maafw.lock().await;
+    let fw = maafw_mut(&mut fw)?;
     let roi_array = [roi[0], roi[1], roi[2], roi[3]];
 
     match fw.ocr_text_async(roi_array).await {
@@ -90,10 +93,11 @@ pub async fn debug_ocr_text(maafw: State<'_, Mutex<MaaFrameworkWrapper>>, roi: V
 /// Get recognition details
 #[tauri::command]
 pub async fn debug_get_reco_details(
-    maafw: State<'_, Mutex<MaaFrameworkWrapper>>,
+    maafw: State<'_, MaaFrameworkState>,
     reco_id: i32,
 ) -> Result<RecoDetailResponse, String> {
     let fw = maafw.lock().await;
+    let fw = maafw_ref(&fw)?;
 
     match fw.get_reco_detail(reco_id) {
         Some(detail) => Ok(RecoDetailResponse {
