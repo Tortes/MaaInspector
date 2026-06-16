@@ -33,6 +33,7 @@ import {
 } from './flowGraph/useConnectionManager'
 import {
   getNodesData,
+  UNKNOWN_NODE_ID_PREFIX,
   setNodeStatus as setNodeStatusImpl,
   selectNodeById as selectNodeByIdImpl,
   createNodeObject
@@ -211,21 +212,7 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
     }
 
     if (oldId !== newId) {
-      if (findNode(newId)) { ElMessage.error(`ID "${newId}" already exists!`); return }
-
       const originalId = nodeMeta._originalId
-      imageManager.migrateNodeState(oldId, newId)
-      node.id = newId
-      nodeMeta.id = newId
-      if (nodeMeta.data) nodeMeta.data.id = newId
-
-      edges.value = edges.value.map(e => {
-        const update: Partial<FlowEdge> = {}
-        if (e.source === oldId) update.source = newId
-        if (e.target === oldId) update.target = newId
-        return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
-      })
-
       const replaceLinkVal = (val: unknown) => {
         if (typeof val !== 'string') return val
         const flags = parseLinkFlags(val)
@@ -242,6 +229,81 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
           d[field] = newVal as unknown
         }
       }
+
+      if (nodeMeta._isMissing) {
+        const replaceOneMissingLink = (
+          d: Record<string, unknown>,
+          field: 'next' | 'on_error' | 'timeout_next',
+          isJumpBack: boolean,
+          isAnchorTarget: boolean,
+          linkIndex?: number
+        ) => {
+          const fieldVal = d[field]
+          if (Array.isArray(fieldVal)) {
+            let index = -1
+            if (typeof linkIndex === 'number') {
+              const indexedValue = fieldVal[linkIndex]
+              if (typeof indexedValue === 'string' && (parseLinkFlags(indexedValue).id || indexedValue) === originalId) {
+                index = linkIndex
+              }
+            }
+            if (index < 0) {
+              index = fieldVal.findIndex(val => {
+                if (typeof val !== 'string') return false
+                const flags = parseLinkFlags(val)
+                return (flags.id || val) === originalId
+              })
+            }
+            if (index >= 0) {
+              const flags = parseLinkFlags(String(fieldVal[index]))
+              fieldVal[index] = buildLinkId(newId, flags.anchor || isAnchorTarget, flags.jumpBack || isJumpBack)
+            }
+          } else if (typeof fieldVal === 'string') {
+            const flags = parseLinkFlags(fieldVal)
+            if ((flags.id || fieldVal) === originalId) {
+              d[field] = buildLinkId(newId, flags.anchor || isAnchorTarget, flags.jumpBack || isJumpBack)
+            }
+          }
+        }
+
+        edges.value
+          .filter(e => e.target === oldId)
+          .forEach(edge => {
+            const sourceNode = findNode(edge.source)
+            const sourceMeta = ensureNodeMeta(sourceNode)
+            const portConfig = PORT_MAPPING[edge.sourceHandle || '']
+            if (!sourceMeta?.data || !portConfig) return
+            replaceOneMissingLink(
+              sourceMeta.data as Record<string, unknown>,
+              portConfig.field,
+              !!edge.data?.isJumpBack,
+              isAnchorNode(node),
+              edge.data?.linkIndex
+            )
+          })
+
+        nodeMeta._originalId = newId
+        nodeMeta.id = node.id
+        if (nodeMeta.data) nodeMeta.data.id = newId
+
+        normalizeLinksAcrossNodes(nodes.value)
+        markDataChanged()
+        return
+      }
+
+      if (findNode(newId)) { ElMessage.error(`ID "${newId}" already exists!`); return }
+
+      imageManager.migrateNodeState(oldId, newId)
+      node.id = newId
+      nodeMeta.id = newId
+      if (nodeMeta.data) nodeMeta.data.id = newId
+
+      edges.value = edges.value.map(e => {
+        const update: Partial<FlowEdge> = {}
+        if (e.source === oldId) update.source = newId
+        if (e.target === oldId) update.target = newId
+        return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
+      })
 
       nodes.value.forEach(n => {
         if (!n.data?.data) return
@@ -271,6 +333,18 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
     const newEdges: FlowEdge[] = []
     const createdNodeIds = new Set<string>()
     const missingNodeCount = new Map<string, number>()
+    const createMissingNodeId = (targetId: string) => {
+      const count = (missingNodeCount.get(targetId) || 0) + 1
+      missingNodeCount.set(targetId, count)
+
+      let suffix = count
+      let candidate = `${UNKNOWN_NODE_ID_PREFIX}${targetId}__${suffix}`
+      while (createdNodeIds.has(candidate) || rawNodesData[candidate] !== undefined) {
+        suffix++
+        candidate = `${UNKNOWN_NODE_ID_PREFIX}${targetId}__${suffix}`
+      }
+      return candidate
+    }
 
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
       newNodes.push(createNodeObject(nodeId, nodeContent))
@@ -289,7 +363,7 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
         if (targetVal) {
           const rawTargets = Array.isArray(targetVal) ? targetVal : [targetVal]
 
-          rawTargets.forEach(rawTargetId => {
+          rawTargets.forEach((rawTargetId, targetIndex) => {
             if (!rawTargetId) return
             const flags = parseLinkFlags(String(rawTargetId))
             let targetId = flags.id || String(rawTargetId)
@@ -299,24 +373,18 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
             const isRealNode = rawNodesData[targetId] !== undefined
 
             if (!isRealNode) {
-              let currentCount = missingNodeCount.get(targetId) || 0
-              missingNodeCount.set(targetId, currentCount + 1)
-
-              if (currentCount === 0) {
-                newNodes.push(createNodeObject(targetId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true))
-                createdNodeIds.add(targetId)
-              } else {
-                let uniqueId = `${targetId}_${currentCount + 1}`
-                while (createdNodeIds.has(uniqueId) || rawNodesData[uniqueId] !== undefined) {
-                  currentCount++
-                  uniqueId = `${targetId}_${currentCount + 1}`
-                }
-                newNodes.push(createNodeObject(uniqueId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true, targetId))
-                createdNodeIds.add(uniqueId)
-                targetId = uniqueId
-              }
+              const missingNodeId = createMissingNodeId(targetId)
+              newNodes.push(createNodeObject(
+                missingNodeId,
+                isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : { id: targetId } as FlowBusinessData,
+                true,
+                targetId
+              ))
+              createdNodeIds.add(missingNodeId)
+              targetId = missingNodeId
             }
 
+            const edgeStyle = getEdgeStyle(handle, isJumpBack, currentEdgeType.value)
             newEdges.push({
               id: `e-${nodeId}-${targetId}-${key}`,
               source: nodeId,
@@ -324,7 +392,11 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
               sourceHandle: handle,
               targetHandle: 'in',
               label: isJumpBack ? 'JumpBack' : key,
-              ...getEdgeStyle(handle, isJumpBack, currentEdgeType.value)
+              ...edgeStyle,
+              data: {
+                ...edgeStyle.data,
+                linkIndex: targetIndex
+              }
             })
           })
         }

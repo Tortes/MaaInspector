@@ -1,18 +1,27 @@
 import { describe, it, expect, vi } from 'vitest'
 import { useFlowGraph } from '@/composables/useFlowGraph'
+import { UNKNOWN_NODE_ID_PREFIX } from '@/composables/flowGraph/useNodeStateManager'
+
+const vueFlowMockState = vi.hoisted(() => ({
+  nodes: [] as Array<{ id: string }>
+}))
 
 // Mock the dependencies
 vi.mock('@vue-flow/core', () => ({
   useVueFlow: () => ({
     addEdges: vi.fn(),
     removeEdges: vi.fn(),
-    findNode: vi.fn(),
+    findNode: vi.fn((id: string) => vueFlowMockState.nodes.find(n => n.id === id)),
     fitView: vi.fn(),
   }),
   MarkerType: {
     ArrowClosed: 'arrowclosed',
   },
 }))
+
+const setVueFlowNodes = (nodes: Array<{ id: string }>) => {
+  vueFlowMockState.nodes = nodes
+}
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -61,21 +70,16 @@ describe('Duplicate Missing Nodes', () => {
     const missingNodes = nodes.value.filter(n => n.data?._isMissing)
     expect(missingNodes).toHaveLength(3)
 
-    // Check that all missing nodes have unique IDs
+    // Check that all missing nodes have unique built-in IDs
     const missingNodeIds = missingNodes.map(n => n.id)
-    expect(missingNodeIds).toContain('MissingNode')
-    expect(missingNodeIds).toContain('MissingNode_2')
-    expect(missingNodeIds).toContain('MissingNode_3')
+    expect(new Set(missingNodeIds).size).toBe(3)
+    missingNodeIds.forEach(id => expect(id.startsWith(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__`)).toBe(true))
 
-    // Check that duplicate missing nodes have _originalId set to "MissingNode"
-    const duplicateNodes = missingNodes.filter(n => n.id !== 'MissingNode')
-    duplicateNodes.forEach(node => {
+    // Check that missing nodes keep the represented business ID separately
+    missingNodes.forEach(node => {
       expect(node.data?._originalId).toBe('MissingNode')
+      expect(node.data?.data?.id).toBe('MissingNode')
     })
-    
-    // First missing node should not have _originalId
-    const firstMissingNode = missingNodes.find(n => n.id === 'MissingNode')
-    expect(firstMissingNode?.data?._originalId).toBeUndefined()
   })
 
   it('should create edges from each source node to its corresponding missing node', () => {
@@ -97,12 +101,11 @@ describe('Duplicate Missing Nodes', () => {
     expect(edges.value).toHaveLength(3)
     
     const edgeTargets = edges.value.map(e => e.target)
-    expect(edgeTargets).toContain('MissingNode')
-    expect(edgeTargets).toContain('MissingNode_2')
-    expect(edgeTargets).toContain('MissingNode_3')
+    expect(new Set(edgeTargets).size).toBe(3)
+    edgeTargets.forEach(id => expect(id.startsWith(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__`)).toBe(true))
   })
 
-  it('should handle single missing node without suffix', () => {
+  it('should handle single missing node with a built-in visual id', () => {
     const { loadNodes, nodes } = useFlowGraph()
     
     const testData = {
@@ -117,8 +120,9 @@ describe('Duplicate Missing Nodes', () => {
 
     const missingNodes = nodes.value.filter(n => n.data?._isMissing)
     expect(missingNodes).toHaveLength(1)
-    expect(missingNodes[0].id).toBe('MissingNode')
-    expect(missingNodes[0].data?._originalId).toBeUndefined()
+    expect(missingNodes[0].id).toBe(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__1`)
+    expect(missingNodes[0].data?._originalId).toBe('MissingNode')
+    expect(missingNodes[0].data?.data?.id).toBe('MissingNode')
   })
 
   it('should handle multiple different missing nodes', () => {
@@ -139,8 +143,9 @@ describe('Duplicate Missing Nodes', () => {
     expect(missingNodes).toHaveLength(2)
     
     const missingNodeIds = missingNodes.map(n => n.id)
-    expect(missingNodeIds).toContain('MissingNode1')
-    expect(missingNodeIds).toContain('MissingNode2')
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode1__1`)
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode2__1`)
+    expect(missingNodes.map(n => n.data?._originalId)).toEqual(expect.arrayContaining(['MissingNode1', 'MissingNode2']))
   })
 
   it('should export nodes without missing nodes', () => {
@@ -162,8 +167,10 @@ describe('Duplicate Missing Nodes', () => {
     
     // Missing nodes should not be included in export
     expect(exportedData).not.toHaveProperty('MissingNode')
-    expect(exportedData).not.toHaveProperty('MissingNode_2')
-    expect(exportedData).not.toHaveProperty('MissingNode_3')
+    expect(Object.keys(exportedData).some(id => id.startsWith(UNKNOWN_NODE_ID_PREFIX))).toBe(false)
+    expect(exportedData.NodeA.next).toBe('MissingNode')
+    expect(exportedData.NodeB.next).toBe('MissingNode')
+    expect(exportedData.NodeC.next).toBe('MissingNode')
     
     // Original nodes should be included
     expect(exportedData).toHaveProperty('NodeA')
@@ -189,13 +196,13 @@ describe('Duplicate Missing Nodes', () => {
     expect(missingNodes).toHaveLength(2)
 
     const missingNodeIds = missingNodes.map(n => n.id)
-    expect(missingNodeIds).toContain('MissingNode')
-    expect(missingNodeIds).toContain('MissingNode_2')
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__1`)
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__2`)
 
     // Check edges point to correct targets
     const edgeTargets = edges.value.map(e => e.target)
-    expect(edgeTargets).toContain('MissingNode')
-    expect(edgeTargets).toContain('MissingNode_2')
+    expect(edgeTargets).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__1`)
+    expect(edgeTargets).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__2`)
   })
 
   it('should create duplicate missing nodes for timeout_next field', () => {
@@ -216,13 +223,13 @@ describe('Duplicate Missing Nodes', () => {
     expect(missingNodes).toHaveLength(2)
 
     const missingNodeIds = missingNodes.map(n => n.id)
-    expect(missingNodeIds).toContain('MissingNode')
-    expect(missingNodeIds).toContain('MissingNode_2')
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__1`)
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__2`)
 
     // Check edges point to correct targets
     const edgeTargets = edges.value.map(e => e.target)
-    expect(edgeTargets).toContain('MissingNode')
-    expect(edgeTargets).toContain('MissingNode_2')
+    expect(edgeTargets).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__1`)
+    expect(edgeTargets).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__2`)
   })
 
   it('should handle array-type targets with duplicate missing nodes', () => {
@@ -243,14 +250,94 @@ describe('Duplicate Missing Nodes', () => {
     expect(missingNodes).toHaveLength(3)
 
     const missingNodeIds = missingNodes.map(n => n.id)
-    expect(missingNodeIds).toContain('MissingNode')
-    expect(missingNodeIds).toContain('MissingNode_2')
-    expect(missingNodeIds).toContain('MissingNode_3')
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__1`)
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__2`)
+    expect(missingNodeIds).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__3`)
 
     // Check edges point to correct targets
     const edgeTargets = edges.value.map(e => e.target)
-    expect(edgeTargets).toContain('MissingNode')
-    expect(edgeTargets).toContain('MissingNode_2')
-    expect(edgeTargets).toContain('MissingNode_3')
+    expect(edgeTargets).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__1`)
+    expect(edgeTargets).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__2`)
+    expect(edgeTargets).toContain(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__3`)
+  })
+
+  it('should write represented business id when connecting to a missing node', async () => {
+    const { loadNodes, nodes, handleConnect, getNodesData } = useFlowGraph()
+
+    const testData = {
+      NodeA: { next: 'MissingNode' },
+      NodeB: {},
+    }
+
+    await loadNodes({
+      filename: 'test.json',
+      source: JSON.stringify(testData),
+      nodes: testData,
+    })
+    await setVueFlowNodes(nodes.value)
+
+    const missingNode = nodes.value.find(n => n.data?._isMissing)
+    expect(missingNode).toBeTruthy()
+
+    handleConnect({
+      source: 'NodeB',
+      target: missingNode!.id,
+      sourceHandle: 'source-a',
+      targetHandle: 'in'
+    })
+
+    expect(getNodesData().NodeB.next).toEqual(['MissingNode'])
+  })
+
+  it('should update only the selected duplicate missing reference', async () => {
+    const { loadNodes, nodes, handleNodeUpdate, getNodesData } = useFlowGraph()
+
+    const testData = {
+      NodeA: { next: 'MissingNode' },
+      NodeB: { next: 'MissingNode' },
+    }
+
+    await loadNodes({
+      filename: 'test.json',
+      source: JSON.stringify(testData),
+      nodes: testData,
+    })
+    await setVueFlowNodes(nodes.value)
+
+    const missingNodes = nodes.value.filter(n => n.data?._isMissing)
+    handleNodeUpdate({
+      oldId: missingNodes[1].id,
+      newId: 'FixedNode',
+      newType: 'Unknown',
+    })
+
+    const exportedData = getNodesData()
+    expect(exportedData.NodeA.next).toBe('MissingNode')
+    expect(exportedData.NodeB.next).toBe('FixedNode')
+    expect(missingNodes[1].id.startsWith(UNKNOWN_NODE_ID_PREFIX)).toBe(true)
+  })
+
+  it('should update the selected duplicate array reference by link index', async () => {
+    const { loadNodes, nodes, handleNodeUpdate, getNodesData } = useFlowGraph()
+
+    const testData = {
+      NodeA: { next: ['MissingNode', 'MissingNode'] },
+    }
+
+    await loadNodes({
+      filename: 'test.json',
+      source: JSON.stringify(testData),
+      nodes: testData,
+    })
+    setVueFlowNodes(nodes.value)
+
+    const missingNodes = nodes.value.filter(n => n.data?._isMissing)
+    handleNodeUpdate({
+      oldId: missingNodes[1].id,
+      newId: 'FixedNode',
+      newType: 'Unknown',
+    })
+
+    expect(getNodesData().NodeA.next).toEqual(['MissingNode', 'FixedNode'])
   })
 })

@@ -27,6 +27,7 @@ const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MA
 const availableTypes = Object.keys(NODE_CONFIG_MAP).filter(t => t !== 'Unknown')
 
 const businessData = computed<FlowBusinessData>(() => (props.data.data || {}) as FlowBusinessData)
+const displayId = computed(() => props.data._originalId || businessData.value.id || props.id)
 const isAnchor = computed(() => !!businessData.value.anchor || props.data.type === 'Anchor')
 const isUnknown = computed(() => props.data.type === 'Unknown')
 const isAnchorType = computed(() => props.data.type === 'Anchor')
@@ -36,8 +37,8 @@ const isHorizontalLayout = computed(() => currentDirection.value === 'LR')
 const targetHandlePosition = computed(() => isHorizontalLayout.value ? Position.Left : Position.Top)
 const sourceHandlePosition = computed(() => isHorizontalLayout.value ? Position.Right : Position.Bottom)
 
-const editingId = ref(props.id)
-watch(() => props.id, (val) => { editingId.value = val })
+const editingId = ref(String(displayId.value))
+watch(displayId, (val) => { editingId.value = String(val) })
 
 const currentActionConfig = computed(() => {
   const actionKey = businessData.value.action as string | undefined
@@ -63,7 +64,7 @@ const handleUpdateData = (newData: FlowBusinessData) => updateNode({
 
 const applyIdChange = () => {
   const newId = editingId.value?.trim()
-  if (!newId || newId === props.id) return
+  if (!newId || newId === displayId.value) return
   
   if (props.data._isMissing && props.data._originalId && props.data._originalId !== props.id) {
     const confirmed = window.confirm(
@@ -71,7 +72,7 @@ const applyIdChange = () => {
       `重命名仅会影响此实例。是否继续？`
     )
     if (!confirmed) {
-      editingId.value = props.id
+      editingId.value = String(displayId.value)
       return
     }
   }
@@ -180,9 +181,9 @@ const contentHeightClass = computed(() => {
         <div>
           <div
             class="font-bold text-slate-700 text-sm truncate max-w-[160px] flex items-center gap-1"
-            :title="data._originalId || data.id"
+            :title="displayId"
           >
-            <span class="truncate">{{ data._originalId || data.id }}</span>
+            <span class="truncate">{{ displayId }}</span>
             <AnchorIcon
               v-if="isAnchor"
               :size="12"
@@ -239,11 +240,11 @@ const contentHeightClass = computed(() => {
             <input
               v-model="editingId"
               class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono outline-none focus:border-indigo-400"
-              :placeholder="id"
+              :placeholder="String(displayId)"
             >
             <button
               class="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="!editingId || editingId === id"
+              :disabled="!editingId || editingId === displayId"
               @click.stop="applyIdChange"
             >
               应用

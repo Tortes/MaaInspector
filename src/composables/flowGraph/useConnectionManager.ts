@@ -33,6 +33,13 @@ export const parseLinkFlags = (val?: string) => ({
 export const isAnchorNode = (node?: FlowNode | null) =>
   !!(node?.data?.type === 'Anchor' || (node?.data?.data as FlowBusinessData | undefined)?.anchor)
 
+export const getNodeLinkId = (node?: FlowNode | null, fallbackId = '') => {
+  if (!node) return fallbackId
+  if (node.data?._isMissing && node.data._originalId) return node.data._originalId
+  const dataId = (node.data?.data as FlowBusinessData | undefined)?.id
+  return typeof dataId === 'string' && dataId ? dataId : (fallbackId || node.id)
+}
+
 export const getEdgeStyle = (
   handleId: string,
   isJumpBack: boolean,
@@ -68,14 +75,14 @@ export const updateNodeDataConnection = (
   if (!sourceMeta || !sourceMeta.data) return
   const data = sourceMeta.data as FlowBusinessData
   const targetNode = findNode(targetId)
-  const actualTargetId = (targetNode?.data?._isMissing && targetNode?.data?._originalId) ? targetNode.data._originalId : targetId
+  const actualTargetId = getNodeLinkId(targetNode, targetId)
   const storedId = buildLinkId(actualTargetId, isAnchorTarget, isJumpBack)
 
   if (isArrayType) {
     if (!Array.isArray(data[field])) data[field] = []
 
     const existingIndex = (data[field] as unknown[]).findIndex(id =>
-      typeof id === 'string' && stripPrefix(id) === targetId
+      typeof id === 'string' && [targetId, actualTargetId].includes(stripPrefix(id))
     )
 
     if (isAdd) {
@@ -106,7 +113,11 @@ export const onValidateConnection = (connection: FlowConnection) => {
 }
 
 export const normalizeLinksAcrossNodes = (targetNodes: FlowNode[]) => {
-  const anchorIds = new Set(targetNodes.filter(n => isAnchorNode(n)).map(n => n.id))
+  const anchorIds = new Set(
+    targetNodes
+      .filter(n => isAnchorNode(n))
+      .flatMap(n => [n.id, getNodeLinkId(n)].filter(Boolean))
+  )
   const normalizeItem = (item: unknown) => {
     if (typeof item !== 'string') return item
     const flags = parseLinkFlags(item)

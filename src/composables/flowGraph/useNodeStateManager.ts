@@ -1,6 +1,8 @@
 import { perfLog, perfNow } from '@/utils/perfTrace'
 import type { FlowNode, FlowNodeMeta, FlowBusinessData, NodeStatus } from '@/utils/flowTypes'
 
+export const UNKNOWN_NODE_ID_PREFIX = '__maa_unknown_node__'
+
 const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
   if (!node) return null
   if (!node.data) node.data = { id: node.id, type: 'Unknown', data: {} }
@@ -68,6 +70,8 @@ export const selectNodeById = (
 export const createNodeObject = (id: string, rawContent: FlowBusinessData, isMissing = false, originalId?: string): FlowNode => {
   const sanitizedContent = { ...rawContent }
   delete (sanitizedContent as Record<string, unknown>).interrupt
+  const contentId = typeof sanitizedContent.id === 'string' ? sanitizedContent.id : undefined
+  const representedId = isMissing ? (originalId || contentId || id) : id
 
   let logicType = sanitizedContent.recognition || 'DirectHit'
   if (isMissing) logicType = 'Unknown'
@@ -86,10 +90,10 @@ export const createNodeObject = (id: string, rawContent: FlowBusinessData, isMis
       id,
       type: logicType,
       data: isUnknown
-        ? { id, ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}) }
+        ? { id: representedId, ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}) }
         : { ...sanitizedContent, id, recognition: logicType },
       _isMissing: isMissing,
-      _originalId: originalId,
+      _originalId: isMissing ? representedId : originalId,
       status: 'idle'
     }
   }
