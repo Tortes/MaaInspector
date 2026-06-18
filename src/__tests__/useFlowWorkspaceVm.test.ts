@@ -24,6 +24,16 @@ const createEditorPort = (): FlowEditorPort => ({
   handleUpdateNodeStatus: vi.fn()
 })
 
+const createDeferred = <T = void>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('useFlowWorkspaceVm', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -167,6 +177,7 @@ describe('useFlowWorkspaceVm', () => {
 
     expect(editor.loadResourceFile).toHaveBeenCalledWith('D:/maa|pipeline.json')
     expect(editor.handleApplyLayout).toHaveBeenCalled()
+    expect(vm.isRestoringWorkspace.value).toBe(false)
   })
 
   it('defers restored background tab layout until the tab becomes visible', async () => {
@@ -190,5 +201,64 @@ describe('useFlowWorkspaceVm', () => {
     await vm.selectTab('tab-2')
 
     expect(secondEditor.handleApplyLayout).toHaveBeenCalledTimes(1)
+  })
+
+  it('exposes restore loading state while restored tab resources are loading', async () => {
+    const vm = useFlowWorkspaceVm()
+    const editor = createEditorPort()
+    const deferred = createDeferred()
+    editor.loadResourceFile = vi.fn(() => deferred.promise)
+    const tabs = [
+      { id: 'tab-1', title: 'pipeline.json', resourceFile: 'D:/maa|pipeline.json' }
+    ]
+
+    const restorePromise = vm.handleRestoreTabs(tabs)
+    await nextTick()
+    vm.registerEditor('tab-1', editor)
+    await nextTick()
+
+    expect(vm.isRestoringWorkspace.value).toBe(true)
+    expect(vm.restoringWorkspaceCount.value).toBe(1)
+
+    deferred.resolve()
+    await restorePromise
+
+    expect(vm.isRestoringWorkspace.value).toBe(false)
+    expect(vm.restoringWorkspaceCount.value).toBe(0)
+  })
+
+  it('clears restore loading state when a restored tab fails and is closed', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const vm = useFlowWorkspaceVm()
+    const firstEditor = createEditorPort()
+    const secondEditor = createEditorPort()
+    secondEditor.loadResourceFile = vi.fn().mockRejectedValue(new Error('load failed'))
+    const tabs = [
+      { id: 'tab-1', title: 'a.json', resourceFile: 'D:/maa|a.json' },
+      { id: 'tab-2', title: 'b.json', resourceFile: 'D:/maa|b.json' }
+    ]
+
+    const restorePromise = vm.handleRestoreTabs(tabs)
+    await nextTick()
+    vm.registerEditor('tab-1', firstEditor)
+    vm.registerEditor('tab-2', secondEditor)
+    await restorePromise
+
+    expect(vm.isRestoringWorkspace.value).toBe(false)
+    expect(vm.tabs.value.items).toHaveLength(1)
+    expect(vm.tabs.value.items[0].id).toBe('tab-1')
+    expect(warnSpy).toHaveBeenCalled()
+  })
+
+  it('does not leave restore loading active when a restored tab editor is unavailable', async () => {
+    const vm = useFlowWorkspaceVm()
+    const tabs = [
+      { id: 'tab-1', title: 'pipeline.json', resourceFile: 'D:/maa|pipeline.json' }
+    ]
+
+    await vm.handleRestoreTabs(tabs)
+
+    expect(vm.isRestoringWorkspace.value).toBe(false)
+    expect(vm.restoringWorkspaceCount.value).toBe(0)
   })
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
-import { FileJson, Plus, X } from 'lucide-vue-next'
+import { FileJson, Loader2, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import { useFlowWorkspaceVm } from '@/composables/viewModels/useFlowWorkspaceVm'
@@ -18,6 +18,7 @@ const {
   activeTab,
   activeEditorRef,
   activeEditorStatus,
+  isRestoringWorkspace,
   registerEditor,
   registerActiveEditor,
   selectTab,
@@ -121,6 +122,23 @@ const {
           </div>
           <div class="mt-1 text-xs">
             请在右上角控制台加载资源后选择文件
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="isRestoringWorkspace"
+        class="absolute inset-0 z-40 flex items-center justify-center bg-slate-100/90 backdrop-blur-sm pointer-events-auto"
+      >
+        <div class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-5 py-4 shadow-lg">
+          <Loader2 class="h-5 w-5 animate-spin text-indigo-500" />
+          <div>
+            <div class="text-sm font-semibold text-slate-700">
+              正在恢复工作区...
+            </div>
+            <div class="mt-0.5 text-xs text-slate-500">
+              标签页数据加载完成后将显示画布
+            </div>
           </div>
         </div>
       </div>

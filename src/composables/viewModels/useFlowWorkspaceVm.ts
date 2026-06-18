@@ -37,6 +37,8 @@ export function useFlowWorkspaceVm() {
     nodeCount: 0,
     edgeCount: 0
   })
+  const restoringWorkspaceCount = computed(() => loadingRestoredTabs.value.size)
+  const isRestoringWorkspace = computed(() => restoringWorkspaceCount.value > 0)
 
   const registerEditor = (tabId: string, editor: FlowEditorPort | null) => {
     if (editor) {
@@ -87,9 +89,10 @@ export function useFlowWorkspaceVm() {
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
   }
 
-  const applyVisibleTabLayout = async (tabId: string) => {
+  const applyVisibleTabLayout = async (tabId: string, options: { allowWhileLoading?: boolean } = {}) => {
     const editor = await waitForEditor(tabId)
-    if (!editor || !pendingVisibleLayoutTabs.value.has(tabId) || loadingRestoredTabs.value.has(tabId)) return
+    if (!editor || !pendingVisibleLayoutTabs.value.has(tabId)) return
+    if (!options.allowWhileLoading && loadingRestoredTabs.value.has(tabId)) return
     await waitForVisibleFrame()
     await editor.handleApplyLayout()
     clearTabLayoutPending(tabId)
@@ -189,19 +192,23 @@ export function useFlowWorkspaceVm() {
       const tab = tabs.value.items[i]
       if (tab && lastTabs[i].resourceFile) {
         const editor = await waitForEditor(tab.id)
-        if (editor) {
-          try {
-            await editor.loadResourceFile(lastTabs[i].resourceFile)
-            clearRestoredTabLoading(tab.id)
-            if (tab.id === activeTabId.value) {
-              await applyVisibleTabLayout(tab.id)
-            }
-          } catch (error) {
-            console.warn(`Failed to load resource for tab ${tab.title}`, error)
-            clearRestoredTabLoading(tab.id)
-            clearTabLayoutPending(tab.id)
-            tabManagerCloseTab(tab.id)
+        if (!editor) {
+          clearRestoredTabLoading(tab.id)
+          clearTabLayoutPending(tab.id)
+          continue
+        }
+
+        try {
+          await editor.loadResourceFile(lastTabs[i].resourceFile)
+          if (tab.id === activeTabId.value) {
+            await applyVisibleTabLayout(tab.id, { allowWhileLoading: true })
           }
+        } catch (error) {
+          console.warn(`Failed to load resource for tab ${tab.title}`, error)
+          clearTabLayoutPending(tab.id)
+          tabManagerCloseTab(tab.id)
+        } finally {
+          clearRestoredTabLoading(tab.id)
         }
       }
     }
@@ -210,6 +217,8 @@ export function useFlowWorkspaceVm() {
   }
 
   const handleClearTabs = () => {
+    pendingVisibleLayoutTabs.value = new Set()
+    loadingRestoredTabs.value = new Set()
     resetToInitialState()
     clearMainTabs()
   }
@@ -227,6 +236,8 @@ export function useFlowWorkspaceVm() {
     activeTab,
     activeEditorRef,
     activeEditorStatus,
+    isRestoringWorkspace,
+    restoringWorkspaceCount,
     makeTabTitle,
     registerEditor,
     registerActiveEditor,
