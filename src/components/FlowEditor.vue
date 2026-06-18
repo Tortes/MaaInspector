@@ -11,6 +11,7 @@ import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
 const DeleteImagesConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/DeleteImagesConfirmModal.vue'))
+const ClearCanvasConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/ClearCanvasConfirmModal.vue'))
 
 const props = defineProps<{
   tabId?: string
@@ -34,6 +35,7 @@ const {
   currentFilename,
   currentSource,
   isFileLoaded,
+  onlyRenderVisibleElements,
   onValidateConnection,
   handleConnect,
   handleEdgesChange,
@@ -53,6 +55,9 @@ const {
   onNodeContextMenu,
   onEdgeContextMenu,
   handleMenuAction,
+  showClearCanvasModal,
+  handleCancelClearCanvas,
+  handleConfirmClearCanvas,
   showSaveModal,
   isSavingModal,
   showDeleteImagesModal,
@@ -84,12 +89,12 @@ defineExpose(editorPort)
       :default-zoom="1"
       :min-zoom="0.1"
       :max-zoom="4"
-      :only-render-visible-elements="true"
+      :only-render-visible-elements="onlyRenderVisibleElements"
       :is-valid-connection="onValidateConnection"
       :nodes-draggable="isFileLoaded"
       :nodes-connectable="isFileLoaded"
       :elements-selectable="isFileLoaded"
-      selection-key-code="Control"
+      :selection-key-code="true"
       :multi-selection-key-code="null"
       :select-nodes-on-drag="true"
       :selection-mode="SelectionMode.Partial"
@@ -159,6 +164,13 @@ defineExpose(editorPort)
       @cancel="handleCancelSwitch"
       @discard="handleDiscardChanges"
       @save="handleSaveAndSwitch"
+    />
+    <ClearCanvasConfirmModal
+      :visible="showClearCanvasModal"
+      :node-count="nodes.length"
+      :edge-count="edges.length"
+      @cancel="handleCancelClearCanvas"
+      @confirm="handleConfirmClearCanvas"
     />
     <DeleteImagesConfirmModal
       :visible="showDeleteImagesModal"

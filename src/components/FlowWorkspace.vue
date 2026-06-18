@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, ref } from 'vue'
 import { FileJson, Loader2, Move, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
@@ -16,6 +16,7 @@ import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowT
 import type { FlowEditorPort } from '@/composables/viewModels/types'
 
 const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
+const infoPanelCollapsed = ref(false)
 
 const {
   tabs,
@@ -150,6 +151,33 @@ const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
             :disabled="!activeEditorRef"
             @update:model-value="handleToolbarEdgeTypeChange"
           />
+          <div class="mx-1 h-5 w-px bg-slate-200" />
+          <InfoPanel
+            ref="infoPanelRef"
+            v-model:collapsed="infoPanelCollapsed"
+            :tabs="tabs.items"
+            :current-filename="activeTab?.title || ''"
+            :selected-resource-file="activeTab?.resourceFile || ''"
+            :node-count="activeEditorStatus.nodeCount"
+            :edge-count="activeEditorStatus.edgeCount"
+            :is-dirty="activeEditorStatus.isDirty"
+            :edge-type="appSettings.edgeType"
+            :spacing="appSettings.spacing"
+            :layout-algorithm="appSettings.layoutAlgorithm"
+            :layout-direction="appSettings.layoutDirection"
+            :pipeline-version="appSettings.pipelineVersion"
+            :restore-workspace-on-start="appSettings.restoreWorkspaceOnStart"
+            @update:selected-resource-file="() => {}"
+            @load-nodes="handleLoadNodes"
+            @load-images="handleLoadImages"
+            @save-nodes="(payload) => activeEditorRef?.handleSaveNodes(payload)"
+            @device-connected="handleDeviceConnected"
+            @update-canvas-config="handleUpdateCanvasConfig"
+            @update-pipeline-version="handleUpdatePipelineVersion"
+            @restore-tabs="handleRestoreTabs"
+            @clear-tabs="handleClearTabs"
+            @open-debug-panel="openDebugPanel"
+          />
         </div>
       </div>
     </div>
@@ -216,34 +244,6 @@ const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="absolute top-3 right-3 z-50 pointer-events-none">
-        <InfoPanel
-          ref="infoPanelRef"
-          :tabs="tabs.items"
-          :current-filename="activeTab?.title || ''"
-          :selected-resource-file="activeTab?.resourceFile || ''"
-          :node-count="activeEditorStatus.nodeCount"
-          :edge-count="activeEditorStatus.edgeCount"
-          :is-dirty="activeEditorStatus.isDirty"
-          :edge-type="appSettings.edgeType"
-          :spacing="appSettings.spacing"
-          :layout-algorithm="appSettings.layoutAlgorithm"
-          :layout-direction="appSettings.layoutDirection"
-          :pipeline-version="appSettings.pipelineVersion"
-          :restore-workspace-on-start="appSettings.restoreWorkspaceOnStart"
-          @update:selected-resource-file="() => {}"
-          @load-nodes="handleLoadNodes"
-          @load-images="handleLoadImages"
-          @save-nodes="(payload) => activeEditorRef?.handleSaveNodes(payload)"
-          @device-connected="handleDeviceConnected"
-          @update-canvas-config="handleUpdateCanvasConfig"
-          @update-pipeline-version="handleUpdatePipelineVersion"
-          @restore-tabs="handleRestoreTabs"
-          @clear-tabs="handleClearTabs"
-          @open-debug-panel="openDebugPanel"
-        />
       </div>
 
       <NodeDebugPanel

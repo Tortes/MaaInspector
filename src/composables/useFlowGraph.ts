@@ -44,12 +44,13 @@ import {
 } from './flowGraph/useFlowLayout'
 import { useFlowStateExport } from './flowGraph/useFlowStateExport'
 import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useTemplateManager'
+import { useViewportSync } from './flowGraph/useViewportSync'
 
   /**
    * Creates and manages the flow graph state, providing node/edge manipulation,
    * layout, connection handling, and state export/restore capabilities.
    */
-  export function useFlowGraph() {
+export function useFlowGraph() {
   const nodes = ref<FlowNode[]>([])
   const edges = ref<FlowEdge[]>([])
   const currentEdgeType = ref<EdgeType>('smoothstep')
@@ -66,7 +67,12 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
 
   const imageManager = useImageManager()
 
-  const { addEdges, removeEdges, findNode, fitView } = useVueFlow()
+  const { addEdges, removeEdges, findNode, fitView, updateNodeInternals } = useVueFlow()
+  const onlyRenderVisibleElements = ref(true)
+  const viewportSync = useViewportSync({
+    onlyRenderVisibleElements,
+    updateNodeInternals
+  })
   const {
     elkLayout,
     applyLayoutOnRefs,
@@ -414,7 +420,11 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
     edges.value = newEdges
 
     const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
-    nodes.value = layoutedNodes
+    await viewportSync.withPausedVisibility(async () => {
+      nodes.value = layoutedNodes
+      await viewportSync.refreshNodeInternals(layoutedNodes.map(node => node.id))
+      await fitView({ padding: 0.2, duration: 800 })
+    }, layoutedNodes.map(node => node.id))
 
     currentFilename.value = filename || ''
     currentSource.value = source || ''
@@ -423,7 +433,6 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
     dataSnapshot.value = snapshot
     originalDataSnapshot.value = snapshot
     selectedNodeId.value = null
-    setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
     perfLog('useFlowGraph.loadNodes.total', totalStart, { filename, nodeCount: nodes.value.length, edgeCount: edges.value.length })
   }
 
@@ -441,7 +450,8 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
       currentAlgorithm.value,
       currentDirection.value,
       currentSpacing.value,
-      fitView
+      fitView,
+      { refreshNodeInternals: viewportSync.refreshNodeInternals }
     )
   }
 
@@ -478,7 +488,8 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
       currentDirection.value,
       spacingKey,
       algorithm,
-      fitView
+      fitView,
+      { refreshNodeInternals: viewportSync.refreshNodeInternals }
     )
   }
 
@@ -493,6 +504,7 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
     isDirty,
     currentFilename,
     currentSource,
+    onlyRenderVisibleElements,
     SPACING_OPTIONS,
     createNodeObject,
     onValidateConnection,
@@ -516,13 +528,17 @@ import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useT
         direction: options?.direction || currentDirection.value,
         spacing: options?.spacing || currentSpacing.value
       }
-      await applyLayoutOnRefs(nodes, edges, layoutOptions)
-      setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50)
+      await viewportSync.withPausedVisibility(async () => {
+        await applyLayoutOnRefs(nodes, edges, layoutOptions)
+        await viewportSync.refreshNodeInternals(nodes.value.map(node => node.id))
+        await fitView({ padding: 0.2, duration: 500 })
+      }, nodes.value.map(node => node.id))
     },
     layoutChainFromNode,
     imageManager,
     exportState,
-    restoreState
+    restoreState,
+    refreshNodeInternals: viewportSync.refreshNodeInternals
   }
 }
 

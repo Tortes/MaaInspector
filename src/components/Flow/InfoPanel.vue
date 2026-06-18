@@ -2,8 +2,9 @@
 import {
   Bot, Settings, RefreshCw, Loader2,
   Minimize2, Maximize2,
-  Save, Bell, Settings as SettingsIcon, Bug
+  Save, Bell, Settings as SettingsIcon, Bug, Database, Monitor
 } from 'lucide-vue-next'
+import { computed } from 'vue'
 import type { FlowBusinessData, TemplateImage } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { SpacingKey, LayoutAlgorithm, LayoutDirection } from '@/utils/flowTypes'
@@ -16,7 +17,6 @@ import AnnouncementModal from './Modals/AnnouncementModal.vue'
 import DeviceManager from './InfoPanel/DeviceManager.vue'
 import ResourceManager from './InfoPanel/ResourceManager.vue'
 import AgentManager from './InfoPanel/AgentManager.vue'
-import Dropdown from './Common/Dropdown.vue'
 import StatusIndicator from './Common/StatusIndicator.vue'
 
 const props = defineProps<{
@@ -34,6 +34,7 @@ const props = defineProps<{
   pipelineVersion?: 'V1' | 'V2'
   lowMemoryMode?: boolean
   restoreWorkspaceOnStart?: boolean
+  collapsed?: boolean
 }>()
 
 interface FlowTab {
@@ -54,12 +55,13 @@ const emit = defineEmits<{
   'restore-tabs': [tabs: TabResourceInfo[]]
   'clear-tabs': []
   'open-debug-panel': []
+  'update:collapsed': [value: boolean]
 }>()
 
 const {
   appConfig,
   systemState,
-  isCollapsed,
+  isCollapsed: internalCollapsed,
   showResourceSettings,
   showCreateFileModal,
   showAppSettings,
@@ -84,78 +86,86 @@ const {
   handleFetchSystemState,
   saveResourceSettings,
   handleAppSettingsSave,
-  handleAnnouncementClose,
-  handleCollapsedFileChange
+  handleAnnouncementClose
 } = useInfoPanelVm(props, emit)
+
+const panelCollapsed = computed({
+  get: () => props.collapsed ?? internalCollapsed.value,
+  set: (value: boolean) => {
+    internalCollapsed.value = value
+    emit('update:collapsed', value)
+  }
+})
 
 defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: triggerLoadFromCacheWrapper })
 </script>
 
 <template>
-  <div class="relative flex flex-col items-end gap-2 font-sans select-none pointer-events-auto z-50">
+  <div class="relative flex shrink-0 items-center font-sans select-none pointer-events-auto z-50">
     <Transition
       name="fade-scale"
       mode="out-in"
     >
       <div
-        v-if="isCollapsed"
-        class="bg-white/90 backdrop-blur shadow-lg border border-slate-200 rounded-full flex items-center p-1 pl-3 pr-1 gap-3 transition-all duration-300"
-        :class="{'!border-amber-300': props.isDirty}"
+        v-if="panelCollapsed"
+        class="flex shrink-0 items-center gap-1"
       >
-        <div
-          class="flex items-center gap-1.5"
+        <button
+          type="button"
+          class="relative flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+          :class="deviceStatus.status === 'connected' ? 'text-emerald-600' : ''"
           :title="deviceStatus.message"
+          @click="panelCollapsed = false"
         >
+          <Monitor :size="14" />
           <StatusIndicator
             :status="deviceStatus.status"
-            :size="12"
+            :size="8"
+            class="absolute -right-0.5 -top-0.5 rounded-full bg-white"
           />
-          <span class="text-xs font-bold text-slate-600 max-w-[80px] truncate">{{
-            deviceStatus.status === 'connected' ? '设备' : '无设备'
-          }}</span>
-        </div>
-        <div class="w-px h-4 bg-slate-200" />
-        <div class="flex items-center gap-1.5 min-w-0">
+        </button>
+
+        <button
+          type="button"
+          class="relative flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+          :class="{
+            'border-amber-300 text-amber-600': props.isDirty,
+            'text-emerald-600': resourceStatus.status === 'connected' && !props.isDirty
+          }"
+          :title="props.isDirty ? '文件已修改' : resourceStatus.message"
+          @click="panelCollapsed = false"
+        >
+          <Database :size="14" />
           <StatusIndicator
             :status="resourceStatus.status"
-            :size="12"
+            :size="8"
+            class="absolute -right-0.5 -top-0.5 rounded-full bg-white"
           />
-          <div class="flex items-center gap-1 min-w-0">
-            <div
-              v-if="props.isDirty"
-              class="w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0"
-              title="文件已修改"
-            />
-            <div class="min-w-[120px] max-w-[160px]">
-              <Dropdown
-                :model-value="systemState.selectedResourceFile.value"
-                :options="resourceStatus.fileOptions"
-                :disabled="resourceStatus.status !== 'connected' || resourceStatus.availableFilesLength === 0"
-                placeholder="未加载资源"
-                size="xs"
-                @update:model-value="handleCollapsedFileChange"
-              />
-            </div>
-          </div>
-        </div>
-        <div class="w-px h-4 bg-slate-200" />
-        <div
-          class="flex items-center gap-1"
+          <span
+            v-if="props.isDirty"
+            class="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-white"
+          />
+        </button>
+
+        <button
+          type="button"
+          class="relative flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+          :class="agentStatus.status === 'connected' ? 'text-violet-600' : ''"
           :title="agentStatus.message"
+          @click="panelCollapsed = false"
         >
-          <Bot
-            :size="14"
-            :class="agentStatus.status === 'connected' ? 'text-violet-500' : 'text-slate-400'"
-          />
+          <Bot :size="14" />
           <StatusIndicator
             :status="agentStatus.status"
-            :size="10"
+            :size="8"
+            class="absolute -right-0.5 -top-0.5 rounded-full bg-white"
           />
-        </div>
+        </button>
+
         <button
           v-if="props.isDirty"
           :disabled="systemState.isSaving.value"
-          class="p-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white transition-colors"
+          class="flex h-7 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-600 shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
           title="保存更改"
           @click="handleSaveNodes"
         >
@@ -165,42 +175,47 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
             :class="{'animate-spin': systemState.isSaving.value}"
           />
         </button>
+
         <button
-          class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-blue-500 transition-colors"
-          @click="isCollapsed = false"
+          type="button"
+          class="flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+          title="展开控制台"
+          @click="panelCollapsed = false"
         >
           <Maximize2 :size="14" />
         </button>
+
         <button
-          class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-blue-500 transition-colors"
+          type="button"
+          class="flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
           title="应用设置"
           @click="showAppSettings = true"
         >
           <SettingsIcon :size="14" />
         </button>
+
         <button
-          v-if="hasUnreadAnnouncement"
-          class="p-1.5 rounded-full hover:bg-slate-100 text-amber-500 hover:text-amber-600 transition-colors relative"
+          type="button"
+          class="relative flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-600"
           title="更新公告"
           @click="showAnnouncement = true"
         >
-          <Bell :size="14" />
-          <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
-        </button>
-        <button
-          v-else
-          class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-amber-500 transition-colors"
-          title="更新公告"
-          @click="showAnnouncement = true"
-        >
-          <Bell :size="14" />
+          <Bell
+            :size="14"
+            :class="hasUnreadAnnouncement ? 'text-amber-500' : ''"
+          />
+          <span
+            v-if="hasUnreadAnnouncement"
+            class="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"
+          />
         </button>
       </div>
+    </Transition>
 
-      <div
-        v-else
-        class="w-80 bg-white/95 backdrop-blur-md shadow-xl border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[90vh] origin-top-right transition-all"
-      >
+    <div
+      v-if="!panelCollapsed"
+      class="fixed right-3 top-14 z-50 w-80 bg-white/95 backdrop-blur-md shadow-xl border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[90vh] origin-top-right transition-all"
+    >
         <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80 shrink-0">
           <div class="flex items-center gap-2">
             <Settings class="w-4 h-4 text-slate-500" />
@@ -254,7 +269,7 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
             </button>
             <button
               class="p-1 rounded-md text-slate-400 hover:bg-slate-200"
-              @click="isCollapsed = true"
+              @click="panelCollapsed = true"
             >
               <Minimize2 :size="16" />
             </button>
@@ -345,8 +360,7 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
             <span class="font-mono font-bold text-slate-300">{{ Math.round((props.zoom || 1) * 100) }}%</span>
           </div>
         </div>
-      </div>
-    </Transition>
+    </div>
 
     <ResourceSettingsModal
       :visible="showResourceSettings"

@@ -27,8 +27,8 @@ const directionToElk = (direction: LayoutDirection): string => {
   return direction === 'LR' ? 'RIGHT' : 'DOWN'
 }
 
-export function useLayout() {
-  const { findNode } = useVueFlow()
+export function useLayout(flowId?: string) {
+  const { findNode } = useVueFlow(flowId)
 
   const getNodeLayoutSize = (nodeId: string, direction: LayoutDirection) => {
     const nodeEl = findNode(nodeId)

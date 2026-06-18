@@ -2,6 +2,10 @@ import type { Ref } from 'vue'
 import type { FlowNode, FlowEdge, SpacingKey, LayoutAlgorithm } from '@/utils/flowTypes'
 import type { LayoutOptions } from '@/composables/useLayout'
 
+interface ViewportRefreshDeps {
+  refreshNodeInternals: (nodeIds?: string[]) => Promise<void>
+}
+
 export const layoutTaskChain = async (
   nodes: Ref<FlowNode[]>,
   edges: Ref<FlowEdge[]>,
@@ -15,7 +19,8 @@ export const layoutTaskChain = async (
   currentAlgorithm: LayoutAlgorithm,
   currentDirection: LayoutOptions['direction'],
   currentSpacing: SpacingKey,
-  fitView: (options: { nodes: string[]; padding: number; duration: number }) => void
+  fitView: (options: { nodes: string[]; padding: number; duration: number }) => Promise<boolean> | void,
+  viewportSync?: ViewportRefreshDeps
 ) => {
   const layoutOptions: LayoutOptions = {
     algorithm: currentAlgorithm,
@@ -26,7 +31,10 @@ export const layoutTaskChain = async (
   if (!result) return
 
   const { chainIds } = result
-  setTimeout(() => fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 }), 50)
+  if (viewportSync) {
+    await viewportSync.refreshNodeInternals(Array.from(chainIds))
+  }
+  await fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 })
 }
 
 export const layoutChainFromNode = async (
@@ -42,7 +50,8 @@ export const layoutChainFromNode = async (
   currentDirection: LayoutOptions['direction'],
   spacingKey: SpacingKey,
   algorithm: LayoutAlgorithm,
-  fitView: (options: { nodes: string[]; padding: number; duration: number }) => void
+  fitView: (options: { nodes: string[]; padding: number; duration: number }) => Promise<boolean> | void,
+  viewportSync?: ViewportRefreshDeps
 ) => {
   const layoutOptions: LayoutOptions = {
     algorithm,
@@ -53,5 +62,8 @@ export const layoutChainFromNode = async (
   if (!result) return
 
   const { chainIds } = result
-  setTimeout(() => fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 }), 50)
+  if (viewportSync) {
+    await viewportSync.refreshNodeInternals(Array.from(chainIds))
+  }
+  await fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 })
 }

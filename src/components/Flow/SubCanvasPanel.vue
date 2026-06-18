@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { SelectionMode, VueFlow, useVueFlow, type EdgeMouseEvent, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
+import { SelectionMode, VueFlow, useNodesInitialized, useVueFlow, type EdgeMouseEvent, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
 import { Maximize2, Move, RefreshCw, X } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import ContextMenu from './ContextMenu.vue'
 import { useEditorActions } from '@/composables/useEditorActions'
 import { useFloatingPanel } from '@/composables/useFloatingPanel'
 import { useLayout } from '@/composables/useLayout'
-import { LAYOUT_ALGORITHM_OPTIONS } from '@/utils/flowOptions'
+import { useViewportSync } from '@/composables/flowGraph/useViewportSync'
+import ToolbarIconDropdown from './Common/ToolbarIconDropdown.vue'
+import {
+  EDGE_TYPE_OPTIONS,
+  LAYOUT_ALGORITHM_OPTIONS,
+  LAYOUT_DIRECTION_OPTIONS,
+  SPACING_TYPE_OPTIONS
+} from '@/utils/flowOptions'
 import { collectReachableNodeIds, filterSubgraphEdges } from '@/utils/flowSubgraph'
 import type { EdgeType } from '@/utils/flowOptions'
 import type {
@@ -64,14 +71,27 @@ const closeAllDetailsSignal = ref(0)
 const sessionNodeIds = ref<Set<string>>(new Set())
 const localNodeState = ref<Record<string, Partial<FlowNode>>>({})
 const activeAlgorithm = ref<LayoutAlgorithm>(props.initialAlgorithm || props.currentAlgorithm)
+const activeSpacing = ref<SpacingKey>(props.currentSpacing)
+const activeDirection = ref<LayoutDirection>(props.currentDirection)
+const activeEdgeType = ref<EdgeType>(props.currentEdgeType)
+const onlyRenderVisibleElements = ref(true)
+const pendingInitialLayout = ref(false)
 
 const {
   fitView,
+  getViewport,
+  setViewport,
+  updateNodeInternals,
   screenToFlowCoordinate,
   getSelectedNodes,
   getSelectedEdges
 } = useVueFlow(flowId)
-const { elkLayout } = useLayout()
+const { elkLayout } = useLayout(flowId)
+const viewportSync = useViewportSync({
+  onlyRenderVisibleElements,
+  updateNodeInternals
+})
+const nodesInitialized = useNodesInitialized({ includeHiddenNodes: true })
 
 const panel = useFloatingPanel({
   storageKey: 'maa-inspector-sub-canvas-panel',
@@ -156,12 +176,13 @@ const subNodes = computed<FlowNode[]>({
     nextNodes.forEach(node => {
       if (!existingIds.has(node.id)) {
         addedNodes.push(node)
-        sessionNodeIds.value = new Set([...sessionNodeIds.value, node.id])
       }
     })
 
     if (addedNodes.length > 0) {
-      props.nodes.splice(0, props.nodes.length, ...props.nodes, ...addedNodes)
+      sessionNodeIds.value = new Set([...sessionNodeIds.value, ...addedNodes.map(node => node.id)])
+      const mergedNodes = [...props.nodes, ...addedNodes]
+      props.nodes.splice(0, props.nodes.length, ...mergedNodes)
       props.markDataChanged()
     }
     localNodeState.value = nextLocalState
@@ -205,32 +226,64 @@ const handleNodeUpdate = (payload: NodeUpdatePayload) => {
 
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
 provide('currentFilename', computed(() => props.currentFilename))
-provide('currentDirection', computed(() => props.currentDirection))
+provide('currentDirection', activeDirection)
 provide('imageManager', props.imageManager)
 provide('updateNode', handleNodeUpdate)
 
-const layoutVisibleChain = async (algorithm = activeAlgorithm.value) => {
+const layoutVisibleChain = async (
+  algorithm = activeAlgorithm.value,
+  options: { preserveViewport?: boolean } = {}
+) => {
+  const previousViewport = options.preserveViewport ? getViewport() : null
   activeAlgorithm.value = algorithm
-  const layouted = await elkLayout(subNodes.value, subEdges.value, {
-    algorithm,
-    direction: props.currentDirection,
-    spacing: props.currentSpacing
-  })
-  const nextLocalState = { ...localNodeState.value }
-  layouted.forEach(node => {
-    nextLocalState[node.id] = {
-      ...(nextLocalState[node.id] || {}),
-      position: { ...node.position }
+  await viewportSync.withPausedVisibility(async () => {
+    const layouted = await elkLayout(subNodes.value, subEdges.value, {
+      algorithm,
+      direction: activeDirection.value,
+      spacing: activeSpacing.value
+    })
+    const nextLocalState = { ...localNodeState.value }
+    layouted.forEach(node => {
+      nextLocalState[node.id] = {
+        ...(nextLocalState[node.id] || {}),
+        position: { ...node.position }
+      }
+    })
+    localNodeState.value = nextLocalState
+    await nextTick()
+    await viewportSync.refreshNodeInternals(layouted.map(node => node.id))
+    if (previousViewport) {
+      await setViewport(previousViewport, { duration: 0 })
+      return
     }
-  })
-  localNodeState.value = nextLocalState
-  await nextTick()
-  fitVisibleNodes()
+    await fitVisibleNodes()
+  }, visibleNodeIdList.value)
+}
+
+const handleSpacingChange = (value: PropertyKey) => {
+  activeSpacing.value = value as SpacingKey
+  void layoutVisibleChain(activeAlgorithm.value)
+}
+
+const handleDirectionChange = (value: PropertyKey) => {
+  activeDirection.value = value as LayoutDirection
+  void layoutVisibleChain(activeAlgorithm.value)
+}
+
+const handleEdgeTypeChange = (value: PropertyKey) => {
+  activeEdgeType.value = value as EdgeType
+  const visibleIds = visibleNodeIds.value
+  props.edges.splice(0, props.edges.length, ...props.edges.map(edge => (
+    visibleIds.has(edge.source) && visibleIds.has(edge.target)
+      ? { ...edge, type: activeEdgeType.value }
+      : edge
+  )))
+  props.markDataChanged()
 }
 
 const fitVisibleNodes = () => {
   if (visibleNodeIdList.value.length === 0) return
-  fitView({ nodes: visibleNodeIdList.value, padding: 0.25, duration: 400 })
+  return fitView({ nodes: visibleNodeIdList.value, padding: 0.25, duration: 400 })
 }
 
 const editorActions = useEditorActions({
@@ -238,14 +291,14 @@ const editorActions = useEditorActions({
   nodes: subNodes,
   edges: subEdges,
   currentEdgeType: computed({
-    get: () => props.currentEdgeType,
+    get: () => activeEdgeType.value,
     set: (value) => {
-      props.edges.splice(0, props.edges.length, ...props.edges.map(edge => ({ ...edge, type: value })))
+      handleEdgeTypeChange(value)
     }
   }),
-  currentSpacing: computed(() => props.currentSpacing),
+  currentSpacing: activeSpacing,
   currentAlgorithm: activeAlgorithm,
-  currentDirection: computed(() => props.currentDirection),
+  currentDirection: activeDirection,
   isFileLoaded: computed(() => props.isFileLoaded),
   createNodeObject: props.createNodeObject,
   applyLayout: async (options) => {
@@ -258,6 +311,9 @@ const editorActions = useEditorActions({
   },
   markDataChanged: props.markDataChanged,
   fitView,
+  getViewport,
+  setViewport,
+  updateNodeInternals,
   screenToFlowCoordinate,
   getSelectedNodes,
   imageManager: props.imageManager,
@@ -334,12 +390,26 @@ const handleKeyDown = (e: KeyboardEvent) => {
 watch(() => props.visible, async (visible) => {
   if (!visible) return
   activeAlgorithm.value = props.initialAlgorithm || props.currentAlgorithm
+  activeSpacing.value = props.currentSpacing
+  activeDirection.value = props.currentDirection
+  activeEdgeType.value = props.currentEdgeType
   sessionNodeIds.value = new Set()
   localNodeState.value = {}
   refreshVisibleNodeIds()
   panel.loadLayout()
+  pendingInitialLayout.value = true
   await nextTick()
-  fitVisibleNodes()
+  await nextTick()
+  if (nodesInitialized.value && pendingInitialLayout.value) {
+    pendingInitialLayout.value = false
+    await layoutVisibleChain(activeAlgorithm.value)
+  }
+})
+
+watch(nodesInitialized, async (isInit) => {
+  if (!props.visible || !isInit || !pendingInitialLayout.value) return
+  pendingInitialLayout.value = false
+  await layoutVisibleChain(activeAlgorithm.value)
 })
 
 watch(() => props.rootNodeId, () => {
@@ -418,6 +488,27 @@ onBeforeUnmount(() => {
                 :size="15"
               />
             </button>
+            <ToolbarIconDropdown
+              title="布局间隔"
+              :model-value="activeSpacing"
+              :options="SPACING_TYPE_OPTIONS"
+              @mousedown.stop
+              @update:model-value="handleSpacingChange"
+            />
+            <ToolbarIconDropdown
+              title="布局方向"
+              :model-value="activeDirection"
+              :options="LAYOUT_DIRECTION_OPTIONS"
+              @mousedown.stop
+              @update:model-value="handleDirectionChange"
+            />
+            <ToolbarIconDropdown
+              title="连线类型"
+              :model-value="activeEdgeType"
+              :options="EDGE_TYPE_OPTIONS"
+              @mousedown.stop
+              @update:model-value="handleEdgeTypeChange"
+            />
             <button
               type="button"
               title="适配视图"
@@ -432,7 +523,7 @@ onBeforeUnmount(() => {
               title="重新布局"
               class="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-slate-800"
               @mousedown.stop
-              @click="layoutVisibleChain(activeAlgorithm)"
+              @click="layoutVisibleChain(activeAlgorithm, { preserveViewport: true })"
             >
               <RefreshCw :size="15" />
             </button>
@@ -457,7 +548,7 @@ onBeforeUnmount(() => {
             :default-zoom="1"
             :min-zoom="0.1"
             :max-zoom="4"
-            :only-render-visible-elements="true"
+            :only-render-visible-elements="onlyRenderVisibleElements"
             :is-valid-connection="onValidateConnection"
             :nodes-draggable="isFileLoaded"
             :nodes-connectable="isFileLoaded"
@@ -491,7 +582,7 @@ onBeforeUnmount(() => {
               :current-edge-type="currentEdgeType"
               :current-spacing="currentSpacing"
               :current-algorithm="activeAlgorithm"
-              :current-direction="currentDirection"
+              :current-direction="activeDirection"
               @close="closeMenu"
               @action="handleMenuAction"
             />

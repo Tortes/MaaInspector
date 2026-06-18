@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import type { EdgeMouseEvent, NodeMouseEvent } from '@vue-flow/core'
 import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType, TemplateImage } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
@@ -31,6 +31,9 @@ export interface EditorActionsDeps {
   layoutChainFromNode: (startId: string, spacingKey?: SpacingKey, algorithm?: LayoutAlgorithm) => Promise<void>
   markDataChanged: () => void
   fitView: (options?: Record<string, unknown>) => void
+  getViewport?: () => { x: number; y: number; zoom: number }
+  setViewport?: (viewport: { x: number; y: number; zoom: number }, options?: { duration?: number }) => Promise<boolean> | void
+  updateNodeInternals?: (nodeIds?: string[]) => void
   screenToFlowCoordinate: (pos: { x: number; y: number }) => { x: number; y: number }
   getSelectedNodes: { value: FlowNode[] }
   imageManager: {
@@ -38,6 +41,7 @@ export interface EditorActionsDeps {
     setNodeImages: (nodeId: string, images: TemplateImage[]) => void
   }
   snapshotState: () => void
+  requestClearCanvas?: () => void
   onOpenSubCanvas?: (payload: { nodeId: string; algorithm?: LayoutAlgorithm }) => void
   onDebugNode: (nodeId: string, mode: 'standard' | 'recognition_only') => void
   onOpenDebugPanel: (payload?: { nodeId?: string }) => void
@@ -57,7 +61,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
     nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
     isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
     layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
-    getSelectedNodes, imageManager, snapshotState, onOpenSubCanvas, onDebugNode, onOpenDebugPanel, onCloseDebugPanel, onIncrementCloseAllDetails
+    getSelectedNodes, imageManager, snapshotState, requestClearCanvas, onOpenSubCanvas, onDebugNode, onOpenDebugPanel, onCloseDebugPanel, onIncrementCloseAllDetails
   } = deps
 
   const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
@@ -96,6 +100,27 @@ export function useEditorActions(deps: EditorActionsDeps) {
   const isFlowNodeData = (value: MenuData): value is FlowNode => !!value && 'position' in value
 
   const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+
+  const waitForFrame = () => new Promise<void>((resolve) => {
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      setTimeout(resolve, 0)
+      return
+    }
+
+    window.requestAnimationFrame(() => resolve())
+  })
+
+  const stabilizeViewportAfterNodeMutation = async (previousViewport: { x: number; y: number; zoom: number } | null, nodeIds?: string[]) => {
+    if (!previousViewport || !deps.setViewport) return
+
+    await nextTick()
+    deps.updateNodeInternals?.(nodeIds)
+    await nextTick()
+    await waitForFrame()
+    deps.updateNodeInternals?.(nodeIds)
+    await nextTick()
+    await deps.setViewport(previousViewport, { duration: 0 })
+  }
 
   const createUniqueNodeId = () => {
     let id = `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
@@ -140,6 +165,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
     if (!isFileLoaded.value || copiedNodes.value.length === 0) return []
     const pastePosition = position || menu.value.flowPos
     if (!pastePosition) return []
+    const previousViewport = deps.getViewport?.() || null
 
     const minX = Math.min(...copiedNodes.value.map(node => node.position.x))
     const minY = Math.min(...copiedNodes.value.map(node => node.position.y))
@@ -164,6 +190,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
       ...nextNodes.map(node => ({ ...node, selected: true }))
     ]
     markDataChanged()
+    void stabilizeViewportAfterNodeMutation(previousViewport, nextNodes.map(node => node.id))
     snapshotState()
     return nextNodes
   }
@@ -182,18 +209,22 @@ export function useEditorActions(deps: EditorActionsDeps) {
         const recognition = typeof payload === 'string' ? payload : undefined
         const newId = `N-${Date.now()}`
         const newNode = createNodeObject(newId, { id: newId, recognition: recognition || 'DirectHit' })
+        const previousViewport = deps.getViewport?.() || null
         if (menu.value.flowPos) newNode.position = { ...menu.value.flowPos }
         nodes.value = [...nodes.value, newNode]
         markDataChanged()
+        void stabilizeViewportAfterNodeMutation(previousViewport, nodes.value.map(node => node.id))
         break
       }
       case 'add_anchor': {
         const anchorId = `A-${Date.now()}`
         const anchorNode = createNodeObject(anchorId, { id: anchorId, recognition: 'Anchor', anchor: true })
+        const previousViewport = deps.getViewport?.() || null
         if (menu.value.flowPos) anchorNode.position = { ...menu.value.flowPos }
         anchorNode.data = { ...(anchorNode.data || {}), type: 'Anchor', id: anchorId }
         nodes.value = [...nodes.value, anchorNode]
         markDataChanged()
+        void stabilizeViewportAfterNodeMutation(previousViewport, nodes.value.map(node => node.id))
         break
       }
       case 'debug_this_node':
@@ -269,8 +300,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
         fitView({ padding: 0.2, duration: 500 })
         break
       case 'clear':
-        nodes.value = []
-        edges.value = []
+        requestClearCanvas?.()
         break
       case 'search':
         searchVisible.value = true

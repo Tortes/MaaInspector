@@ -23,7 +23,7 @@ interface UseFlowEditorVmOptions {
 
 export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const {
-    nodes, edges, nodeTypes, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection, isDirty, currentFilename, currentSource,
+    nodes, edges, nodeTypes, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection, isDirty, currentFilename, currentSource, onlyRenderVisibleElements,
     onValidateConnection,
     handleConnect, handleEdgesChange, handleNodeUpdate, loadNodes, createNodeObject, applyLayout,
     getNodesData, getImageData, clearTempImageData, clearDirty, markDataChanged,
@@ -31,16 +31,28 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     setEdgeJumpBack, layoutChainFromNode,
     imageManager,
     exportState,
-    restoreState
+    restoreState,
+    refreshNodeInternals
   } = useFlowGraph()
   const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
-  const { fitView, removeEdges, findNode, screenToFlowCoordinate, getSelectedNodes, getSelectedEdges } = useVueFlow()
+  const {
+    fitView,
+    removeEdges,
+    findNode,
+    screenToFlowCoordinate,
+    getSelectedNodes,
+    getSelectedEdges,
+    getViewport,
+    setViewport,
+    updateNodeInternals
+  } = useVueFlow()
   const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
 
   const closeAllDetailsSignal = ref<number>(0)
   const isBulkLoading = ref(false)
   const pendingFocusNodeId = ref<string | null>(null)
   const lastPointerPosition = ref<{ x: number; y: number } | null>(null)
+  const showClearCanvasModal = ref(false)
   const subCanvas = ref<{ visible: boolean; nodeId: string; algorithm?: LayoutAlgorithm }>({
     visible: false,
     nodeId: ''
@@ -78,9 +90,11 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
     isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
     layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
+    getViewport, setViewport, updateNodeInternals,
     getSelectedNodes,
     imageManager,
     snapshotState: () => {},
+    requestClearCanvas: () => { showClearCanvasModal.value = true },
     onDebugNode: debugRunner.handleDebugNode,
     onOpenDebugPanel: (payload) => options.emit('open-debug-panel', payload),
     onOpenSubCanvas: (payload) => {
@@ -115,6 +129,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     if (isBulkLoading.value) {
       return
     }
+  }
+
+  const refreshCurrentNodeInternals = async () => {
+    await refreshNodeInternals(nodes.value.map(node => node.id))
   }
 
   const executeSwitch = async (config: { filename: string; source: string; nodeId?: string }) => {
@@ -280,6 +298,17 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     }
   }
 
+  const handleCancelClearCanvas = () => {
+    showClearCanvasModal.value = false
+  }
+
+  const handleConfirmClearCanvas = () => {
+    nodes.value = []
+    edges.value = []
+    markDataChanged()
+    showClearCanvasModal.value = false
+  }
+
   const handleLoadNodesWrapper = async (payload: LoadNodesPayload) => {
     const start = perfNow()
     perfMark('FlowEditor.handleLoadNodesWrapper.start', {
@@ -331,6 +360,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
         if (imgRes?.results) {
           handleLoadImages(imgRes.results as Record<string, unknown>)
           await nextTick()
+          await nextTick()
+          await refreshCurrentNodeInternals()
           await applyLayout()
         }
       }
@@ -370,6 +401,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     currentFilename,
     currentSource,
     isFileLoaded,
+    onlyRenderVisibleElements,
     onValidateConnection,
     handleConnect,
     handleEdgesChange,
@@ -389,6 +421,9 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onNodeContextMenu,
     onEdgeContextMenu,
     handleMenuAction,
+    showClearCanvasModal,
+    handleCancelClearCanvas,
+    handleConfirmClearCanvas,
     showSaveModal,
     isSavingModal,
     showDeleteImagesModal,
