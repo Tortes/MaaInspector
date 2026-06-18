@@ -158,4 +158,63 @@ describe('useDebugPanelState', () => {
       { nodeId: 'A', status: 'error' }
     ])
   })
+
+  it('keeps late action events in the completed next_list attempt', () => {
+    let onStreamData: ((data: DebugStreamPayload) => void) | undefined
+    vi.mocked(debugApi.subscribeNodeStream).mockImplementation((callback) => {
+      onStreamData = callback
+      return vi.fn()
+    })
+
+    const state = useDebugPanelState()
+    state.startRealtimeStream()
+
+    onStreamData?.({
+      type: 'node_next_list',
+      task_id: 400000001,
+      name: 'Root',
+      status: 'starting',
+      next_list: [
+        { name: 'A', jump_back: false, anchor: false }
+      ],
+      timestamp: 1781587600000
+    })
+
+    onStreamData?.({
+      type: 'node_recognition',
+      task_id: 400000001,
+      name: 'A',
+      status: 'succeeded',
+      reco_id: 500000002,
+      timestamp: 1781587600100
+    })
+
+    onStreamData?.({
+      type: 'node_next_list',
+      task_id: 400000001,
+      name: 'Root',
+      status: 'succeeded',
+      next_list: [],
+      timestamp: 1781587600200
+    })
+
+    onStreamData?.({
+      type: 'node_action',
+      task_id: 400000001,
+      name: 'A',
+      status: 'succeeded',
+      action_id: 600000002,
+      node_id: 700000002,
+      timestamp: 1781587600300
+    })
+
+    expect(state.events.value).toHaveLength(1)
+    expect(state.events.value[0].status).toBe('succeeded')
+    expect(state.events.value[0].nextList[0]).toMatchObject({
+      name: 'A',
+      recognitionStatus: 'succeeded',
+      actionStatus: 'succeeded',
+      action_id: 600000002
+    })
+  })
 })

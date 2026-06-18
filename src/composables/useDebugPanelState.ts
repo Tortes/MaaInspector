@@ -252,9 +252,8 @@ export function useDebugPanelState() {
         timestamp: existing.timestamp,
         focus: payload.focus ?? existing.focus
       }
-      if (status === STATUS.SUCCEEDED || status === STATUS.FAILED) {
-        activeAttemptByTask.delete(taskKey)
-      }
+      // Node.Action events can arrive after Node.NextList.Succeeded/Failed.
+      // Keep the latest attempt mapped until the next starting event replaces it.
     }
 
     events.value = updatedEvents.slice(0, 200)

@@ -280,11 +280,8 @@ pub fn run_task(
                     signal.focus,
                 );
 
-                if signal.status == "succeeded" || signal.status == "failed" {
-                    if let Ok(mut attempts) = active_attempts_clone.lock() {
-                        attempts.remove(&signal.task_id);
-                    }
-                }
+                    // MaaFramework may emit Node.Action.* after Node.NextList.Succeeded.
+                    // Keep the attempt active until the next Node.NextList.Starting replaces it.
             }
             ContextSignal::Recognition(signal) => {
                 crate::backend_log_debug!("stderr", "[ContextSink] Trigger type matched: Node.Recognition");
