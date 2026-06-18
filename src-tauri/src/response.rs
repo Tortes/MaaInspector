@@ -110,6 +110,8 @@ pub struct DebugStreamPayload {
     #[serde(rename = "type")]
     pub event_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub task_id: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -123,6 +125,10 @@ pub struct DebugStreamPayload {
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reco_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -135,6 +135,7 @@ export interface RecoDetailResponse extends ApiResponse {
 
 export interface DebugStreamPayload {
   type?: string;
+  attempt_id?: string;
   task_id?: number;
   name?: string;
   next_list?: unknown;
@@ -142,6 +143,8 @@ export interface DebugStreamPayload {
   timestamp?: number;
   status?: string;
   reco_id?: number;
+  action_id?: number;
+  node_id?: number;
   [key: string]: unknown;
 }
 
@@ -405,7 +408,10 @@ export const debugApi = {
       const un2 = await listen<DebugStreamPayload>('debug:node_recognition', (event) => {
         if (!cancelled) onData(event.payload);
       });
-      unlistenFns = [un1, un2];
+      const un3 = await listen<DebugStreamPayload>('debug:node_action', (event) => {
+        if (!cancelled) onData(event.payload);
+      });
+      unlistenFns = [un1, un2, un3];
       if (cancelled) unlistenFns.forEach(fn => fn());
     };
 

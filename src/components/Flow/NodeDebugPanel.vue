@@ -117,6 +117,12 @@ const handleActionButton = async () => {
 interface DetailChild {
   name?: string
   status?: string
+  recognitionStatus?: string
+  actionStatus?: string
+  action_id?: string | number | null
+  node_id?: string | number | null
+  actionFocus?: unknown
+  recognitionFocus?: unknown
   jump_back?: boolean
   debug_image?: string
   image?: string
@@ -146,8 +152,9 @@ const normalizeDetailFields = (child: DetailChild | null | undefined) => {
   if (Array.isArray(child.detailList)) return child.detailList
   if (Array.isArray(child.details)) return child.details
   const skipKeys = [
-    'name', 'status', 'jump_back', 'debug_image', 'image', 'screenshot',
-    'draw_images', 'raw_image', 'raw_detail', 'all_results', 'filtered_results', 'best_result'
+    'name', 'status', 'recognitionStatus', 'actionStatus', 'jump_back', 'debug_image', 'image', 'screenshot',
+    'draw_images', 'raw_image', 'raw_detail', 'all_results', 'filtered_results', 'best_result',
+    'recognitionFocus', 'actionFocus'
   ]
   return Object.entries(child)
     .filter(([k]) => !skipKeys.includes(k))
@@ -167,7 +174,11 @@ const normalizeDetailFields = (child: DetailChild | null | undefined) => {
 }
 
 const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
-  if (child.status !== STATUS.SUCCEEDED && child.status !== STATUS.FAILED) return
+  const recognitionStatus = child.recognitionStatus || child.status
+  const actionStatus = child.actionStatus
+  const hasRecognitionResult = recognitionStatus === STATUS.SUCCEEDED || recognitionStatus === STATUS.FAILED
+  const hasActionResult = actionStatus === STATUS.SUCCEEDED || actionStatus === STATUS.FAILED
+  if (!hasRecognitionResult && !hasActionResult) return
   let mainImage =
     (typeof child.debug_image === 'string' && child.debug_image) ||
     (typeof child.image === 'string' && child.image) ||
@@ -175,6 +186,23 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
     ''
   let drawImages: string[] = []
   let fields = normalizeDetailFields(child)
+  if (child.action_id !== undefined && child.action_id !== null) {
+    fields = [
+      ...fields,
+      { label: 'action_id', text: String(child.action_id), raw: child.action_id },
+      { label: 'action_status', text: String(child.actionStatus || STATUS.UNKNOWN), raw: child.actionStatus || STATUS.UNKNOWN }
+    ]
+  }
+  if (child.node_id !== undefined && child.node_id !== null) {
+    fields = [...fields, { label: 'node_id', text: String(child.node_id), raw: child.node_id }]
+  }
+  if (child.actionFocus !== undefined) {
+    fields = [...fields, {
+      label: 'action_focus',
+      text: typeof child.actionFocus === 'object' ? JSON.stringify(child.actionFocus, null, 2) : String(child.actionFocus ?? ''),
+      raw: child.actionFocus
+    }]
+  }
   let meta: { algorithm?: string; hit?: boolean; box?: Record<string, unknown> | null } | undefined
   let results: Array<{ label: string; text: string; raw: unknown; flags?: string[] }> = []
 

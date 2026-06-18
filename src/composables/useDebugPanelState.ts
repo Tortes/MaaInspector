@@ -6,18 +6,28 @@ import type { ScreenshotResponse } from '@/services/api'
 export interface NextChild {
   name: string
   status: string
-  reco_id?: string | null
+  recognitionStatus?: string
+  actionStatus?: string
+  reco_id?: string | number | null
+  action_id?: string | number | null
+  node_id?: string | number | null
   jump_back?: boolean
   anchor?: boolean
+  recognitionFocus?: unknown
+  actionFocus?: unknown
   [key: string]: unknown
 }
 
 export interface DebugEventRecord {
   recordId: string
+  attemptId: string
   taskId: string | number
   name: string
+  status: string
   nextList: NextChild[]
   timestamp: number
+  completedAt?: number
+  focus?: unknown
 }
 
 export interface NodeStatusPayload {
@@ -36,24 +46,42 @@ type StatusKey = (typeof STATUS)[keyof typeof STATUS]
 
 interface RecognitionPayload {
   type?: string
+  attempt_id?: string
   status?: StatusKey
   task_id?: string | number
   name?: string
-  reco_id?: string
+  reco_id?: string | number
   timestamp?: number
+  focus?: unknown
   [key: string]: unknown
 }
 
 interface NextListPayload {
   type?: string
+  attempt_id?: string
   task_id?: string | number
   name?: string
+  status?: StatusKey
   next_list?: NextChild[]
   timestamp?: number
+  focus?: unknown
   [key: string]: unknown
 }
 
-type SsePayload = RecognitionPayload | NextListPayload
+interface ActionPayload {
+  type?: string
+  attempt_id?: string
+  status?: StatusKey
+  task_id?: string | number
+  name?: string
+  action_id?: string | number
+  node_id?: string | number
+  timestamp?: number
+  focus?: unknown
+  [key: string]: unknown
+}
+
+type SsePayload = RecognitionPayload | NextListPayload | ActionPayload
 
 export function useDebugPanelState() {
   const events = ref<DebugEventRecord[]>([])
@@ -63,8 +91,15 @@ export function useDebugPanelState() {
   let stopStream: (() => void) | null = null
   let previewTimer: ReturnType<typeof setInterval> | null = null
   let isFetchingPreview = false
+  const activeAttemptByTask = new Map<string, string>()
 
   const createRecordId = (taskId?: string | number) => `${taskId || 'task'}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+  const createFallbackAttemptId = (taskId?: string | number) => `fallback-${createRecordId(taskId)}`
+  const taskKeyOf = (taskId?: string | number) => String(taskId ?? 'unknown')
+  const normalizeStatus = (status?: string): StatusKey => {
+    if (status === STATUS.STARTING || status === STATUS.SUCCEEDED || status === STATUS.FAILED) return status
+    return STATUS.UNKNOWN
+  }
 
   const mapStatusToNode = (status: StatusKey): NodeStatusPayload['status'] => {
     if (status === STATUS.SUCCEEDED) return 'success'
@@ -102,10 +137,70 @@ export function useDebugPanelState() {
     previewTimer = null
   }
 
+  const findRecordIndex = (payload: { attempt_id?: string; task_id?: string | number }) => {
+    if (payload.attempt_id) {
+      const byAttempt = events.value.findIndex(evt => evt.attemptId === payload.attempt_id)
+      if (byAttempt !== -1) return byAttempt
+    }
+
+    const activeAttempt = activeAttemptByTask.get(taskKeyOf(payload.task_id))
+    if (activeAttempt) {
+      const byActive = events.value.findIndex(evt => evt.attemptId === activeAttempt)
+      if (byActive !== -1) return byActive
+    }
+
+    return events.value.findIndex(evt => evt.taskId === payload.task_id && evt.status === STATUS.STARTING)
+  }
+
+  const updateChild = (
+    record: DebugEventRecord,
+    targetName: string,
+    updater: (child: NextChild) => NextChild
+  ): DebugEventRecord => {
+    const nextList = [...record.nextList]
+    let idx = nextList.findIndex(c => c.name === targetName)
+    if (idx === -1) {
+      nextList.push({
+        name: targetName,
+        jump_back: false,
+        anchor: false,
+        status: STATUS.UNKNOWN,
+        recognitionStatus: STATUS.UNKNOWN,
+        actionStatus: STATUS.UNKNOWN,
+        reco_id: null,
+        action_id: null,
+        node_id: null
+      })
+      idx = nextList.length - 1
+    }
+    nextList[idx] = updater(nextList[idx])
+    return { ...record, nextList }
+  }
+
+  const createFallbackRecord = (
+    payload: { attempt_id?: string; task_id?: string | number; timestamp?: number },
+    name: string
+  ): DebugEventRecord => {
+    const taskId = payload.task_id || Date.now()
+    const attemptId = payload.attempt_id || createFallbackAttemptId(taskId)
+    return {
+      recordId: createRecordId(taskId),
+      attemptId,
+      taskId,
+      name,
+      status: STATUS.UNKNOWN,
+      nextList: [],
+      timestamp: payload.timestamp || Date.now()
+    }
+  }
+
   const upsertNextList = (payload: NextListPayload, nodes?: { data?: { data?: { id?: string } }; id: string }[], emitUpdate?: (payload: NodeStatusPayload) => void) => {
     if (!payload) return
     const nextList = Array.isArray(payload.next_list) ? payload.next_list : []
     const taskId = payload.task_id || Date.now()
+    const taskKey = taskKeyOf(taskId)
+    const status = normalizeStatus(payload.status)
+    const attemptId = payload.attempt_id || createFallbackAttemptId(taskId)
     const recordName = payload.name || '未知节点'
     const normalizedNextList: NextChild[] = nextList.map(child => {
       const childName = child?.name || 'Unknown'
@@ -113,46 +208,53 @@ export function useDebugPanelState() {
         ...child,
         name: childName,
         status: STATUS.UNKNOWN,
-        reco_id: child.reco_id ?? null
+        recognitionStatus: child.recognitionStatus ?? STATUS.UNKNOWN,
+        actionStatus: child.actionStatus ?? STATUS.UNKNOWN,
+        reco_id: child.reco_id ?? null,
+        action_id: child.action_id ?? null,
+        node_id: child.node_id ?? null
       }
     })
 
     const updatedEvents = [...events.value]
-    const existingIndex = updatedEvents.findIndex(evt => evt.taskId === taskId && evt.name === recordName)
+    const existingIndex = findRecordIndex(payload)
 
-    if (existingIndex !== -1) {
-      const existing = updatedEvents[existingIndex]
-      const mergedNextList: NextChild[] = normalizedNextList.map(child => {
-        const childName = child?.name || 'Unknown'
-        const existingChild = existing.nextList.find(item => item.name === childName)
-        return {
-          ...existingChild,
-          ...child,
-          name: childName,
-          status: existingChild?.status ?? child.status ?? STATUS.UNKNOWN,
-          reco_id: child.reco_id ?? existingChild?.reco_id ?? null
-        }
-      })
-
-      existing.nextList.forEach(existingChild => {
-        if (!mergedNextList.some(child => child.name === existingChild.name)) {
-          mergedNextList.push(existingChild)
-        }
-      })
-
-      updatedEvents[existingIndex] = {
-        ...existing,
-        nextList: mergedNextList,
-        timestamp: payload.timestamp || existing.timestamp
-      }
-    } else {
+    if (status === STATUS.STARTING || existingIndex === -1) {
       updatedEvents.unshift({
         recordId: createRecordId(taskId),
+        attemptId,
         taskId,
         name: recordName,
+        status,
         nextList: normalizedNextList,
-        timestamp: payload.timestamp || Date.now()
+        timestamp: payload.timestamp || Date.now(),
+        focus: payload.focus
       })
+      activeAttemptByTask.set(taskKey, attemptId)
+    } else {
+      const existing = updatedEvents[existingIndex]
+      updatedEvents[existingIndex] = {
+        ...existing,
+        status,
+        nextList: normalizedNextList.length ? normalizedNextList.map(child => {
+          const existingChild = existing.nextList.find(item => item.name === child.name)
+          return {
+            ...child,
+            ...existingChild,
+            name: child.name,
+            jump_back: child.jump_back,
+            anchor: child.anchor
+          }
+        }) : existing.nextList,
+        completedAt: status === STATUS.SUCCEEDED || status === STATUS.FAILED
+          ? payload.timestamp || Date.now()
+          : existing.completedAt,
+        timestamp: existing.timestamp,
+        focus: payload.focus ?? existing.focus
+      }
+      if (status === STATUS.SUCCEEDED || status === STATUS.FAILED) {
+        activeAttemptByTask.delete(taskKey)
+      }
     }
 
     events.value = updatedEvents.slice(0, 200)
@@ -170,54 +272,50 @@ export function useDebugPanelState() {
 
   const applyRecognition = (payload: RecognitionPayload, emitUpdate?: (payload: NodeStatusPayload) => void) => {
     if (!payload) return
-    const status = payload.status || STATUS.UNKNOWN
+    const status = normalizeStatus(payload.status)
     const targetName = payload.name || '未知节点'
-    let matched = false
-    let updatedRecord: DebugEventRecord | null = null
     const updatedEvents = [...events.value]
+    let recordIndex = findRecordIndex(payload)
 
-    for (let i = 0; i < updatedEvents.length; i++) {
-      const evt = updatedEvents[i]
-      if (evt.taskId !== payload.task_id) continue
-      matched = true
-      const nextList = [...evt.nextList]
-      let idx = nextList.findIndex(c => c.name === targetName)
-      if (idx === -1) {
-        nextList.push({
-          name: targetName,
-          jump_back: false,
-          anchor: false,
-          status: STATUS.UNKNOWN
-        })
-        idx = nextList.length - 1
-      }
-      nextList[idx] = {
-        ...nextList[idx],
-        status,
-        reco_id: payload.reco_id
-      }
-      updatedEvents[i] = { ...evt, nextList }
-      updatedRecord = updatedEvents[i]
-      break
+    if (recordIndex === -1) {
+      updatedEvents.unshift(createFallbackRecord(payload, targetName))
+      recordIndex = 0
     }
 
-    if (!matched) {
-      const taskId = payload.task_id || Date.now()
-      updatedRecord = {
-        recordId: createRecordId(taskId),
-        taskId,
-        name: targetName,
-        nextList: [{
-          name: targetName,
-          jump_back: false,
-          anchor: false,
-          status,
-          reco_id: payload.reco_id
-        }],
-        timestamp: payload.timestamp || Date.now()
-      }
-      updatedEvents.unshift(updatedRecord)
+    updatedEvents[recordIndex] = updateChild(updatedEvents[recordIndex], targetName, child => ({
+      ...child,
+      status,
+      recognitionStatus: status,
+      reco_id: payload.reco_id ?? child.reco_id ?? null,
+      recognitionFocus: payload.focus ?? child.recognitionFocus
+    }))
+
+    events.value = updatedEvents.slice(0, 200)
+
+    const mapped = mapStatusToNode(status)
+    if (mapped) emitUpdate?.({ nodeId: targetName, status: mapped })
+  }
+
+  const applyAction = (payload: ActionPayload, emitUpdate?: (payload: NodeStatusPayload) => void) => {
+    if (!payload) return
+    const status = normalizeStatus(payload.status)
+    const targetName = payload.name || '未知节点'
+    const updatedEvents = [...events.value]
+    let recordIndex = findRecordIndex(payload)
+
+    if (recordIndex === -1) {
+      updatedEvents.unshift(createFallbackRecord(payload, targetName))
+      recordIndex = 0
     }
+
+    updatedEvents[recordIndex] = updateChild(updatedEvents[recordIndex], targetName, child => ({
+      ...child,
+      status,
+      actionStatus: status,
+      action_id: payload.action_id ?? child.action_id ?? null,
+      node_id: payload.node_id ?? child.node_id ?? null,
+      actionFocus: payload.focus ?? child.actionFocus
+    }))
 
     events.value = updatedEvents.slice(0, 200)
 
@@ -232,6 +330,9 @@ export function useDebugPanelState() {
     }
     if (payload.type === 'node_recognition') {
       applyRecognition(payload, emitUpdate)
+    }
+    if (payload.type === 'node_action') {
+      applyAction(payload, emitUpdate)
     }
   }
 
@@ -270,6 +371,7 @@ export function useDebugPanelState() {
 
   const clearEvents = () => {
     events.value = []
+    activeAttemptByTask.clear()
   }
 
   return {
