@@ -47,6 +47,7 @@ const props = defineProps<{
   currentDirection?: LayoutDirection
   debugPanelVisible?: boolean
   searchVisible?: boolean
+  mode?: 'main' | 'subcanvas'
 }>()
 
 const emit = defineEmits<{
@@ -114,25 +115,34 @@ const updatePosition = () => {
 
 const menuItems = computed<MenuItem[]>(() => {
   if (props.type === 'node') {
-    return [
+    const items: MenuItem[] = [
       {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
       {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
       {type: 'item', label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
+    ]
+
+    if (props.mode !== 'subcanvas') {
+      items.push(
       {
         type: 'item',
         key: 'layout-chain-algorithm',
-        label: '重新布局任务链',
+        label: '在子画布中重排任务链',
         action: 'layout_chain',
         icon: Move,
         color: 'text-indigo-600',
         submenu: LAYOUT_ALGORITHM_OPTIONS,
         submenuAction: 'layout_chain_with_algo'
-      },
+      })
+    }
+
+    items.push(
       {type: 'divider'},
       {type: 'item', label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},
       {type: 'item', label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500'},
-    ]
+    )
+
+    return items
   } else if (props.type === 'edge') {
     const items: MenuItem[] = []
 
@@ -153,6 +163,41 @@ const menuItems = computed<MenuItem[]>(() => {
     return items
 
   } else {
+    if (props.mode === 'subcanvas') {
+      return [
+        {
+          type: 'item',
+          key: 'add-node',
+          label: '添加节点',
+          action: 'add',
+          icon: PlusCircle,
+          color: 'text-blue-600',
+          submenu: recognitionMenuOptions,
+          submenuAction: 'add'
+        },
+        {
+          type: 'item',
+          label: '添加锚点',
+          action: 'add_anchor',
+          icon: PlusCircle,
+          color: 'text-amber-600'
+        },
+        {type: 'divider'},
+        {type: 'item', label: '粘贴节点', action: 'paste', icon: ClipboardPaste, color: 'text-slate-600'},
+        {type: 'divider'},
+        {type: 'item', label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600'},
+        {type: 'divider'},
+        {
+          type: 'item',
+          label: '重新布局当前子画布',
+          action: 'layout',
+          icon: Move,
+          color: 'text-indigo-600'
+        },
+        {type: 'item', label: '重置视图', action: 'reset', icon: RefreshCw, color: 'text-slate-600'},
+      ]
+    }
+
     const searchMenuItem: MenuItem = props.searchVisible
         ? {type: 'item', label: '关闭搜索窗口', action: 'closeSearch', icon: Search, color: 'text-emerald-600'}
         : {type: 'item', label: '搜索节点', action: 'search', icon: Search, color: 'text-emerald-600'}

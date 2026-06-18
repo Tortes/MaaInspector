@@ -7,7 +7,7 @@ import { useSaveManager } from '@/composables/useSaveManager'
 import { useDebugRunner } from '@/composables/useDebugRunner'
 import { resourceApi } from '@/services/api'
 import { parseFileId } from '@/utils/fileId'
-import type { FlowEdge, FlowNode, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
+import type { FlowEdge, FlowNode, LayoutAlgorithm, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
 import type { FlowEditorPort } from './types'
@@ -41,6 +41,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const isBulkLoading = ref(false)
   const pendingFocusNodeId = ref<string | null>(null)
   const lastPointerPosition = ref<{ x: number; y: number } | null>(null)
+  const subCanvas = ref<{ visible: boolean; nodeId: string; algorithm?: LayoutAlgorithm }>({
+    visible: false,
+    nodeId: ''
+  })
 
   provide('closeAllDetailsSignal', closeAllDetailsSignal)
   provide('currentFilename', currentFilename)
@@ -79,6 +83,13 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     snapshotState: () => {},
     onDebugNode: debugRunner.handleDebugNode,
     onOpenDebugPanel: (payload) => options.emit('open-debug-panel', payload),
+    onOpenSubCanvas: (payload) => {
+      subCanvas.value = {
+        visible: true,
+        nodeId: payload.nodeId,
+        algorithm: payload.algorithm
+      }
+    },
     onCloseDebugPanel: () => options.emit('close-debug-panel'),
     onIncrementCloseAllDetails: () => { closeAllDetailsSignal.value++ }
   })
@@ -262,6 +273,13 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     setTimeout(() => fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }), 50)
   }
 
+  const closeSubCanvas = () => {
+    subCanvas.value = {
+      visible: false,
+      nodeId: ''
+    }
+  }
+
   const handleLoadNodesWrapper = async (payload: LoadNodesPayload) => {
     const start = perfNow()
     perfMark('FlowEditor.handleLoadNodesWrapper.start', {
@@ -355,6 +373,14 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onValidateConnection,
     handleConnect,
     handleEdgesChange,
+    handleNodeUpdate: handleNodeUpdateAndSnapshot,
+    createNodeObject,
+    removeEdges,
+    setEdgeJumpBack,
+    markDataChanged,
+    imageManager,
+    handleDebugNode: debugRunner.handleDebugNode,
+    handleOpenDebugPanel: (payload?: { nodeId?: string }) => options.emit('open-debug-panel', payload),
     handleNodesChange,
     menu,
     searchVisible,
@@ -377,6 +403,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleCancelDeleteImages,
     handleConfirmDeleteImages,
     handleSkipDeleteImages,
+    subCanvas,
+    closeSubCanvas,
     editorPort
   }
 }

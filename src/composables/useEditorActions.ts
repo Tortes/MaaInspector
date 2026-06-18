@@ -16,6 +16,7 @@ export interface MenuState {
 }
 
 export interface EditorActionsDeps {
+  mode?: 'main' | 'subcanvas'
   nodes: { value: FlowNode[] }
   edges: { value: FlowEdge[] }
   currentEdgeType: { value: EdgeType }
@@ -37,6 +38,7 @@ export interface EditorActionsDeps {
     setNodeImages: (nodeId: string, images: TemplateImage[]) => void
   }
   snapshotState: () => void
+  onOpenSubCanvas?: (payload: { nodeId: string; algorithm?: LayoutAlgorithm }) => void
   onDebugNode: (nodeId: string, mode: 'standard' | 'recognition_only') => void
   onOpenDebugPanel: (payload?: { nodeId?: string }) => void
   onCloseDebugPanel: () => void
@@ -51,10 +53,11 @@ interface ClipboardNode {
 
 export function useEditorActions(deps: EditorActionsDeps) {
   const {
+    mode = 'main',
     nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
     isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
     layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
-    getSelectedNodes, imageManager, snapshotState, onDebugNode, onOpenDebugPanel, onCloseDebugPanel, onIncrementCloseAllDetails
+    getSelectedNodes, imageManager, snapshotState, onOpenSubCanvas, onDebugNode, onOpenDebugPanel, onCloseDebugPanel, onIncrementCloseAllDetails
   } = deps
 
   const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
@@ -230,11 +233,21 @@ export function useEditorActions(deps: EditorActionsDeps) {
         if (type === 'edge' && data?.id) setEdgeJumpBack(data.id, false)
         break
       case 'layout_chain':
-        if (type === 'node' && isFlowNodeData(data) && data.id) layoutChainFromNode(data.id, currentSpacing.value)
+        if (type === 'node' && isFlowNodeData(data) && data.id) {
+          if (mode === 'subcanvas') {
+            layoutChainFromNode(data.id, currentSpacing.value)
+          } else {
+            onOpenSubCanvas?.({ nodeId: String(data.id) })
+          }
+        }
         break
       case 'layout_chain_with_algo':
         if (type === 'node' && isFlowNodeData(data) && data.id && isLayoutAlgorithm(payload)) {
-          layoutChainFromNode(data.id, currentSpacing.value, payload)
+          if (mode === 'subcanvas') {
+            layoutChainFromNode(data.id, currentSpacing.value, payload)
+          } else {
+            onOpenSubCanvas?.({ nodeId: String(data.id), algorithm: payload })
+          }
         }
         break
       case 'layout':

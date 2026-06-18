@@ -5,6 +5,7 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { FolderSearch } from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
+import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
@@ -36,6 +37,14 @@ const {
   onValidateConnection,
   handleConnect,
   handleEdgesChange,
+  handleNodeUpdate,
+  createNodeObject,
+  removeEdges,
+  setEdgeJumpBack,
+  markDataChanged,
+  imageManager,
+  handleDebugNode,
+  handleOpenDebugPanel,
   handleNodesChange,
   menu,
   searchVisible,
@@ -58,6 +67,8 @@ const {
   handleCancelDeleteImages,
   handleConfirmDeleteImages,
   handleSkipDeleteImages,
+  subCanvas,
+  closeSubCanvas,
   editorPort
 } = useFlowEditorVm({ tabId: props.tabId, emit })
 
@@ -127,6 +138,7 @@ defineExpose(editorPort)
         :current-direction="currentDirection"
         :debug-panel-visible="props.debugPanelVisible"
         :search-visible="searchVisible"
+        mode="main"
         @close="closeMenu"
         @action="handleMenuAction"
       />
@@ -156,6 +168,33 @@ defineExpose(editorPort)
       @cancel="handleCancelDeleteImages"
       @confirm="() => handleConfirmDeleteImages(() => {})"
       @skip="() => handleSkipDeleteImages(() => {})"
+    />
+    <SubCanvasPanel
+      :visible="subCanvas.visible"
+      :root-node-id="subCanvas.nodeId"
+      :initial-algorithm="subCanvas.algorithm"
+      :nodes="nodes"
+      :edges="edges"
+      :node-types-object="nodeTypesObject"
+      :current-edge-type="currentEdgeType"
+      :current-spacing="currentSpacing"
+      :current-algorithm="currentAlgorithm"
+      :current-direction="currentDirection"
+      :current-filename="currentFilename"
+      :is-file-loaded="isFileLoaded"
+      :on-validate-connection="onValidateConnection"
+      :handle-connect="handleConnect"
+      :handle-edges-change="handleEdgesChange"
+      :handle-node-update="handleNodeUpdate"
+      :create-node-object="createNodeObject"
+      :remove-edges="removeEdges"
+      :set-edge-jump-back="setEdgeJumpBack"
+      :mark-data-changed="markDataChanged"
+      :image-manager="imageManager"
+      :handle-debug-node="handleDebugNode"
+      :handle-open-debug-panel="handleOpenDebugPanel"
+      @close="closeSubCanvas"
+      @root-renamed="(nodeId) => { subCanvas.nodeId = nodeId }"
     />
   </div>
 </template>
