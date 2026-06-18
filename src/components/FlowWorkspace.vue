@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
-import { FileJson, Loader2, Plus, X } from 'lucide-vue-next'
+import { FileJson, Loader2, Move, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
+import ToolbarIconDropdown from './Flow/Common/ToolbarIconDropdown.vue'
 import { useFlowWorkspaceVm } from '@/composables/viewModels/useFlowWorkspaceVm'
+import {
+  EDGE_TYPE_OPTIONS,
+  LAYOUT_ALGORITHM_OPTIONS,
+  LAYOUT_DIRECTION_OPTIONS,
+  SPACING_TYPE_OPTIONS,
+  type EdgeType
+} from '@/utils/flowOptions'
+import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 import type { FlowEditorPort } from '@/composables/viewModels/types'
 
 const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
@@ -27,6 +36,7 @@ const {
   handleRequestSwitchFile,
   openDebugPanel,
   closeDebugPanel,
+  applyActiveEditorLayout,
   handleLoadNodes,
   handleLoadImages,
   handleUpdateCanvasConfig,
@@ -35,47 +45,112 @@ const {
   handleClearTabs,
   handleDeviceConnected
 } = useFlowWorkspaceVm()
+
+const handleToolbarLayout = () => {
+  void applyActiveEditorLayout()
+}
+
+const handleToolbarAlgorithmChange = (value: PropertyKey) => {
+  handleUpdateCanvasConfig({ layoutAlgorithm: value as LayoutAlgorithm })
+}
+
+const handleToolbarDirectionChange = (value: PropertyKey) => {
+  handleUpdateCanvasConfig({ layoutDirection: value as LayoutDirection })
+}
+
+const handleToolbarSpacingChange = (value: PropertyKey) => {
+  handleUpdateCanvasConfig({ spacing: value as SpacingKey })
+}
+
+const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
+  handleUpdateCanvasConfig({ edgeType: value as EdgeType })
+}
 </script>
 
 <template>
   <div class="w-full h-full flex flex-col bg-slate-100 overflow-hidden">
     <div class="shrink-0 border-b border-slate-200 bg-white px-2 py-1.5">
-      <div class="flex items-end gap-1 overflow-x-auto overflow-y-hidden">
-        <button
-          v-for="(tab, index) in tabs.items"
-          :key="tab.id"
-          type="button"
-          class="group h-9 min-w-0 max-w-[220px] px-3 flex items-center gap-2 border border-b-0 text-xs font-medium transition-colors"
-          :class="activeTab?.id === tab.id
-            ? 'bg-slate-50 border-slate-200 text-slate-900 rounded-t-lg shadow-sm'
-            : 'bg-white border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-t-lg'"
-          @click="selectTab(tab.id)"
-        >
-          <FileJson
-            :size="14"
-            class="shrink-0"
-          />
-          <span class="truncate">{{ makeTabTitle(tab, index) }}</span>
-          <span
-            v-if="tabs.items.length > 1"
-            class="ml-auto p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700"
-            title="关闭标签页"
-            @click.stop="closeTab(tab.id)"
+      <div class="flex items-end gap-2">
+        <div class="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden">
+          <button
+            v-for="(tab, index) in tabs.items"
+            :key="tab.id"
+            type="button"
+            class="group h-9 min-w-0 max-w-[220px] px-3 flex items-center gap-2 border border-b-0 text-xs font-medium transition-colors"
+            :class="activeTab?.id === tab.id
+              ? 'bg-slate-50 border-slate-200 text-slate-900 rounded-t-lg shadow-sm'
+              : 'bg-white border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-t-lg'"
+            @click="selectTab(tab.id)"
           >
-            <X :size="13" />
-          </span>
-        </button>
-        <button
-          type="button"
-          class="h-9 w-9 rounded-t-lg border border-b-0 border-transparent bg-white text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shrink-0"
-          title="新建流程标签页"
-          @click="addTab"
-        >
-          <Plus
-            :size="16"
-            class="mx-auto"
+            <FileJson
+              :size="14"
+              class="shrink-0"
+            />
+            <span class="truncate">{{ makeTabTitle(tab, index) }}</span>
+            <span
+              v-if="tabs.items.length > 1"
+              class="ml-auto p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700"
+              title="关闭标签页"
+              @click.stop="closeTab(tab.id)"
+            >
+              <X :size="13" />
+            </span>
+          </button>
+          <button
+            type="button"
+            class="h-9 w-9 rounded-t-lg border border-b-0 border-transparent bg-white text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shrink-0"
+            title="新建流程标签页"
+            @click="addTab"
+          >
+            <Plus
+              :size="16"
+              class="mx-auto"
+            />
+          </button>
+        </div>
+
+        <div class="ml-auto flex shrink-0 items-center gap-1 pb-0.5">
+          <button
+            type="button"
+            class="h-7 w-8 rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+            title="自动布局"
+            :disabled="!activeEditorRef || activeEditorStatus.nodeCount === 0"
+            @click="handleToolbarLayout"
+          >
+            <Move
+              :size="14"
+              class="mx-auto"
+            />
+          </button>
+          <ToolbarIconDropdown
+            title="布局算法"
+            :model-value="appSettings.layoutAlgorithm"
+            :options="LAYOUT_ALGORITHM_OPTIONS"
+            :disabled="!activeEditorRef"
+            @update:model-value="handleToolbarAlgorithmChange"
           />
-        </button>
+          <ToolbarIconDropdown
+            title="布局方向"
+            :model-value="appSettings.layoutDirection"
+            :options="LAYOUT_DIRECTION_OPTIONS"
+            :disabled="!activeEditorRef"
+            @update:model-value="handleToolbarDirectionChange"
+          />
+          <ToolbarIconDropdown
+            title="布局间隔"
+            :model-value="appSettings.spacing"
+            :options="SPACING_TYPE_OPTIONS"
+            :disabled="!activeEditorRef"
+            @update:model-value="handleToolbarSpacingChange"
+          />
+          <ToolbarIconDropdown
+            title="连线类型"
+            :model-value="appSettings.edgeType"
+            :options="EDGE_TYPE_OPTIONS"
+            :disabled="!activeEditorRef"
+            @update:model-value="handleToolbarEdgeTypeChange"
+          />
+        </div>
       </div>
     </div>
 

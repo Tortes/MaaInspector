@@ -6,10 +6,7 @@ import {
 } from 'lucide-vue-next'
 import { recognitionMenuOptions } from '@/utils/node-config'
 import { 
-  EDGE_TYPE_OPTIONS, 
-  SPACING_TYPE_OPTIONS, 
   LAYOUT_ALGORITHM_OPTIONS, 
-  LAYOUT_DIRECTION_OPTIONS,
   type EdgeType, 
   type OptionItem 
 } from '@/utils/flowOptions'
@@ -230,54 +227,6 @@ const menuItems = computed<MenuItem[]>(() => {
       debugMenuItem,
       {type: 'item', label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600'},
       {type: 'divider'},
-      {
-        type: 'item',
-        label: '自动布局 (ELK)',
-        action: 'layout',
-        icon: Move,
-        color: 'text-indigo-600'
-      },
-      {
-        type: 'item',
-        key: 'layout-algorithm',
-        label: '布局算法',
-        icon: LAYOUT_ALGORITHM_OPTIONS[0]?.icon,
-        color: 'text-purple-600',
-        action: 'changeAlgorithm',
-        submenu: LAYOUT_ALGORITHM_OPTIONS,
-        submenuAction: 'changeAlgorithm'
-      },
-      {
-        type: 'item',
-        key: 'layout-direction',
-        label: '布局方向',
-        icon: LAYOUT_DIRECTION_OPTIONS[0]?.icon,
-        color: 'text-blue-600',
-        action: 'changeDirection',
-        submenu: LAYOUT_DIRECTION_OPTIONS,
-        submenuAction: 'changeDirection'
-      },
-      {
-        type: 'item',
-        key: 'layout-spacing',
-        label: '布局间距',
-        icon: SPACING_TYPE_OPTIONS[0]?.icon,
-        color: 'text-slate-600',
-        action: 'changeSpacing',
-        submenu: SPACING_TYPE_OPTIONS,
-        submenuAction: 'changeSpacing'
-      },
-      {
-        type: 'item',
-        key: 'edge-type',
-        label: '连线类型',
-        icon: EDGE_TYPE_OPTIONS[0]?.icon,
-        color: 'text-slate-600',
-        action: 'changeEdgeType',
-        submenu: EDGE_TYPE_OPTIONS,
-        submenuAction: 'changeEdgeType'
-      },
-      {type: 'divider'},
       {type: 'item', label: '重置视图', action: 'reset', icon: RefreshCw, color: 'text-slate-600'},
       {type: 'item', label: '清除画布', action: 'clear', icon: XCircle, color: 'text-red-500'},
     ]
@@ -393,7 +342,7 @@ const menuItems = computed<MenuItem[]>(() => {
                     {{ parseLabel(sub.label).note }}
                   </span>
                   <Check
-                    v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing) || (item.key === 'layout-algorithm' && sub.value === currentAlgorithm) || (item.key === 'layout-direction' && sub.value === currentDirection) || (item.key === 'layout-chain-algorithm' && sub.value === currentAlgorithm)"
+                    v-if="item.key === 'layout-chain-algorithm' && sub.value === currentAlgorithm"
                     :size="16"
                     class="text-blue-600"
                   />

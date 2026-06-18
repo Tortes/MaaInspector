@@ -2,7 +2,8 @@ import { computed, nextTick, ref } from 'vue'
 import { useTabManager } from '@/composables/useTabManager'
 import { useMainAppState } from '@/composables/useMainAppState'
 import { useAppConfigStore } from '@/stores/appConfig'
-import type { FlowBusinessData } from '@/utils/flowTypes'
+import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
+import type { EdgeType } from '@/utils/flowOptions'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
 import type { DebugPanelState, FlowEditorPort, InfoPanelPort } from './types'
 
@@ -165,12 +166,17 @@ export function useFlowWorkspaceVm() {
     activeEditorRef.value?.handleLoadImages(payload, basePath)
   }
 
+  const applyActiveEditorLayout = async () => {
+    await activeEditorRef.value?.handleApplyLayout()
+  }
+
   const handleUpdateCanvasConfig = (payload: {
-    edgeType?: string
-    spacing?: string
-    layoutAlgorithm?: string
-    layoutDirection?: string
+    edgeType?: EdgeType
+    spacing?: SpacingKey
+    layoutAlgorithm?: LayoutAlgorithm
+    layoutDirection?: LayoutDirection
   }) => {
+    appConfig.updateCanvasSettings(payload)
     activeEditorRef.value?.handleUpdateCanvasConfig(payload)
   }
 
@@ -247,6 +253,7 @@ export function useFlowWorkspaceVm() {
     handleRequestSwitchFile,
     openDebugPanel,
     closeDebugPanel,
+    applyActiveEditorLayout,
     handleLoadNodes,
     handleLoadImages,
     handleUpdateCanvasConfig,
