@@ -264,6 +264,7 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
         <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
           <DeviceManager
             :is-connected="appConfig.system.status === 'connected'"
+            :snapshot="deviceStatus"
             @device-connected="handleDeviceConnected"
             @status-change="handleDeviceStatus"
           />
@@ -275,6 +276,9 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
             :selected-file="appConfig.resource.selectedFileId"
             :opened-file-ids="openedFileIds"
             :restore-workspace-on-start="props.restoreWorkspaceOnStart"
+            :initial-status="resourceStatus.status === 'disconnecting' ? 'disconnected' : resourceStatus.status"
+            :initial-message="resourceStatus.message"
+            :initial-files="resourceStatus.availableFiles"
             @file-selected="handleFileSelected"
             @config-changed="handleConfigChanged"
             @update:profile-index="(v) => appConfig.switchResourceProfile(v)"

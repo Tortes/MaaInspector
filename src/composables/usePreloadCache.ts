@@ -1,4 +1,5 @@
 import { resourceApi } from '@/services/api'
+import { makeFileId } from '@/utils/fileId'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import type { FlowBusinessData, TemplateImage } from '@/utils/flowTypes'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
@@ -28,6 +29,7 @@ interface UsePreloadCacheOptions {
   tabs: () => TabResourceInfo[] | undefined
   selectedResourceFile: () => string
   resourceManagerRef: () => ResourceManagerRef | null
+  availableFiles?: () => ResourceFileInfo[]
   emit: PreloadCacheEmit
 }
 
@@ -47,9 +49,6 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
   const preloadAllTabFiles = async () => {
     const tabs = options.tabs()
     if (!tabs || tabs.length === 0) return
-
-    const rm = options.resourceManagerRef()
-    if (!rm) return
 
     const filesToPreload = new Set<string>()
     const currentFileKey = options.selectedResourceFile()
@@ -112,10 +111,9 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
 
   const handleFileSelected = (payload: { filename: string; source: string }) => {
     const rm = options.resourceManagerRef()
-    if (!rm) return
 
     const fileId = `${payload.source}|${payload.filename}`
-    const fileObj = rm.findFileById(fileId)
+    const fileObj = rm?.findFileById(fileId) ?? options.availableFiles?.().find(file => makeFileId(file.source ?? '', file.value ?? '') === fileId)
     if (!fileObj || !fileObj.value) return
 
     const src = fileObj.source ?? ''
@@ -129,18 +127,18 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
         cached.images
       )
       preloadCache.delete(fileKey)
-      rm.setMessage(`已加载: ${Object.keys(cached.nodes).length} 节点 (从缓存)`)
+      rm?.setMessage(`已加载: ${Object.keys(cached.nodes).length} 节点 (从缓存)`)
       return
     }
 
-    rm.setMessage('加载节点中...')
+    rm?.setMessage('加载节点中...')
     resourceApi.getFileNodes<Record<string, FlowBusinessData>>(src, fname).then(res => {
       const nodes = res.nodes || {}
       const fileVersion = isPipelineV2Nodes(nodes) ? 'V2' : 'V1'
       const normalizedNodes = fileVersion === 'V2' ? toPipelineV1Nodes(nodes) : nodes
 
       options.emit('load-nodes', { filename: fname, source: src, nodes: normalizedNodes, fileVersion })
-      rm.setMessage(`已加载: ${Object.keys(nodes).length} 节点`)
+      rm?.setMessage(`已加载: ${Object.keys(nodes).length} 节点`)
 
       resourceApi.getTemplateImages(src, fname).then(imgRes => {
         if (imgRes.results) {
@@ -154,7 +152,7 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
       void preloadAllTabFiles()
     }).catch(e => {
       console.error("加载节点失败", e)
-      rm.setMessage('节点加载失败')
+      rm?.setMessage('节点加载失败')
     })
   }
 

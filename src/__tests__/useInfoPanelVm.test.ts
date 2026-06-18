@@ -49,6 +49,7 @@ describe('useInfoPanelVm', () => {
   it('keeps collapsed panel status from explicit child status events', () => {
     const emit = createEmit()
     const vm = useInfoPanelVm({ tabs: [] }, emit)
+    const file = { label: 'pipeline.json', value: 'pipeline.json', source: 'D:/maa', filename: 'pipeline.json' }
 
     vm.handleDeviceStatus({ status: 'connected', message: '设备已连接' })
     vm.handleAgentStatus({ status: 'failed', message: 'Agent 连接失败' })
@@ -56,13 +57,15 @@ describe('useInfoPanelVm', () => {
       status: 'connected',
       message: '资源已就绪',
       fileOptions: [{ label: 'pipeline.json', value: 'D:/maa|pipeline.json' }],
-      availableFilesLength: 1
+      availableFilesLength: 1,
+      availableFiles: [file]
     })
 
-    expect(vm.deviceStatus.value).toEqual({ status: 'connected', message: '设备已连接' })
+    expect(vm.deviceStatus.value).toMatchObject({ status: 'connected', message: '设备已连接' })
     expect(vm.agentStatus.value).toEqual({ status: 'failed', message: 'Agent 连接失败' })
     expect(vm.resourceStatus.value.availableFilesLength).toBe(1)
     expect(vm.resourceStatus.value.fileOptions[0].value).toBe('D:/maa|pipeline.json')
+    expect(vm.resourceStatus.value.availableFiles[0]).toEqual(file)
   })
 
   it('saves the currently selected file through the resource manager lookup', async () => {
@@ -109,6 +112,30 @@ describe('useInfoPanelVm', () => {
 
     expect(emit).toHaveBeenCalledWith('update:selected-resource-file', 'D:/maa|tasks.json')
     expect(resourceManager.executeFileSwitch).toHaveBeenCalledWith('tasks.json', 'D:/maa')
+  })
+
+  it('switches files from the collapsed selector using cached resource files after child remounts', async () => {
+    const emit = createEmit()
+    const vm = useInfoPanelVm({ tabs: [] }, emit)
+    const file = { label: 'tasks.json', value: 'tasks.json', source: 'D:/maa', filename: 'tasks.json' }
+    vi.mocked(resourceApi.getFileNodes).mockResolvedValue({ nodes: {} })
+    vi.mocked(resourceApi.getTemplateImages).mockResolvedValue({ results: {} })
+    vm.handleResourceStatus({
+      status: 'connected',
+      message: '资源已就绪',
+      availableFiles: [file],
+      availableFilesLength: 1
+    })
+
+    vm.handleCollapsedFileChange('D:/maa|tasks.json')
+
+    expect(emit).toHaveBeenCalledWith('update:selected-resource-file', 'D:/maa|tasks.json')
+    await vi.waitFor(() => {
+      expect(emit).toHaveBeenCalledWith('load-nodes', expect.objectContaining({
+        filename: 'tasks.json',
+        source: 'D:/maa'
+      }))
+    })
   })
 
   it('reloads resources after creating a file and opens the new file', async () => {

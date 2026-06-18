@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   Smartphone, Power, Search, Loader2
 } from 'lucide-vue-next'
@@ -9,28 +9,32 @@ import Dropdown from '@/components/Flow/Common/Dropdown.vue'
 import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 import type { DropdownOption } from '@/components/Flow/Common/types'
 import type { ApiDeviceInfo } from '@/services/api'
+import type { DevicePanelSnapshot } from '@/composables/viewModels/types'
 
-defineProps<{
+const props = defineProps<{
   isConnected: boolean
+  snapshot?: DevicePanelSnapshot
 }>()
 
 const emit = defineEmits<{
   'device-connected': [status: boolean]
-  'status-change': [snapshot: { status: 'disconnected' | 'connecting' | 'connected' | 'failed' | 'disconnecting'; message: string }]
+  'status-change': [snapshot: DevicePanelSnapshot]
 }>()
 
+type DeviceStatus = 'disconnected' | 'connecting' | 'connected' | 'failed' | 'disconnecting'
+
 // 设备类型
-const deviceType = ref<'win32' | 'adb'>('adb')
+const deviceType = ref<'win32' | 'adb'>(props.snapshot?.deviceType ?? 'adb')
 
 // 设备搜索相关
-const searchedDevices = ref<ApiDeviceInfo[]>([])
-const selectedDeviceIndex = ref<number>(-1)
+const searchedDevices = ref<ApiDeviceInfo[]>([...(props.snapshot?.searchedDevices ?? [])])
+const selectedDeviceIndex = ref<number>(props.snapshot?.selectedDeviceIndex ?? -1)
 const isSearchingDevices = ref(false)
 
 // 连接状态
-const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed' | 'disconnecting'>('disconnected')
-const message = ref('设备未连接')
-const info = ref<Record<string, unknown>>({})
+const status = ref<DeviceStatus>(props.snapshot?.status ?? 'disconnected')
+const message = ref(props.snapshot?.message ?? '设备未连接')
+const info = ref<Record<string, unknown>>(props.snapshot?.info ?? {})
 
 // Win32 连接方法枚举
 const win32ScreencapMethods = [
@@ -55,9 +59,9 @@ const win32InputMethods = [
 ]
 
 // Win32 连接参数
-const win32ScreencapMethod = ref(4)
-const win32MouseMethod = ref(1)
-const win32KeyboardMethod = ref(1)
+const win32ScreencapMethod = ref(props.snapshot?.win32ScreencapMethod ?? 4)
+const win32MouseMethod = ref(props.snapshot?.win32MouseMethod ?? 1)
+const win32KeyboardMethod = ref(props.snapshot?.win32KeyboardMethod ?? 1)
 
 // 设备截图相关
 const deviceScreenshot = ref<string>('')
@@ -264,12 +268,35 @@ watch(status, (newStatus) => {
   }
 })
 
-watch([status, message], () => {
+watch([
+  status,
+  message,
+  deviceType,
+  searchedDevices,
+  selectedDeviceIndex,
+  info,
+  win32ScreencapMethod,
+  win32MouseMethod,
+  win32KeyboardMethod
+], () => {
   emit('status-change', {
     status: status.value,
-    message: message.value
+    message: message.value,
+    deviceType: deviceType.value,
+    searchedDevices: searchedDevices.value,
+    selectedDeviceIndex: selectedDeviceIndex.value,
+    info: info.value,
+    win32ScreencapMethod: win32ScreencapMethod.value,
+    win32MouseMethod: win32MouseMethod.value,
+    win32KeyboardMethod: win32KeyboardMethod.value
   })
 }, { immediate: true })
+
+onMounted(() => {
+  if (status.value === 'connected') {
+    startScreenshotTimer()
+  }
+})
 
 onUnmounted(() => {
   stopScreenshotTimer()

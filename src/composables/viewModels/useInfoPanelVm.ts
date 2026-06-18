@@ -9,7 +9,7 @@ import type { ResourceFileInfo, ResourceProfile } from '@/services/api'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey, TemplateImage } from '@/utils/flowTypes'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
-import type { InfoPanelStatusSnapshot, PanelConnectionStatus, ResourcePanelSnapshot } from './types'
+import type { DevicePanelSnapshot, InfoPanelStatusSnapshot, PanelConnectionStatus, ResourcePanelSnapshot } from './types'
 
 interface FlowTab {
   id: string
@@ -65,11 +65,19 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     status: 'disconnected',
     message: '资源未连接',
     fileOptions: [],
-    availableFilesLength: 0
+    availableFilesLength: 0,
+    availableFiles: []
   })
-  const deviceStatus = ref<InfoPanelStatusSnapshot>({
+  const deviceStatus = ref<DevicePanelSnapshot>({
     status: 'disconnected',
-    message: '设备未连接'
+    message: '设备未连接',
+    deviceType: 'adb',
+    searchedDevices: [],
+    selectedDeviceIndex: -1,
+    info: {},
+    win32ScreencapMethod: 4,
+    win32MouseMethod: 1,
+    win32KeyboardMethod: 1
   })
   const agentStatus = ref<InfoPanelStatusSnapshot>({
     status: 'disconnected',
@@ -98,6 +106,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     tabs: () => props.tabs,
     selectedResourceFile: () => systemState.selectedResourceFile.value,
     resourceManagerRef: () => resourceManagerRef.value,
+    availableFiles: () => resourceStatus.value.availableFiles,
     emit
   })
 
@@ -106,17 +115,24 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     message: string
     fileOptions?: Array<{ label: string; value: PropertyKey; disabled?: boolean }>
     availableFilesLength?: number
+    availableFiles?: ResourceFileInfo[]
   }) => {
     resourceStatus.value = {
       status: snapshot.status,
       message: snapshot.message,
       fileOptions: snapshot.fileOptions ?? resourceStatus.value.fileOptions,
-      availableFilesLength: snapshot.availableFilesLength ?? resourceStatus.value.availableFilesLength
+      availableFilesLength: snapshot.availableFilesLength ?? resourceStatus.value.availableFilesLength,
+      availableFiles: snapshot.availableFiles ?? resourceStatus.value.availableFiles
     }
   }
 
-  const handleDeviceStatus = (snapshot: InfoPanelStatusSnapshot) => {
-    deviceStatus.value = snapshot
+  const handleDeviceStatus = (snapshot: Partial<DevicePanelSnapshot> & InfoPanelStatusSnapshot) => {
+    deviceStatus.value = {
+      ...deviceStatus.value,
+      ...snapshot,
+      searchedDevices: snapshot.searchedDevices ?? deviceStatus.value.searchedDevices,
+      info: snapshot.info ?? deviceStatus.value.info
+    }
   }
 
   const handleAgentStatus = (snapshot: InfoPanelStatusSnapshot) => {
@@ -221,11 +237,15 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     const fileId = String(value)
     if (fileId === currentResourceFile.value) return
     const rm = resourceManagerRef.value
-    if (!rm) return
-    const fileObj = rm.findFileById(fileId)
+    const fileObj = rm?.findFileById(fileId) ?? resourceStatus.value.availableFiles.find(file => makeFileId(file.source, file.value) === fileId)
     if (!fileObj?.value) return
     emit('update:selected-resource-file', fileId)
-    void executeFileSwitch(fileObj.value, fileObj.source)
+    appConfig.hydrateWorkspaceFromResource(fileId)
+    if (rm) {
+      void executeFileSwitch(fileObj.value, fileObj.source)
+      return
+    }
+    handleFileSelectedFromCache({ filename: fileObj.value, source: fileObj.source })
   }
 
   const resourceProfileFileId = (source: string, filename: string | null) => makeFileId(source, filename)

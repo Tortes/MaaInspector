@@ -1,4 +1,5 @@
 import type { FlowBusinessData, NodeStatus, TemplateImage } from '@/utils/flowTypes'
+import type { ApiDeviceInfo, ResourceFileInfo } from '@/services/api'
 
 export interface DebugPanelState {
   visible: boolean
@@ -55,4 +56,15 @@ export interface InfoPanelStatusSnapshot {
 export interface ResourcePanelSnapshot extends InfoPanelStatusSnapshot {
   fileOptions: Array<{ label: string; value: PropertyKey; disabled?: boolean }>
   availableFilesLength: number
+  availableFiles: ResourceFileInfo[]
+}
+
+export interface DevicePanelSnapshot extends InfoPanelStatusSnapshot {
+  deviceType: 'win32' | 'adb'
+  searchedDevices: ApiDeviceInfo[]
+  selectedDeviceIndex: number
+  info: Record<string, unknown>
+  win32ScreencapMethod: number
+  win32MouseMethod: number
+  win32KeyboardMethod: number
 }

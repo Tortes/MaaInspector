@@ -23,6 +23,9 @@ const props = defineProps<{
   selectedFile?: string
   openedFileIds?: string[]
   restoreWorkspaceOnStart?: boolean
+  initialStatus?: 'disconnected' | 'connecting' | 'connected' | 'failed'
+  initialMessage?: string
+  initialFiles?: ResourceFileInfo[]
 }>()
 
 const emit = defineEmits([
@@ -39,8 +42,8 @@ const emit = defineEmits([
 ])
 
 // 内部状态 (当 props 未提供时使用)
-const internalStatus = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
-const internalMessage = ref('资源未连接')
+const internalStatus = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>(props.initialStatus ?? 'disconnected')
+const internalMessage = ref(props.initialMessage ?? '资源未连接')
 const internalProfiles = ref<EditableProfile[]>([])
 const internalProfileIndex = ref(0)
 const internalSelectedFile = ref('')
@@ -56,7 +59,7 @@ const selectedResourceFile = computed(() => props.selectedFile ?? internalSelect
 const localProfiles = ref<EditableProfile[]>([])
 const localProfileIndex = ref(0)
 const localSelectedFile = ref('')
-const availableFiles = ref<ResourceFileInfo[]>([])
+const availableFiles = ref<ResourceFileInfo[]>([...(props.initialFiles ?? [])])
 
 const currentProfile = computed<EditableProfile>(() =>
   resourceProfiles.value[selectedProfileIndex.value] || { name: 'None', paths: [] } as EditableProfile
@@ -108,7 +111,8 @@ watchEffect(() => {
     status: status.value,
     message: message.value,
     fileOptions: fileOptions.value,
-    availableFilesLength: availableFiles.value.length
+    availableFilesLength: availableFiles.value.length,
+    availableFiles: availableFiles.value
   })
 })
 
@@ -244,6 +248,11 @@ watch(selectedProfileIndex, (nv, ov) => {
   if (nv === ov) return
   emit('config-changed')
   void handleResourceLoad()
+})
+
+watch(() => props.initialFiles, (files) => {
+  if (availableFiles.value.length > 0 || !files?.length) return
+  availableFiles.value = [...files]
 })
 </script>
 
