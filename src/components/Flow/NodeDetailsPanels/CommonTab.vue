@@ -14,6 +14,11 @@ const { getValue, setValue } = props
 
 const getInputValue = (event: Event) => (event.target as HTMLInputElement | null)?.value ?? ''
 const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
+const parseNonNegativeInt = (value: string, fallback: number) => {
+  const num = parseInt(value, 10)
+  if (Number.isNaN(num)) return fallback
+  return Math.max(0, num)
+}
 const parseOptionalInt = (value: string) => {
   const trimmed = value.trim()
   if (!trimmed) return null
@@ -79,9 +84,10 @@ const parseOptionalInt = (value: string) => {
         </label>
         <input
           type="number"
+          min="0"
           :value="getValue('pre_delay', 200)"
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
-          @input="setValue('pre_delay', parseInt(getInputValue($event)) || 200)"
+          @input="setValue('pre_delay', parseNonNegativeInt(getInputValue($event), 200))"
         >
       </div>
       <div class="space-y-1">
@@ -94,27 +100,30 @@ const parseOptionalInt = (value: string) => {
         </label>
         <input
           type="number"
+          min="0"
           :value="getValue('post_delay', 200)"
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
-          @input="setValue('post_delay', parseInt(getInputValue($event)) || 200)"
+          @input="setValue('post_delay', parseNonNegativeInt(getInputValue($event), 200))"
         >
       </div>
       <div class="space-y-1">
         <label class="text-[10px] font-semibold text-slate-500 uppercase">前等待冻结</label>
         <input
           type="number"
+          min="0"
           :value="getValue('pre_wait_freezes', 0)"
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
-          @input="setValue('pre_wait_freezes', parseInt(getInputValue($event)) || 0)"
+          @input="setValue('pre_wait_freezes', parseNonNegativeInt(getInputValue($event), 0))"
         >
       </div>
       <div class="space-y-1">
         <label class="text-[10px] font-semibold text-slate-500 uppercase">后等待冻结</label>
         <input
           type="number"
+          min="0"
           :value="getValue('post_wait_freezes', 0)"
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
-          @input="setValue('post_wait_freezes', parseInt(getInputValue($event)) || 0)"
+          @input="setValue('post_wait_freezes', parseNonNegativeInt(getInputValue($event), 0))"
         >
       </div>
     </div>
@@ -145,18 +154,20 @@ const parseOptionalInt = (value: string) => {
         <label class="text-[10px] font-semibold text-slate-500 uppercase">重复延迟 (ms)</label>
         <input
           type="number"
+          min="0"
           :value="getValue('repeat_delay', 0)"
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
-          @input="setValue('repeat_delay', parseInt(getInputValue($event)) || 0)"
+          @input="setValue('repeat_delay', parseNonNegativeInt(getInputValue($event), 0))"
         >
       </div>
       <div class="space-y-1">
         <label class="text-[10px] font-semibold text-slate-500 uppercase">重复等待冻结 (ms)</label>
         <input
           type="number"
+          min="0"
           :value="getValue('repeat_wait_freezes', 0)"
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
-          @input="setValue('repeat_wait_freezes', parseInt(getInputValue($event)) || 0)"
+          @input="setValue('repeat_wait_freezes', parseNonNegativeInt(getInputValue($event), 0))"
         >
       </div>
     </div>
