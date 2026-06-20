@@ -6,6 +6,8 @@ use maa_framework::sys;
 const CONNECTION_TIMEOUT_MS: u64 = 60000;
 /// Poll interval for checking operation status
 const STATUS_POLL_INTERVAL_MS: u64 = 50;
+/// Custom Win32 input method value used by Tortes/MaaFramework fork.
+const WIN32_INPUT_METHOD_INTERCEPTION: i32 = 1 << 9;
 
 /// Wait for controller operation with timeout
 pub(crate) fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
@@ -132,6 +134,14 @@ pub async fn connect_win32_async(
     mouse_method: Option<i32>,
     keyboard_method: Option<i32>,
 ) -> (bool, Option<String>, Option<Controller>) {
+    if keyboard_method == Some(WIN32_INPUT_METHOD_INTERCEPTION) {
+        return (
+            false,
+            Some("Interception 仅支持鼠标输入，请为键盘选择其他输入方式".to_string()),
+            None,
+        );
+    }
+
     let screencap = screencap_method.unwrap_or(sys::MaaWin32ScreencapMethod_GDI as i32)
         as sys::MaaWin32ScreencapMethod;
     let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32)

@@ -56,6 +56,9 @@ const win32InputMethods = [
   { value: 16, label: 'PostThreadMessage' },
   { value: 32, label: 'SendMessageWithCursorPos' },
   { value: 64, label: 'PostMessageWithCursorPos' },
+  { value: 128, label: 'SendMessageWithWindowPos' },
+  { value: 256, label: 'PostMessageWithWindowPos' },
+  { value: 512, label: 'Interception' },
 ]
 
 // Win32 连接参数
@@ -99,8 +102,9 @@ const win32MouseOptions = computed<DropdownOption[]>(() => {
 
 const win32KeyboardOptions = computed<DropdownOption[]>(() => {
   return win32InputMethods.map(method => ({
-    label: method.label,
-    value: method.value
+    label: method.value === 512 ? `${method.label}（仅鼠标）` : method.label,
+    value: method.value,
+    disabled: method.value === 512
   }))
 })
 

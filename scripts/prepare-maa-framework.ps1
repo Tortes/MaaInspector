@@ -1,5 +1,7 @@
 param(
   [string]$Version = $env:MAA_FRAMEWORK_VERSION,
+  [string]$Repository = $env:MAA_FRAMEWORK_REPOSITORY,
+  [string]$AssetName = $env:MAA_FRAMEWORK_ASSET_NAME,
   [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
   [switch]$Force
 )
@@ -10,7 +12,20 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = "v5.10.0"
 }
 
-if (-not $Version.StartsWith("v")) {
+if ([string]::IsNullOrWhiteSpace($Repository)) {
+  $Repository = "MaaXYZ/MaaFramework"
+}
+
+if ([string]::IsNullOrWhiteSpace($AssetName)) {
+  if ($Repository -eq "MaaXYZ/MaaFramework") {
+    $AssetName = "MAA-win-x86_64-$Version.zip"
+  }
+  else {
+    $AssetName = "MAA-win-x86_64.zip"
+  }
+}
+
+if ($Repository -eq "MaaXYZ/MaaFramework" -and -not $Version.StartsWith("v")) {
   $Version = "v$Version"
 }
 
@@ -25,15 +40,15 @@ if (-not $Force -and $currentVersion -eq $Version -and (Test-Path $dllPath)) {
   exit 0
 }
 
-$zipName = "MAA-win-x86_64-$Version.zip"
-$url = "https://github.com/MaaXYZ/MaaFramework/releases/download/$Version/$zipName"
+$zipName = $AssetName
+$url = "https://github.com/$Repository/releases/download/$Version/$zipName"
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "maainspector-maa-$([System.Guid]::NewGuid().ToString('N'))"
 $zipPath = Join-Path $tempDir $zipName
 
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 try {
-  Write-Host "Downloading MaaFramework $Version from $url"
+  Write-Host "Downloading MaaFramework $Version from $Repository ($url)"
   Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
 
   if (Test-Path $sdkDir) {

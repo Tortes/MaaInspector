@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       maa_framework_version:
-        description: 'MaaFramework release version, for example v5.10.0'
+        description: 'MaaFramework release version or tag, for example release or v5.10.0'
         required: false
-        default: 'v5.10.0'
+        default: 'release'
       release_tag:
         description: 'Release tag to build when manually dispatched, for example v0.7.0'
         required: false
@@ -22,7 +22,9 @@ permissions:
   contents: write
 
 env:
-  DEFAULT_MAA_FRAMEWORK_VERSION: "v5.10.0"
+  DEFAULT_MAA_FRAMEWORK_VERSION: "release"
+  DEFAULT_MAA_FRAMEWORK_REPOSITORY: "Tortes/MaaFramework"
+  DEFAULT_MAA_FRAMEWORK_ASSET_NAME: "MAA-win-x86_64.zip"
 
 jobs:
   build:
@@ -75,7 +77,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_version }}")) {
             $maaVersion = "${{ inputs.maa_framework_version }}"
           }
-          if (-not $maaVersion.StartsWith("v")) {
+          if ("${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}" -eq "MaaXYZ/MaaFramework" -and -not $maaVersion.StartsWith("v")) {
             $maaVersion = "v$maaVersion"
           }
 
@@ -83,6 +85,8 @@ jobs:
           "version=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "maa_version=$maaVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "MAA_FRAMEWORK_VERSION=$maaVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "MAA_FRAMEWORK_REPOSITORY=${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "MAA_FRAMEWORK_ASSET_NAME=${{ env.DEFAULT_MAA_FRAMEWORK_ASSET_NAME }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Prepare MaaFramework SDK
         run: .\scripts\prepare-maa-framework.ps1 -Version "${{ steps.release.outputs.maa_version }}"
