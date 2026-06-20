@@ -8,12 +8,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = "v5.10.0"
-}
-
 if ([string]::IsNullOrWhiteSpace($Repository)) {
   $Repository = "MaaXYZ/MaaFramework"
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  if ($Repository -eq "MaaXYZ/MaaFramework") {
+    $Version = "v5.10.0"
+  }
+  else {
+    $Version = "release"
+  }
 }
 
 if ([string]::IsNullOrWhiteSpace($AssetName)) {
@@ -33,10 +38,11 @@ $sdkDir = Join-Path $ProjectRoot "src-tauri\maa-framework"
 $placeholderPath = Join-Path $sdkDir ".gitkeep"
 $versionFile = Join-Path $sdkDir ".version"
 $dllPath = Join-Path $sdkDir "bin\MaaFramework.dll"
+$desiredMarker = "$Repository|$Version|$AssetName"
 $currentVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
 
-if (-not $Force -and $currentVersion -eq $Version -and (Test-Path $dllPath)) {
-  Write-Host "MaaFramework $Version already prepared at $sdkDir"
+if (-not $Force -and $currentVersion -eq $desiredMarker -and (Test-Path $dllPath)) {
+  Write-Host "MaaFramework $Repository $Version already prepared at $sdkDir"
   exit 0
 }
 
@@ -63,7 +69,7 @@ try {
     throw "MaaFramework.dll was not found at $dllPath after extraction."
   }
 
-  $Version | Set-Content -Path $versionFile -Encoding UTF8
+  $desiredMarker | Set-Content -Path $versionFile -Encoding UTF8
   Write-Host "Prepared MaaFramework $Version at $sdkDir"
 } finally {
   if (Test-Path $tempDir) {
