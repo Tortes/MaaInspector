@@ -2,6 +2,9 @@ param(
   [string]$Version = $env:MAA_FRAMEWORK_VERSION,
   [string]$Repository = $env:MAA_FRAMEWORK_REPOSITORY,
   [string]$AssetName = $env:MAA_FRAMEWORK_ASSET_NAME,
+  [string]$ArchivePath = $env:MAA_FRAMEWORK_ARCHIVE_PATH,
+  [string]$DownloadUrl = $env:MAA_FRAMEWORK_DOWNLOAD_URL,
+  [string]$GithubToken = $env:MAA_FRAMEWORK_TOKEN,
   [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
   [switch]$Force
 )
@@ -9,7 +12,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($Repository)) {
-  $Repository = "MaaXYZ/MaaFramework"
+  $Repository = "Tortes/MaaFramework"
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -38,7 +41,20 @@ $sdkDir = Join-Path $ProjectRoot "src-tauri\maa-framework"
 $placeholderPath = Join-Path $sdkDir ".gitkeep"
 $versionFile = Join-Path $sdkDir ".version"
 $dllPath = Join-Path $sdkDir "bin\MaaFramework.dll"
-$desiredMarker = "$Repository|$Version|$AssetName"
+
+$resolvedArchivePath = $null
+if (-not [string]::IsNullOrWhiteSpace($ArchivePath)) {
+  $resolvedArchivePath = (Resolve-Path -LiteralPath $ArchivePath).Path
+  $archiveItem = Get-Item -LiteralPath $resolvedArchivePath
+  $desiredMarker = "archive|$resolvedArchivePath|$($archiveItem.Length)|$($archiveItem.LastWriteTimeUtc.Ticks)"
+}
+elseif (-not [string]::IsNullOrWhiteSpace($DownloadUrl)) {
+  $desiredMarker = "url|$DownloadUrl|$AssetName"
+}
+else {
+  $desiredMarker = "$Repository|$Version|$AssetName"
+}
+
 $currentVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
 
 if (-not $Force -and $currentVersion -eq $desiredMarker -and (Test-Path $dllPath)) {
@@ -46,16 +62,41 @@ if (-not $Force -and $currentVersion -eq $desiredMarker -and (Test-Path $dllPath
   exit 0
 }
 
-$zipName = $AssetName
-$url = "https://github.com/$Repository/releases/download/$Version/$zipName"
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "maainspector-maa-$([System.Guid]::NewGuid().ToString('N'))"
-$zipPath = Join-Path $tempDir $zipName
+$zipPath = $resolvedArchivePath
+$tempDir = $null
 
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+if ([string]::IsNullOrWhiteSpace($zipPath)) {
+  $zipName = $AssetName
+  $url = if (-not [string]::IsNullOrWhiteSpace($DownloadUrl)) {
+    $DownloadUrl
+  }
+  else {
+    "https://github.com/$Repository/releases/download/$Version/$zipName"
+  }
+  $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "maainspector-maa-$([System.Guid]::NewGuid().ToString('N'))"
+  $zipPath = Join-Path $tempDir $zipName
+  New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+}
 
 try {
-  Write-Host "Downloading MaaFramework $Version from $Repository ($url)"
-  Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+  if ($resolvedArchivePath) {
+    Write-Host "Using local MaaFramework archive: $resolvedArchivePath"
+  }
+  else {
+    Write-Host "Downloading MaaFramework $Version from $Repository ($url)"
+    if ([string]::IsNullOrWhiteSpace($GithubToken)) {
+      Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+    }
+    else {
+      $headers = @{
+        Authorization = "Bearer $GithubToken"
+      }
+      if ($url -like "https://api.github.com/*") {
+        $headers["X-GitHub-Api-Version"] = "2022-11-28"
+      }
+      Invoke-WebRequest -Uri $url -OutFile $zipPath -Headers $headers -UseBasicParsing
+    }
+  }
 
   if (Test-Path $sdkDir) {
     Remove-Item -LiteralPath $sdkDir -Recurse -Force
@@ -66,13 +107,25 @@ try {
   Expand-Archive -Path $zipPath -DestinationPath $sdkDir -Force
 
   if (-not (Test-Path $dllPath)) {
+    $nestedDll = Get-ChildItem -Path $sdkDir -Filter "MaaFramework.dll" -Recurse -File | Select-Object -First 1
+    if ($nestedDll) {
+      $nestedRoot = Split-Path -Parent (Split-Path -Parent $nestedDll.FullName)
+      $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "maainspector-maa-staging-$([System.Guid]::NewGuid().ToString('N'))"
+      New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+      Copy-Item -LiteralPath (Join-Path $nestedRoot '*') -Destination $stagingDir -Recurse -Force
+      Remove-Item -LiteralPath $sdkDir -Recurse -Force
+      Move-Item -LiteralPath $stagingDir -Destination $sdkDir
+    }
+  }
+
+  if (-not (Test-Path $dllPath)) {
     throw "MaaFramework.dll was not found at $dllPath after extraction."
   }
 
   $desiredMarker | Set-Content -Path $versionFile -Encoding UTF8
   Write-Host "Prepared MaaFramework $Version at $sdkDir"
 } finally {
-  if (Test-Path $tempDir) {
+  if ($tempDir -and (Test-Path $tempDir)) {
     Remove-Item -LiteralPath $tempDir -Recurse -Force
   }
 }
