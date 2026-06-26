@@ -6,10 +6,30 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      runner:
+        description: 'GitHub runner type: github-hosted or self-hosted'
+        required: false
+        default: 'github-hosted'
+        type: choice
+        options:
+          - github-hosted
+          - self-hosted
       maa_framework_version:
         description: 'MaaFramework release version or tag, for example release or v5.10.0'
         required: false
         default: 'release'
+      maa_framework_archive_path:
+        description: 'Local MaaFramework zip path for self-hosted runner only'
+        required: false
+        default: ''
+      maa_framework_download_url:
+        description: 'Download URL for MaaFramework zip, used by github-hosted runners or as an override'
+        required: false
+        default: ''
+      maa_framework_artifact_url:
+        description: 'GitHub Actions artifact URL, for example https://github.com/Tortes/MaaFramework/actions/runs/27860032689/artifacts/7762101313'
+        required: false
+        default: ''
       release_tag:
         description: 'Release tag to build when manually dispatched, for example v0.7.0'
         required: false
@@ -28,7 +48,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ inputs.runner == 'self-hosted' && fromJSON('["self-hosted","Windows"]') || 'windows-latest' }}
 
     steps:
       - name: Checkout
@@ -65,8 +85,24 @@ jobs:
         id: release
         run: |
           $tag = "${{ github.ref_name }}"
-          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.release_tag }}")) {
-            $tag = "${{ inputs.release_tag }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            if (-not [string]::IsNullOrWhiteSpace("${{ inputs.release_tag }}")) {
+              $tag = "${{ inputs.release_tag }}"
+            }
+            else {
+              $latestTag = git tag --sort=-creatordate | Select-Object -First 1
+              if ([string]::IsNullOrWhiteSpace($latestTag)) {
+                throw "No git tag found. Provide workflow_dispatch.release_tag explicitly."
+              }
+              $segments = $latestTag.TrimStart('v').Split('.')
+              if ($segments.Length -lt 3) {
+                throw "Latest git tag '$latestTag' is not a semantic version."
+              }
+              $major = [int]$segments[0]
+              $minor = [int]$segments[1]
+              $patch = [int]$segments[2]
+              $tag = "v$major.$minor.$($patch + 1)"
+            }
           }
 
           if (-not $tag.StartsWith("v")) {
@@ -84,12 +120,44 @@ jobs:
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "version=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "maa_version=$maaVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "runner=${{ inputs.runner }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "MAA_FRAMEWORK_VERSION=$maaVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "MAA_FRAMEWORK_REPOSITORY=${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "MAA_FRAMEWORK_ASSET_NAME=${{ env.DEFAULT_MAA_FRAMEWORK_ASSET_NAME }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_artifact_url }}")) {
+            $artifactUrl = "${{ inputs.maa_framework_artifact_url }}"
+            if ($artifactUrl -match '/artifacts/([0-9]+)$') {
+              $artifactId = $Matches[1]
+              $apiUrl = "https://api.github.com/repos/Tortes/MaaFramework/actions/artifacts/$artifactId/zip"
+              "MAA_FRAMEWORK_DOWNLOAD_URL=$apiUrl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+            else {
+              throw "Unsupported maa_framework_artifact_url format: $artifactUrl"
+            }
+          }
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_download_url }}")) {
+            "MAA_FRAMEWORK_DOWNLOAD_URL=${{ inputs.maa_framework_download_url }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          if ("${{ inputs.runner }}" -eq "self-hosted" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_archive_path }}")) {
+            "MAA_FRAMEWORK_ARCHIVE_PATH=${{ inputs.maa_framework_archive_path }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
 
       - name: Prepare MaaFramework SDK
-        run: .\scripts\prepare-maa-framework.ps1 -Version "${{ steps.release.outputs.maa_version }}"
+        env:
+          MAA_FRAMEWORK_TOKEN: ${{ secrets.MAA_FRAMEWORK_TOKEN }}
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_archive_path }}")) {
+            .\scripts\prepare-maa-framework.ps1 -ArchivePath "${{ inputs.maa_framework_archive_path }}"
+          }
+          elseif (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_artifact_url }}")) {
+            .\scripts\prepare-maa-framework.ps1 -DownloadUrl "$env:MAA_FRAMEWORK_DOWNLOAD_URL" -GithubToken "$env:MAA_FRAMEWORK_TOKEN"
+          }
+          elseif (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_download_url }}")) {
+            .\scripts\prepare-maa-framework.ps1 -DownloadUrl "${{ inputs.maa_framework_download_url }}" -GithubToken "$env:MAA_FRAMEWORK_TOKEN"
+          }
+          else {
+            .\scripts\prepare-maa-framework.ps1 -Version "${{ steps.release.outputs.maa_version }}" -GithubToken "$env:MAA_FRAMEWORK_TOKEN"
+          }
 
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
@@ -110,6 +178,15 @@ jobs:
           $json = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
           $json.version = $version
           $json | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
+
+      - name: Ensure local release tag
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          $tag = "${{ steps.release.outputs.tag }}"
+          $existing = git tag --list $tag
+          if ([string]::IsNullOrWhiteSpace($existing)) {
+            git tag $tag
+          }
 
       - name: Generate changelog
         id: changelog

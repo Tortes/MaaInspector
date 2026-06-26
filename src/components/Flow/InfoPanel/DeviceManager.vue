@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import {
   Smartphone, Power, Search, Loader2
 } from 'lucide-vue-next'
@@ -10,6 +10,7 @@ import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 import type { DropdownOption } from '@/components/Flow/Common/types'
 import type { ApiDeviceInfo } from '@/services/api'
 import type { DevicePanelSnapshot } from '@/composables/viewModels/types'
+import { resolvePanelDeviceType } from '@/utils/device'
 
 const props = defineProps<{
   isConnected: boolean
@@ -69,6 +70,7 @@ const win32KeyboardMethod = ref(props.snapshot?.win32KeyboardMethod ?? 1)
 // 设备截图相关
 const deviceScreenshot = ref<string>('')
 let screenshotTimer: ReturnType<typeof setInterval> | null = null
+let isRestoringLastDevice = false
 
 // 当前设备
 const currentDevice = computed<ApiDeviceInfo | null>(() => {
@@ -102,9 +104,8 @@ const win32MouseOptions = computed<DropdownOption[]>(() => {
 
 const win32KeyboardOptions = computed<DropdownOption[]>(() => {
   return win32InputMethods.map(method => ({
-    label: method.value === 512 ? `${method.label}（仅鼠标）` : method.label,
-    value: method.value,
-    disabled: method.value === 512
+    label: method.label,
+    value: method.value
   }))
 })
 
@@ -228,7 +229,8 @@ const handleDeviceConnect = async () => {
 
 // 暴露方法供父组件调用
 const loadLastDevice = (lastDevice: ApiDeviceInfo) => {
-  const deviceTypeValue = lastDevice.type === 'win32' ? 'win32' : 'adb'
+  isRestoringLastDevice = true
+  const deviceTypeValue = resolvePanelDeviceType(lastDevice.type)
   deviceType.value = deviceTypeValue
   searchedDevices.value = [lastDevice]
   selectedDeviceIndex.value = 0
@@ -240,12 +242,16 @@ const loadLastDevice = (lastDevice: ApiDeviceInfo) => {
   }
 
   message.value = '已加载上次连接的设备'
+  void nextTick(() => {
+    isRestoringLastDevice = false
+  })
 }
 
 defineExpose({ loadLastDevice, status, message, info, currentDevice })
 
 // 设备切换时重置连接状态
 watch(selectedDeviceIndex, (nv, ov) => {
+  if (isRestoringLastDevice) return
   if (nv === ov) return
   status.value = 'disconnected'
   message.value = '设备未连接'
@@ -256,6 +262,7 @@ watch(selectedDeviceIndex, (nv, ov) => {
 
 // 设备类型切换时清空搜索结果
 watch(deviceType, () => {
+  if (isRestoringLastDevice) return
   searchedDevices.value = []
   selectedDeviceIndex.value = -1
   status.value = 'disconnected'

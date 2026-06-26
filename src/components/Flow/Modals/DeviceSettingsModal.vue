@@ -17,6 +17,9 @@ type EditableDevice = ApiDeviceInfo & {
   adb_path?: string
   screencap_methods?: number
   input_methods?: number
+  screencap_method?: number
+  mouse_method?: number
+  keyboard_method?: number
   /**
    * saved: 来自已保存配置
    * discovered: 搜索发现，尚未保存
@@ -52,6 +55,30 @@ const typeOptions: { value: DeviceType; label: string }[] = [
   { value: 'win32control', label: 'Win32 控件' }
 ]
 
+const win32ScreencapMethods = [
+  { value: 0, label: 'Null' },
+  { value: 1, label: 'GDI' },
+  { value: 2, label: 'FramePool' },
+  { value: 4, label: 'DXGI_DesktopDup' },
+  { value: 8, label: 'DXGI_DesktopDup_Window' },
+  { value: 16, label: 'PrintWindow' },
+  { value: 32, label: 'ScreenDC' }
+]
+
+const win32InputMethods = [
+  { value: 0, label: 'Null' },
+  { value: 1, label: 'Seize' },
+  { value: 2, label: 'SendMessage' },
+  { value: 4, label: 'PostMessage' },
+  { value: 8, label: 'LegacyEvent' },
+  { value: 16, label: 'PostThreadMessage' },
+  { value: 32, label: 'SendMessageWithCursorPos' },
+  { value: 64, label: 'PostMessageWithCursorPos' },
+  { value: 128, label: 'SendMessageWithWindowPos' },
+  { value: 256, label: 'PostMessageWithWindowPos' },
+  { value: 512, label: 'Interception' }
+]
+
 const cloneDevices = (devices: EditableDevice[]): EditableDevice[] =>
   JSON.parse(JSON.stringify(devices || [])) as EditableDevice[]
 
@@ -63,6 +90,9 @@ const normalizeDevices = (devices: EditableDevice[], fallbackSource: EditableDev
     const hwnd = (dev as any).hwnd
     const class_name = typeof (dev as any).class_name === 'string' ? (dev as any).class_name : ''
     const window_name = typeof (dev as any).window_name === 'string' ? (dev as any).window_name : ''
+    const screencap_method = typeof (dev as any).screencap_method === 'number' ? (dev as any).screencap_method : 4
+    const mouse_method = typeof (dev as any).mouse_method === 'number' ? (dev as any).mouse_method : 1
+    const keyboard_method = typeof (dev as any).keyboard_method === 'number' ? (dev as any).keyboard_method : 1
     return {
       ...dev,
       name: dev.name ?? 'New Device',
@@ -72,6 +102,9 @@ const normalizeDevices = (devices: EditableDevice[], fallbackSource: EditableDev
       hwnd,
       class_name,
       window_name,
+      screencap_method,
+      mouse_method,
+      keyboard_method,
       source: dev.source ?? fallbackSource
     }
   })
@@ -128,7 +161,16 @@ const handleSearch = async (type: DeviceType) => {
 }
 
 const handleAddDevice = () => {
-  editingDevices.value.push({ name: 'New Device', address: '', config: {}, type: 'adb', source: 'manual' })
+  editingDevices.value.push({
+    name: 'New Device',
+    address: '',
+    config: {},
+    type: 'adb',
+    screencap_method: 4,
+    mouse_method: 1,
+    keyboard_method: 1,
+    source: 'manual'
+  })
   editDevIndex.value = editingDevices.value.length - 1
 }
 
@@ -358,6 +400,51 @@ const configPlaceholder = computed(() => {
                   v-model="editingDevices[editDevIndex].window_name"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
                 >
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Screencap Method</label>
+                <select
+                  v-model="editingDevices[editDevIndex].screencap_method"
+                  class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
+                >
+                  <option
+                    v-for="opt in win32ScreencapMethods"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Mouse Method</label>
+                <select
+                  v-model="editingDevices[editDevIndex].mouse_method"
+                  class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
+                >
+                  <option
+                    v-for="opt in win32InputMethods"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Keyboard Method</label>
+                <select
+                  v-model="editingDevices[editDevIndex].keyboard_method"
+                  class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
+                >
+                  <option
+                    v-for="opt in win32InputMethods"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
               </div>
             </template>
             <template v-else>

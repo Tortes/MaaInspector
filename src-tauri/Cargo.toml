@@ -55,7 +55,9 @@ windows-sys = { version = "0.59.0", features = [
 ] }
 
 [profile.release]
-lto = "thin"
+# GitHub-hosted Windows runners currently hit a rustc access violation while
+# linking the final Tauri binary with ThinLTO enabled.
+lto = false
 codegen-units = 16
 panic = "abort"
 strip = true
