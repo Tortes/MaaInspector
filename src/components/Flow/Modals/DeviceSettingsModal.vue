@@ -4,7 +4,6 @@
   import { systemApi } from '@/services/api'
   import { ElMessage } from 'element-plus'
   import type { ApiResponse, ApiDeviceInfo } from '@/services/api'
-  import { DEFAULT_WIN32_KEYBOARD_METHOD, sanitizeWin32KeyboardMethod } from '@/utils/device'
 
   type DeviceType = 'adb' | 'win32control' | string
 
@@ -80,8 +79,6 @@
     { value: 512, label: 'Interception' },
   ]
 
-  const win32KeyboardInputMethods = win32InputMethods.filter((method) => method.value !== 512)
-
   const cloneDevices = (devices: EditableDevice[]): EditableDevice[] =>
     JSON.parse(JSON.stringify(devices || [])) as EditableDevice[]
 
@@ -104,10 +101,8 @@
         typeof (dev as any).screencap_method === 'number' ? (dev as any).screencap_method : 4
       const mouse_method =
         typeof (dev as any).mouse_method === 'number' ? (dev as any).mouse_method : 1
-      const keyboard_method = sanitizeWin32KeyboardMethod(
-        typeof (dev as any).keyboard_method === 'number' ? (dev as any).keyboard_method : undefined,
-        DEFAULT_WIN32_KEYBOARD_METHOD
-      )
+      const keyboard_method =
+        typeof (dev as any).keyboard_method === 'number' ? (dev as any).keyboard_method : 1
       return {
         ...dev,
         name: dev.name ?? 'New Device',
@@ -474,11 +469,7 @@
                   v-model="editingDevices[editDevIndex].keyboard_method"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
                 >
-                  <option
-                    v-for="opt in win32KeyboardInputMethods"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
+                  <option v-for="opt in win32InputMethods" :key="opt.value" :value="opt.value">
                     {{ opt.label }}
                   </option>
                 </select>

@@ -6,16 +6,6 @@ use maa_framework::sys;
 const CONNECTION_TIMEOUT_MS: u64 = 60000;
 /// Poll interval for checking operation status
 const STATUS_POLL_INTERVAL_MS: u64 = 50;
-/// Custom Win32 input method value used by Tortes/MaaFramework fork.
-const WIN32_INPUT_METHOD_INTERCEPTION: i32 = 1 << 9;
-
-fn validate_win32_input_methods(keyboard_method: Option<i32>) -> Option<String> {
-    if keyboard_method == Some(WIN32_INPUT_METHOD_INTERCEPTION) {
-        return Some("Interception 仅支持鼠标输入，请为键盘选择其他输入方式".to_string());
-    }
-
-    None
-}
 /// Wait for controller operation with timeout
 pub(crate) fn wait_with_timeout(controller: &Controller, id: sys::MaaId, timeout_ms: u64) -> bool {
     use std::time::{Duration, Instant};
@@ -141,10 +131,6 @@ pub async fn connect_win32_async(
     mouse_method: Option<i32>,
     keyboard_method: Option<i32>,
 ) -> (bool, Option<String>, Option<Controller>) {
-    if let Some(message) = validate_win32_input_methods(keyboard_method) {
-        return (false, Some(message), None);
-    }
-
     let screencap = screencap_method.unwrap_or(sys::MaaWin32ScreencapMethod_GDI as i32)
         as sys::MaaWin32ScreencapMethod;
     let mouse = mouse_method.unwrap_or(sys::MaaWin32InputMethod_SendMessage as i32)
@@ -174,25 +160,5 @@ pub async fn connect_win32_async(
             Some(format!("Connection timeout or failed for hwnd {}", hwnd)),
             None,
         ),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{WIN32_INPUT_METHOD_INTERCEPTION, validate_win32_input_methods};
-
-    #[test]
-    fn rejects_interception_as_keyboard_method() {
-        assert_eq!(
-            validate_win32_input_methods(Some(WIN32_INPUT_METHOD_INTERCEPTION)),
-            Some("Interception 仅支持鼠标输入，请为键盘选择其他输入方式".to_string())
-        );
-    }
-
-    #[test]
-    fn allows_standard_keyboard_methods() {
-        assert_eq!(validate_win32_input_methods(Some(1)), None);
-        assert_eq!(validate_win32_input_methods(Some(2)), None);
-        assert_eq!(validate_win32_input_methods(None), None);
     }
 }

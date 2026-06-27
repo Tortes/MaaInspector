@@ -8,11 +8,7 @@
   import type { DropdownOption } from '@/components/Flow/Common/types'
   import type { ApiDeviceInfo } from '@/services/api'
   import type { DevicePanelSnapshot } from '@/composables/viewModels/types'
-  import {
-    DEFAULT_WIN32_KEYBOARD_METHOD,
-    resolvePanelDeviceType,
-    sanitizeWin32KeyboardMethod,
-  } from '@/utils/device'
+  import { resolvePanelDeviceType } from '@/utils/device'
 
   const props = defineProps<{
     isConnected: boolean
@@ -67,9 +63,7 @@
   // Win32 连接参数
   const win32ScreencapMethod = ref(props.snapshot?.win32ScreencapMethod ?? 4)
   const win32MouseMethod = ref(props.snapshot?.win32MouseMethod ?? 1)
-  const win32KeyboardMethod = ref(
-    sanitizeWin32KeyboardMethod(props.snapshot?.win32KeyboardMethod, DEFAULT_WIN32_KEYBOARD_METHOD)
-  )
+  const win32KeyboardMethod = ref(props.snapshot?.win32KeyboardMethod ?? 1)
 
   // 设备截图相关
   const deviceScreenshot = ref<string>('')
@@ -110,12 +104,10 @@
   })
 
   const win32KeyboardOptions = computed<DropdownOption[]>(() => {
-    return win32InputMethods
-      .filter((method) => method.value !== 512)
-      .map((method) => ({
-        label: method.label,
-        value: method.value,
-      }))
+    return win32InputMethods.map((method) => ({
+      label: method.label,
+      value: method.value,
+    }))
   })
 
   // 设备按钮标签
@@ -248,10 +240,8 @@
       if (lastDevice.screencap_method !== undefined)
         win32ScreencapMethod.value = lastDevice.screencap_method
       if (lastDevice.mouse_method !== undefined) win32MouseMethod.value = lastDevice.mouse_method
-      win32KeyboardMethod.value = sanitizeWin32KeyboardMethod(
-        lastDevice.keyboard_method,
-        DEFAULT_WIN32_KEYBOARD_METHOD
-      )
+      if (lastDevice.keyboard_method !== undefined)
+        win32KeyboardMethod.value = lastDevice.keyboard_method
     }
 
     message.value = '已加载上次连接的设备'

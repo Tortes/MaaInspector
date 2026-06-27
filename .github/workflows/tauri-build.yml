@@ -14,6 +14,26 @@ on:
         options:
           - github-hosted
           - self-hosted
+      maa_framework_source:
+        description: 'MaaFramework source: branch-build, run-build, release, artifact-url, download-url, or archive-path'
+        required: false
+        default: 'branch-build'
+        type: choice
+        options:
+          - branch-build
+          - run-build
+          - release
+          - artifact-url
+          - download-url
+          - archive-path
+      maa_framework_branch:
+        description: 'MaaFramework branch used to resolve the latest successful build artifact'
+        required: false
+        default: 'push/tortes-interception'
+      maa_framework_build_run_id:
+        description: 'MaaFramework workflow run ID, used when source is run-build'
+        required: false
+        default: ''
       maa_framework_version:
         description: 'MaaFramework release version or tag, for example release or v5.10.0'
         required: false
@@ -42,9 +62,13 @@ permissions:
   contents: write
 
 env:
+  DEFAULT_MAA_FRAMEWORK_SOURCE: "branch-build"
   DEFAULT_MAA_FRAMEWORK_VERSION: "release"
+  DEFAULT_MAA_FRAMEWORK_BRANCH: "push/tortes-interception"
+  DEFAULT_MAA_FRAMEWORK_WORKFLOW: "build.yml"
   DEFAULT_MAA_FRAMEWORK_REPOSITORY: "Tortes/MaaFramework"
-  DEFAULT_MAA_FRAMEWORK_ASSET_NAME: "MAA-win-x86_64.zip"
+  DEFAULT_MAA_FRAMEWORK_RELEASE_ASSET_NAME: "MAA-win-x86_64.zip"
+  DEFAULT_MAA_FRAMEWORK_BUILD_ARTIFACT_NAME: "MAA-win-x86_64"
 
 jobs:
   build:
@@ -83,7 +107,89 @@ jobs:
 
       - name: Resolve release inputs
         id: release
+        env:
+          MAA_FRAMEWORK_TOKEN: ${{ secrets.MAA_FRAMEWORK_TOKEN }}
         run: |
+          function Set-OutputValue {
+            param(
+              [string]$Name,
+              [string]$Value
+            )
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+          function Set-EnvValue {
+            param(
+              [string]$Name,
+              [string]$Value
+            )
+
+            "$Name=$Value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+          function Invoke-GithubApi {
+            param(
+              [string]$Url
+            )
+
+            $headers = @{
+              Accept = "application/vnd.github+json"
+              "X-GitHub-Api-Version" = "2022-11-28"
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($env:MAA_FRAMEWORK_TOKEN)) {
+              $headers.Authorization = "Bearer $env:MAA_FRAMEWORK_TOKEN"
+            }
+
+            Invoke-RestMethod -Uri $Url -Headers $headers
+          }
+
+          function Resolve-MaaFrameworkArtifact {
+            param(
+              [string]$Repository,
+              [string]$WorkflowFile,
+              [string]$ArtifactName,
+              [string]$Branch,
+              [string]$RunId
+            )
+
+            $resolvedRunId = $RunId
+            if ([string]::IsNullOrWhiteSpace($resolvedRunId)) {
+              if ([string]::IsNullOrWhiteSpace($Branch)) {
+                throw "MaaFramework branch is required when resolving the latest successful build artifact."
+              }
+
+              $encodedBranch = [System.Uri]::EscapeDataString($Branch)
+              $runsUrl = "https://api.github.com/repos/$Repository/actions/workflows/$WorkflowFile/runs?branch=$encodedBranch&status=completed&per_page=20"
+              $runsResponse = Invoke-GithubApi -Url $runsUrl
+              $run = @($runsResponse.workflow_runs) | Where-Object { $_.conclusion -eq "success" } | Select-Object -First 1
+
+              if (-not $run) {
+                throw "No successful MaaFramework build run found for branch '$Branch'."
+              }
+
+              $resolvedRunId = [string]$run.id
+            }
+
+            $artifactsUrl = "https://api.github.com/repos/$Repository/actions/runs/$resolvedRunId/artifacts?per_page=100"
+            $artifactsResponse = Invoke-GithubApi -Url $artifactsUrl
+            $artifact = @($artifactsResponse.artifacts) | Where-Object { $_.name -eq $ArtifactName } | Select-Object -First 1
+
+            if (-not $artifact) {
+              throw "Artifact '$ArtifactName' was not found in MaaFramework run '$resolvedRunId'."
+            }
+
+            if ($artifact.expired) {
+              throw "Artifact '$ArtifactName' from MaaFramework run '$resolvedRunId' has expired."
+            }
+
+            @{
+              RunId = $resolvedRunId
+              DownloadUrl = [string]$artifact.archive_download_url
+            }
+          }
+
           $tag = "${{ github.ref_name }}"
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
             if (-not [string]::IsNullOrWhiteSpace("${{ inputs.release_tag }}")) {
@@ -117,29 +223,84 @@ jobs:
             $maaVersion = "v$maaVersion"
           }
 
-          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "version=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "maa_version=$maaVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "runner=${{ inputs.runner }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "MAA_FRAMEWORK_VERSION=$maaVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "MAA_FRAMEWORK_REPOSITORY=${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "MAA_FRAMEWORK_ASSET_NAME=${{ env.DEFAULT_MAA_FRAMEWORK_ASSET_NAME }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_artifact_url }}")) {
-            $artifactUrl = "${{ inputs.maa_framework_artifact_url }}"
-            if ($artifactUrl -match '/artifacts/([0-9]+)$') {
-              $artifactId = $Matches[1]
-              $apiUrl = "https://api.github.com/repos/Tortes/MaaFramework/actions/artifacts/$artifactId/zip"
-              "MAA_FRAMEWORK_DOWNLOAD_URL=$apiUrl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            }
-            else {
-              throw "Unsupported maa_framework_artifact_url format: $artifactUrl"
-            }
+          $maaSource = "${{ env.DEFAULT_MAA_FRAMEWORK_SOURCE }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_source }}")) {
+            $maaSource = "${{ inputs.maa_framework_source }}"
           }
-          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_download_url }}")) {
-            "MAA_FRAMEWORK_DOWNLOAD_URL=${{ inputs.maa_framework_download_url }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $maaBranch = "${{ env.DEFAULT_MAA_FRAMEWORK_BRANCH }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_branch }}")) {
+            $maaBranch = "${{ inputs.maa_framework_branch }}"
           }
-          if ("${{ inputs.runner }}" -eq "self-hosted" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_archive_path }}")) {
-            "MAA_FRAMEWORK_ARCHIVE_PATH=${{ inputs.maa_framework_archive_path }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $maaRunId = ""
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_build_run_id }}")) {
+            $maaRunId = "${{ inputs.maa_framework_build_run_id }}"
+          }
+
+          Set-OutputValue -Name "tag" -Value $tag
+          Set-OutputValue -Name "version" -Value $tag.Substring(1)
+          Set-OutputValue -Name "maa_version" -Value $maaVersion
+          Set-OutputValue -Name "maa_source" -Value $maaSource
+          Set-OutputValue -Name "maa_branch" -Value $maaBranch
+          Set-OutputValue -Name "runner" -Value "${{ inputs.runner }}"
+          Set-EnvValue -Name "MAA_FRAMEWORK_VERSION" -Value $maaVersion
+          Set-EnvValue -Name "MAA_FRAMEWORK_REPOSITORY" -Value "${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}"
+          Set-EnvValue -Name "MAA_FRAMEWORK_ASSET_NAME" -Value "${{ env.DEFAULT_MAA_FRAMEWORK_RELEASE_ASSET_NAME }}"
+
+          switch ($maaSource) {
+            "artifact-url" {
+              $artifactUrl = "${{ inputs.maa_framework_artifact_url }}"
+              if ([string]::IsNullOrWhiteSpace($artifactUrl)) {
+                throw "maa_framework_artifact_url is required when maa_framework_source=artifact-url."
+              }
+              if ($artifactUrl -match '/artifacts/([0-9]+)$') {
+                $artifactId = $Matches[1]
+                $apiUrl = "https://api.github.com/repos/${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}/actions/artifacts/$artifactId/zip"
+                Set-EnvValue -Name "MAA_FRAMEWORK_DOWNLOAD_URL" -Value $apiUrl
+              }
+              else {
+                throw "Unsupported maa_framework_artifact_url format: $artifactUrl"
+              }
+            }
+            "download-url" {
+              $downloadUrl = "${{ inputs.maa_framework_download_url }}"
+              if ([string]::IsNullOrWhiteSpace($downloadUrl)) {
+                throw "maa_framework_download_url is required when maa_framework_source=download-url."
+              }
+              Set-EnvValue -Name "MAA_FRAMEWORK_DOWNLOAD_URL" -Value $downloadUrl
+            }
+            "archive-path" {
+              $archivePath = "${{ inputs.maa_framework_archive_path }}"
+              if ([string]::IsNullOrWhiteSpace($archivePath)) {
+                throw "maa_framework_archive_path is required when maa_framework_source=archive-path."
+              }
+              if ("${{ inputs.runner }}" -ne "self-hosted") {
+                throw "maa_framework_source=archive-path requires runner=self-hosted."
+              }
+              Set-EnvValue -Name "MAA_FRAMEWORK_ARCHIVE_PATH" -Value $archivePath
+            }
+            "run-build" {
+              if ([string]::IsNullOrWhiteSpace($maaRunId)) {
+                throw "maa_framework_build_run_id is required when maa_framework_source=run-build."
+              }
+              $artifact = Resolve-MaaFrameworkArtifact -Repository "${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}" -WorkflowFile "${{ env.DEFAULT_MAA_FRAMEWORK_WORKFLOW }}" -ArtifactName "${{ env.DEFAULT_MAA_FRAMEWORK_BUILD_ARTIFACT_NAME }}" -Branch $maaBranch -RunId $maaRunId
+              Set-EnvValue -Name "MAA_FRAMEWORK_DOWNLOAD_URL" -Value $artifact.DownloadUrl
+              Set-EnvValue -Name "MAA_FRAMEWORK_BUILD_RUN_ID" -Value $artifact.RunId
+              Set-OutputValue -Name "maa_build_run_id" -Value $artifact.RunId
+            }
+            "branch-build" {
+              $artifact = Resolve-MaaFrameworkArtifact -Repository "${{ env.DEFAULT_MAA_FRAMEWORK_REPOSITORY }}" -WorkflowFile "${{ env.DEFAULT_MAA_FRAMEWORK_WORKFLOW }}" -ArtifactName "${{ env.DEFAULT_MAA_FRAMEWORK_BUILD_ARTIFACT_NAME }}" -Branch $maaBranch -RunId $maaRunId
+              Set-EnvValue -Name "MAA_FRAMEWORK_DOWNLOAD_URL" -Value $artifact.DownloadUrl
+              Set-EnvValue -Name "MAA_FRAMEWORK_BRANCH" -Value $maaBranch
+              Set-EnvValue -Name "MAA_FRAMEWORK_BUILD_RUN_ID" -Value $artifact.RunId
+              Set-OutputValue -Name "maa_build_run_id" -Value $artifact.RunId
+            }
+            "release" {
+            }
+            default {
+              throw "Unsupported maa_framework_source: $maaSource"
+            }
           }
 
       - name: Prepare MaaFramework SDK
@@ -149,11 +310,8 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_archive_path }}")) {
             .\scripts\prepare-maa-framework.ps1 -ArchivePath "${{ inputs.maa_framework_archive_path }}"
           }
-          elseif (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_artifact_url }}")) {
+          elseif (-not [string]::IsNullOrWhiteSpace("$env:MAA_FRAMEWORK_DOWNLOAD_URL")) {
             .\scripts\prepare-maa-framework.ps1 -DownloadUrl "$env:MAA_FRAMEWORK_DOWNLOAD_URL" -GithubToken "$env:MAA_FRAMEWORK_TOKEN"
-          }
-          elseif (-not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_download_url }}")) {
-            .\scripts\prepare-maa-framework.ps1 -DownloadUrl "${{ inputs.maa_framework_download_url }}" -GithubToken "$env:MAA_FRAMEWORK_TOKEN"
           }
           else {
             .\scripts\prepare-maa-framework.ps1 -Version "${{ steps.release.outputs.maa_version }}" -GithubToken "$env:MAA_FRAMEWORK_TOKEN"

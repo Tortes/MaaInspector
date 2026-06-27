@@ -73,11 +73,11 @@ describe('DeviceManager', () => {
       selectedDeviceIndex: 0,
       win32ScreencapMethod: 16,
       win32MouseMethod: 512,
-      win32KeyboardMethod: 1,
+      win32KeyboardMethod: 512,
     })
   })
 
-  it('keeps Interception for mouse but falls back to a supported keyboard method', async () => {
+  it('passes Interception mouse and keyboard methods through win32 connection', async () => {
     vi.mocked(deviceApi.connectWin32).mockResolvedValue({ success: true, message: 'OK' })
 
     const wrapper = mount(DeviceManager, {
@@ -129,7 +129,7 @@ describe('DeviceManager', () => {
         hwnd: 2002,
         screencap_method: 4,
         mouse_method: 512,
-        keyboard_method: 1,
+        keyboard_method: 512,
       })
     )
   })
