@@ -1,216 +1,250 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { Plus, Radar, Loader2, Edit3, X, Save, PlusCircle } from 'lucide-vue-next'
-import { systemApi } from '@/services/api'
-import { ElMessage } from 'element-plus'
-import type { ApiResponse, ApiDeviceInfo } from '@/services/api'
+  import { computed, ref, watch } from 'vue'
+  import { Plus, Radar, Loader2, Edit3, X, Save, PlusCircle } from 'lucide-vue-next'
+  import { systemApi } from '@/services/api'
+  import { ElMessage } from 'element-plus'
+  import type { ApiResponse, ApiDeviceInfo } from '@/services/api'
+  import { DEFAULT_WIN32_KEYBOARD_METHOD, sanitizeWin32KeyboardMethod } from '@/utils/device'
 
-type DeviceType = 'adb' | 'win32control' | string
+  type DeviceType = 'adb' | 'win32control' | string
 
-type EditableDevice = ApiDeviceInfo & {
-  address?: string
-  config?: Record<string, unknown>
-  type?: DeviceType
-  hwnd?: number | string
-  class_name?: string
-  window_name?: string
-  adb_path?: string
-  screencap_methods?: number
-  input_methods?: number
-  screencap_method?: number
-  mouse_method?: number
-  keyboard_method?: number
-  /**
-   * saved: 来自已保存配置
-   * discovered: 搜索发现，尚未保存
-   * manual: 手动添加，尚未保存
-   */
-  source?: 'saved' | 'discovered' | 'manual'
-}
+  type EditableDevice = ApiDeviceInfo & {
+    address?: string
+    config?: Record<string, unknown>
+    type?: DeviceType
+    hwnd?: number | string
+    class_name?: string
+    window_name?: string
+    adb_path?: string
+    screencap_methods?: number
+    input_methods?: number
+    screencap_method?: number
+    mouse_method?: number
+    keyboard_method?: number
+    /**
+     * saved: 来自已保存配置
+     * discovered: 搜索发现，尚未保存
+     * manual: 手动添加，尚未保存
+     */
+    source?: 'saved' | 'discovered' | 'manual'
+  }
 
-interface DeviceSettingsProps {
-  visible?: boolean
-  devices?: EditableDevice[]
-  currentIndex?: number
-}
+  interface DeviceSettingsProps {
+    visible?: boolean
+    devices?: EditableDevice[]
+    currentIndex?: number
+  }
 
-const props = withDefaults(defineProps<DeviceSettingsProps>(), {
-  visible: false,
-  devices: () => [],
-  currentIndex: 0
-})
-
-const emit = defineEmits<{
-  (e: 'close'): void
-  (e: 'save', payload: { devices: EditableDevice[]; index: number }): void
-}>()
-
-const editingDevices = ref<EditableDevice[]>([])
-const discoveredDevices = ref<EditableDevice[]>([])
-const editDevIndex = ref<number>(0)
-const searchingType = ref<DeviceType | ''>('')
-
-const typeOptions: { value: DeviceType; label: string }[] = [
-  { value: 'adb', label: 'ADB 设备' },
-  { value: 'win32control', label: 'Win32 控件' }
-]
-
-const win32ScreencapMethods = [
-  { value: 0, label: 'Null' },
-  { value: 1, label: 'GDI' },
-  { value: 2, label: 'FramePool' },
-  { value: 4, label: 'DXGI_DesktopDup' },
-  { value: 8, label: 'DXGI_DesktopDup_Window' },
-  { value: 16, label: 'PrintWindow' },
-  { value: 32, label: 'ScreenDC' }
-]
-
-const win32InputMethods = [
-  { value: 0, label: 'Null' },
-  { value: 1, label: 'Seize' },
-  { value: 2, label: 'SendMessage' },
-  { value: 4, label: 'PostMessage' },
-  { value: 8, label: 'LegacyEvent' },
-  { value: 16, label: 'PostThreadMessage' },
-  { value: 32, label: 'SendMessageWithCursorPos' },
-  { value: 64, label: 'PostMessageWithCursorPos' },
-  { value: 128, label: 'SendMessageWithWindowPos' },
-  { value: 256, label: 'PostMessageWithWindowPos' },
-  { value: 512, label: 'Interception' }
-]
-
-const cloneDevices = (devices: EditableDevice[]): EditableDevice[] =>
-  JSON.parse(JSON.stringify(devices || [])) as EditableDevice[]
-
-const normalizeDevices = (devices: EditableDevice[], fallbackSource: EditableDevice['source'] = 'saved'): EditableDevice[] =>
-  devices.map((dev) => {
-    const address = typeof (dev as any).address === 'string' ? (dev as any).address : ''
-    const config = typeof (dev as any).config === 'object' && (dev as any).config !== null ? (dev as any).config as Record<string, unknown> : {}
-    const type = (dev as any).type || 'adb'
-    const hwnd = (dev as any).hwnd
-    const class_name = typeof (dev as any).class_name === 'string' ? (dev as any).class_name : ''
-    const window_name = typeof (dev as any).window_name === 'string' ? (dev as any).window_name : ''
-    const screencap_method = typeof (dev as any).screencap_method === 'number' ? (dev as any).screencap_method : 4
-    const mouse_method = typeof (dev as any).mouse_method === 'number' ? (dev as any).mouse_method : 1
-    const keyboard_method = typeof (dev as any).keyboard_method === 'number' ? (dev as any).keyboard_method : 1
-    return {
-      ...dev,
-      name: dev.name ?? 'New Device',
-      address,
-      config,
-      type,
-      hwnd,
-      class_name,
-      window_name,
-      screencap_method,
-      mouse_method,
-      keyboard_method,
-      source: dev.source ?? fallbackSource
-    }
+  const props = withDefaults(defineProps<DeviceSettingsProps>(), {
+    visible: false,
+    devices: () => [],
+    currentIndex: 0,
   })
 
-watch(() => props.visible, (val: boolean) => {
-  if (val) {
-    editingDevices.value = normalizeDevices(cloneDevices(props.devices))
-    editDevIndex.value = props.currentIndex || 0
-    discoveredDevices.value = []
-  }
-})
+  const emit = defineEmits<{
+    (e: 'close'): void
+    (e: 'save', payload: { devices: EditableDevice[]; index: number }): void
+  }>()
 
-const isSameDevice = (a?: EditableDevice, b?: EditableDevice) => {
-  if (!a || !b) return false
-  const typeA = a.type || 'adb'
-  const typeB = b.type || 'adb'
-  if (typeA !== typeB) return false
-  if (typeA === 'win32control') {
-    return (a.hwnd ?? '') === (b.hwnd ?? '') &&
-      (a.class_name || '') === (b.class_name || '') &&
-      (a.window_name || '') === (b.window_name || '')
-  }
-  return (a.address || '') === (b.address || '')
-}
+  const editingDevices = ref<EditableDevice[]>([])
+  const discoveredDevices = ref<EditableDevice[]>([])
+  const editDevIndex = ref<number>(0)
+  const searchingType = ref<DeviceType | ''>('')
 
-const handleSearch = async (type: DeviceType) => {
-  if (searchingType.value) return
-  searchingType.value = type
-  try {
-    const res = await systemApi.searchDevices(type) as ApiResponse<{ devices?: ApiDeviceInfo[] }> & { devices?: ApiDeviceInfo[] }
-    const found = (res.data?.devices ?? res.devices ?? []) as ApiDeviceInfo[]
-    if (found.length) {
-      found.forEach((d) => {
-        const address = typeof (d as any).address === 'string' ? (d as any).address : ''
-        const config = typeof (d as any).config === 'object' && (d as any).config !== null ? (d as any).config as Record<string, unknown> : {}
-        const devType = (d as any).type || type || 'adb'
-        const hwnd = (d as any).hwnd
-        const class_name = (d as any).class_name
-        const window_name = (d as any).window_name
-        const candidate: EditableDevice = { ...d, address, config, type: devType, hwnd, class_name, window_name, source: 'discovered' }
-        const existsSaved = editingDevices.value.find((ed) => isSameDevice(ed, candidate))
-        const existsFound = discoveredDevices.value.find((ed) => isSameDevice(ed, candidate))
-        if (!existsSaved && !existsFound) {
-          discoveredDevices.value.push(candidate)
-        }
-      })
+  const typeOptions: { value: DeviceType; label: string }[] = [
+    { value: 'adb', label: 'ADB 设备' },
+    { value: 'win32control', label: 'Win32 控件' },
+  ]
+
+  const win32ScreencapMethods = [
+    { value: 0, label: 'Null' },
+    { value: 1, label: 'GDI' },
+    { value: 2, label: 'FramePool' },
+    { value: 4, label: 'DXGI_DesktopDup' },
+    { value: 8, label: 'DXGI_DesktopDup_Window' },
+    { value: 16, label: 'PrintWindow' },
+    { value: 32, label: 'ScreenDC' },
+  ]
+
+  const win32InputMethods = [
+    { value: 0, label: 'Null' },
+    { value: 1, label: 'Seize' },
+    { value: 2, label: 'SendMessage' },
+    { value: 4, label: 'PostMessage' },
+    { value: 8, label: 'LegacyEvent' },
+    { value: 16, label: 'PostThreadMessage' },
+    { value: 32, label: 'SendMessageWithCursorPos' },
+    { value: 64, label: 'PostMessageWithCursorPos' },
+    { value: 128, label: 'SendMessageWithWindowPos' },
+    { value: 256, label: 'PostMessageWithWindowPos' },
+    { value: 512, label: 'Interception' },
+  ]
+
+  const win32KeyboardInputMethods = win32InputMethods.filter((method) => method.value !== 512)
+
+  const cloneDevices = (devices: EditableDevice[]): EditableDevice[] =>
+    JSON.parse(JSON.stringify(devices || [])) as EditableDevice[]
+
+  const normalizeDevices = (
+    devices: EditableDevice[],
+    fallbackSource: EditableDevice['source'] = 'saved'
+  ): EditableDevice[] =>
+    devices.map((dev) => {
+      const address = typeof (dev as any).address === 'string' ? (dev as any).address : ''
+      const config =
+        typeof (dev as any).config === 'object' && (dev as any).config !== null
+          ? ((dev as any).config as Record<string, unknown>)
+          : {}
+      const type = (dev as any).type || 'adb'
+      const hwnd = (dev as any).hwnd
+      const class_name = typeof (dev as any).class_name === 'string' ? (dev as any).class_name : ''
+      const window_name =
+        typeof (dev as any).window_name === 'string' ? (dev as any).window_name : ''
+      const screencap_method =
+        typeof (dev as any).screencap_method === 'number' ? (dev as any).screencap_method : 4
+      const mouse_method =
+        typeof (dev as any).mouse_method === 'number' ? (dev as any).mouse_method : 1
+      const keyboard_method = sanitizeWin32KeyboardMethod(
+        typeof (dev as any).keyboard_method === 'number' ? (dev as any).keyboard_method : undefined,
+        DEFAULT_WIN32_KEYBOARD_METHOD
+      )
+      return {
+        ...dev,
+        name: dev.name ?? 'New Device',
+        address,
+        config,
+        type,
+        hwnd,
+        class_name,
+        window_name,
+        screencap_method,
+        mouse_method,
+        keyboard_method,
+        source: dev.source ?? fallbackSource,
+      }
+    })
+
+  watch(
+    () => props.visible,
+    (val: boolean) => {
+      if (val) {
+        editingDevices.value = normalizeDevices(cloneDevices(props.devices))
+        editDevIndex.value = props.currentIndex || 0
+        discoveredDevices.value = []
+      }
     }
-  } catch (e: unknown) {
-    const err = e as { message?: string }
-    ElMessage.error(err?.message || '搜索设备失败')
-  } finally {
-    searchingType.value = ''
-  }
-}
+  )
 
-const handleAddDevice = () => {
-  editingDevices.value.push({
-    name: 'New Device',
-    address: '',
-    config: {},
-    type: 'adb',
-    screencap_method: 4,
-    mouse_method: 1,
-    keyboard_method: 1,
-    source: 'manual'
+  const isSameDevice = (a?: EditableDevice, b?: EditableDevice) => {
+    if (!a || !b) return false
+    const typeA = a.type || 'adb'
+    const typeB = b.type || 'adb'
+    if (typeA !== typeB) return false
+    if (typeA === 'win32control') {
+      return (
+        (a.hwnd ?? '') === (b.hwnd ?? '') &&
+        (a.class_name || '') === (b.class_name || '') &&
+        (a.window_name || '') === (b.window_name || '')
+      )
+    }
+    return (a.address || '') === (b.address || '')
+  }
+
+  const handleSearch = async (type: DeviceType) => {
+    if (searchingType.value) return
+    searchingType.value = type
+    try {
+      const res = (await systemApi.searchDevices(type)) as ApiResponse<{
+        devices?: ApiDeviceInfo[]
+      }> & { devices?: ApiDeviceInfo[] }
+      const found = (res.data?.devices ?? res.devices ?? []) as ApiDeviceInfo[]
+      if (found.length) {
+        found.forEach((d) => {
+          const address = typeof (d as any).address === 'string' ? (d as any).address : ''
+          const config =
+            typeof (d as any).config === 'object' && (d as any).config !== null
+              ? ((d as any).config as Record<string, unknown>)
+              : {}
+          const devType = (d as any).type || type || 'adb'
+          const hwnd = (d as any).hwnd
+          const class_name = (d as any).class_name
+          const window_name = (d as any).window_name
+          const candidate: EditableDevice = {
+            ...d,
+            address,
+            config,
+            type: devType,
+            hwnd,
+            class_name,
+            window_name,
+            source: 'discovered',
+          }
+          const existsSaved = editingDevices.value.find((ed) => isSameDevice(ed, candidate))
+          const existsFound = discoveredDevices.value.find((ed) => isSameDevice(ed, candidate))
+          if (!existsSaved && !existsFound) {
+            discoveredDevices.value.push(candidate)
+          }
+        })
+      }
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      ElMessage.error(err?.message || '搜索设备失败')
+    } finally {
+      searchingType.value = ''
+    }
+  }
+
+  const handleAddDevice = () => {
+    editingDevices.value.push({
+      name: 'New Device',
+      address: '',
+      config: {},
+      type: 'adb',
+      screencap_method: 4,
+      mouse_method: 1,
+      keyboard_method: 1,
+      source: 'manual',
+    })
+    editDevIndex.value = editingDevices.value.length - 1
+  }
+
+  const handleAddDiscovered = (idx: number) => {
+    const dev = discoveredDevices.value[idx]
+    if (!dev) return
+    discoveredDevices.value.splice(idx, 1)
+    const savedDev = { ...dev, source: 'saved' as const }
+    editingDevices.value.push(savedDev)
+    editDevIndex.value = editingDevices.value.length - 1
+  }
+
+  const handleConfigInput = (event: Event) => {
+    const target = event.target as HTMLTextAreaElement | null
+    const current = editingDevices.value[editDevIndex.value]
+    if (!target || !current) return
+    try {
+      current.config = JSON.parse(target.value || '{}')
+    } catch {
+      // ignore invalid JSON while typing
+    }
+  }
+
+  const handleRemoveDevice = () => {
+    editingDevices.value.splice(editDevIndex.value, 1)
+    editDevIndex.value = Math.max(0, editingDevices.value.length - 1)
+  }
+
+  const save = () => {
+    const sanitized = editingDevices.value.map(({ source: _source, ...rest }) => rest)
+    emit('save', { devices: sanitized, index: editDevIndex.value })
+  }
+
+  const configPlaceholder = computed(() => {
+    const current = editingDevices.value[editDevIndex.value]
+    if (current?.type === 'win32control') {
+      return '{ "config": "win32 暂无需配置" }'
+    }
+    return '{ "serial": "host:port" }'
   })
-  editDevIndex.value = editingDevices.value.length - 1
-}
-
-const handleAddDiscovered = (idx: number) => {
-  const dev = discoveredDevices.value[idx]
-  if (!dev) return
-  discoveredDevices.value.splice(idx, 1)
-  const savedDev = { ...dev, source: 'saved' as const }
-  editingDevices.value.push(savedDev)
-  editDevIndex.value = editingDevices.value.length - 1
-}
-
-const handleConfigInput = (event: Event) => {
-  const target = event.target as HTMLTextAreaElement | null
-  const current = editingDevices.value[editDevIndex.value]
-  if (!target || !current) return
-  try {
-    current.config = JSON.parse(target.value || '{}')
-  } catch {
-    // ignore invalid JSON while typing
-  }
-}
-
-const handleRemoveDevice = () => {
-  editingDevices.value.splice(editDevIndex.value, 1)
-  editDevIndex.value = Math.max(0, editingDevices.value.length - 1)
-}
-
-const save = () => {
-  const sanitized = editingDevices.value.map(({ source: _source, ...rest }) => rest)
-  emit('save', { devices: sanitized, index: editDevIndex.value })
-}
-
-const configPlaceholder = computed(() => {
-  const current = editingDevices.value[editDevIndex.value]
-  if (current?.type === 'win32control') {
-    return '{ "config": "win32 暂无需配置" }'
-  }
-  return '{ "serial": "host:port" }'
-})
 </script>
 
 <template>
@@ -218,9 +252,13 @@ const configPlaceholder = computed(() => {
     v-if="visible"
     class="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
   >
-    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(900px,calc(100vw-2rem))] h-[560px] max-h-[calc(100vh-2rem)]">
+    <div
+      class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(900px,calc(100vw-2rem))] h-[560px] max-h-[calc(100vh-2rem)]"
+    >
       <div class="w-[200px] bg-slate-50 border-r border-slate-100 flex flex-col min-h-0">
-        <div class="p-3 text-xs font-bold text-slate-500 border-b border-slate-100 flex items-center justify-between">
+        <div
+          class="p-3 text-xs font-bold text-slate-500 border-b border-slate-100 flex items-center justify-between"
+        >
           <span>已保存</span>
           <span class="text-[10px] text-slate-400">{{ editingDevices.length }}</span>
         </div>
@@ -229,14 +267,22 @@ const configPlaceholder = computed(() => {
             v-for="(dev, idx) in editingDevices"
             :key="idx"
             class="px-3 py-2 rounded-lg cursor-pointer text-xs border transition-all space-y-0.5"
-            :class="editDevIndex === idx ? 'bg-white border-slate-200 shadow-sm text-indigo-600 font-bold' : 'border-transparent text-slate-600 hover:bg-slate-100'"
+            :class="
+              editDevIndex === idx
+                ? 'bg-white border-slate-200 shadow-sm text-indigo-600 font-bold'
+                : 'border-transparent text-slate-600 hover:bg-slate-100'
+            "
             @click="editDevIndex = idx"
           >
             <div class="flex items-center justify-between gap-1">
               <span class="truncate">{{ dev.name }}</span>
               <span
                 class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
-                :class="dev.type === 'win32control' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'"
+                :class="
+                  dev.type === 'win32control'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-indigo-100 text-indigo-700'
+                "
               >
                 {{ dev.type === 'win32control' ? 'Win32' : 'ADB' }}
               </span>
@@ -273,7 +319,7 @@ const configPlaceholder = computed(() => {
               <component
                 :is="searchingType === 'adb' ? Loader2 : Radar"
                 :size="12"
-                :class="{'animate-spin': searchingType === 'adb'}"
+                :class="{ 'animate-spin': searchingType === 'adb' }"
               />
               {{ searchingType === 'adb' ? 'ADB 扫描中...' : '搜索 ADB' }}
             </button>
@@ -285,7 +331,7 @@ const configPlaceholder = computed(() => {
               <component
                 :is="searchingType === 'win32control' ? Loader2 : Radar"
                 :size="12"
-                :class="{'animate-spin': searchingType === 'win32control'}"
+                :class="{ 'animate-spin': searchingType === 'win32control' }"
               />
               {{ searchingType === 'win32control' ? 'Win32 扫描中...' : '搜索 Win32' }}
             </button>
@@ -308,12 +354,8 @@ const configPlaceholder = computed(() => {
         <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
           <div class="p-4 border-b border-slate-100 bg-slate-50/60">
             <div class="flex items-center justify-between mb-2">
-              <div class="text-[11px] font-bold text-slate-600">
-                发现设备（未保存）
-              </div>
-              <div class="text-[10px] text-slate-400">
-                点击添加到配置
-              </div>
+              <div class="text-[11px] font-bold text-slate-600">发现设备（未保存）</div>
+              <div class="text-[10px] text-slate-400">点击添加到配置</div>
             </div>
             <div
               v-if="discoveredDevices.length"
@@ -328,7 +370,11 @@ const configPlaceholder = computed(() => {
                   <span class="font-semibold text-slate-700 truncate">{{ dev.name }}</span>
                   <span
                     class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
-                    :class="dev.type === 'win32control' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'"
+                    :class="
+                      dev.type === 'win32control'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-indigo-100 text-indigo-700'
+                    "
                   >
                     {{ dev.type === 'win32control' ? 'Win32' : 'ADB' }}
                   </span>
@@ -349,12 +395,7 @@ const configPlaceholder = computed(() => {
                 </button>
               </div>
             </div>
-            <div
-              v-else
-              class="text-[11px] text-slate-400"
-            >
-              暂无发现设备，点击左侧搜索。
-            </div>
+            <div v-else class="text-[11px] text-slate-400">暂无发现设备，点击左侧搜索。</div>
           </div>
 
           <div
@@ -362,10 +403,11 @@ const configPlaceholder = computed(() => {
             class="flex-1 min-h-0 p-5 overflow-y-auto space-y-4 custom-scrollbar"
           >
             <div class="space-y-1">
-              <label class="text-[10px] font-bold text-slate-400 uppercase">Name</label><input
+              <label class="text-[10px] font-bold text-slate-400 uppercase">Name</label
+              ><input
                 v-model="editingDevices[editDevIndex].name"
                 class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
-              >
+              />
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-bold text-slate-400 uppercase">Type</label>
@@ -373,45 +415,42 @@ const configPlaceholder = computed(() => {
                 v-model="editingDevices[editDevIndex].type"
                 class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
               >
-                <option
-                  v-for="opt in typeOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
+                <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">
                   {{ opt.label }}
                 </option>
               </select>
             </div>
             <template v-if="editingDevices[editDevIndex].type === 'win32control'">
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">HWND</label><input
+                <label class="text-[10px] font-bold text-slate-400 uppercase">HWND</label
+                ><input
                   v-model="editingDevices[editDevIndex].hwnd"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 font-mono"
-                >
+                />
               </div>
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Class Name</label><input
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Class Name</label
+                ><input
                   v-model="editingDevices[editDevIndex].class_name"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
-                >
+                />
               </div>
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Window Name</label><input
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Window Name</label
+                ><input
                   v-model="editingDevices[editDevIndex].window_name"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
-                >
+                />
               </div>
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Screencap Method</label>
+                <label class="text-[10px] font-bold text-slate-400 uppercase"
+                  >Screencap Method</label
+                >
                 <select
                   v-model="editingDevices[editDevIndex].screencap_method"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
                 >
-                  <option
-                    v-for="opt in win32ScreencapMethods"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
+                  <option v-for="opt in win32ScreencapMethods" :key="opt.value" :value="opt.value">
                     {{ opt.label }}
                   </option>
                 </select>
@@ -422,23 +461,21 @@ const configPlaceholder = computed(() => {
                   v-model="editingDevices[editDevIndex].mouse_method"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
                 >
-                  <option
-                    v-for="opt in win32InputMethods"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
+                  <option v-for="opt in win32InputMethods" :key="opt.value" :value="opt.value">
                     {{ opt.label }}
                   </option>
                 </select>
               </div>
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Keyboard Method</label>
+                <label class="text-[10px] font-bold text-slate-400 uppercase"
+                  >Keyboard Method</label
+                >
                 <select
                   v-model="editingDevices[editDevIndex].keyboard_method"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
                 >
                   <option
-                    v-for="opt in win32InputMethods"
+                    v-for="opt in win32KeyboardInputMethods"
                     :key="opt.value"
                     :value="opt.value"
                   >
@@ -449,13 +486,15 @@ const configPlaceholder = computed(() => {
             </template>
             <template v-else>
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Address</label><input
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Address</label
+                ><input
                   v-model="editingDevices[editDevIndex].address"
                   class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 font-mono"
-                >
+                />
               </div>
               <div class="space-y-1 flex-1 flex flex-col">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Config</label><textarea
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Config</label
+                ><textarea
                   :value="JSON.stringify(editingDevices[editDevIndex].config, null, 2)"
                   :placeholder="configPlaceholder"
                   class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200 resize-none flex-1"
@@ -463,10 +502,7 @@ const configPlaceholder = computed(() => {
                 />
               </div>
             </template>
-            <button
-              class="text-xs text-red-500 hover:underline"
-              @click="handleRemoveDevice"
-            >
+            <button class="text-xs text-red-500 hover:underline" @click="handleRemoveDevice">
               删除设备
             </button>
           </div>
